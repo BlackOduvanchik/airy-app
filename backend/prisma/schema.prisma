@@ -1,0 +1,174 @@
+// Airy Backend — Prisma schema
+// Production-ready: transactions, users, merchant memory, subscriptions, aggregates
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String?  @unique
+  externalId String? @unique // e.g. Apple Sign-In or device-based id for local-first
+  subscriptionProductId   String?   @db.VarChar(128)
+  subscriptionExpiresAt   DateTime? @db.Timestamptz
+  appStoreTransactionId   String?   @db.VarChar(256)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions       Transaction[]
+  merchantRules      MerchantRule[]
+  subscriptions      Subscription[]
+  monthlyAggregates  MonthlyAggregate[]
+  yearlyAggregates   YearlyAggregate[]
+  pendingTransactions PendingTransaction[]
+  aiUsageLogs        AiUsageLog[]
+}
+
+model Transaction {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type               String   // expense | income
+  amountOriginal     Decimal  @db.Decimal(18, 4)
+  currencyOriginal   String   @db.VarChar(6)
+  amountBase         Decimal  @db.Decimal(18, 4)
+  baseCurrency       String   @db.VarChar(6)
+
+  merchant           String?  @db.VarChar(256)
+  title              String?  @db.VarChar(512)
+  transactionDate    DateTime @db.Date
+  transactionTime    String?  @db.VarChar(10) // HH:mm or similar
+  category           String   @db.VarChar(64)
+  subcategory        String?  @db.VarChar(64)
+
+  isSubscription     Boolean  @default(false)
+  isRecurringCandidate Boolean @default(false)
+  subscriptionId     String?
+  comment            String?  @db.Text
+
+  sourceType         String   @db.VarChar(32) // manual | screenshot
+  sourceImageHash    String?  @db.VarChar(128)
+  ocrText            String?  @db.Text
+  confidence         Decimal? @db.Decimal(5, 4) // 0-1
+
+  isDuplicate        Boolean  @default(false)
+  duplicateOfId      String?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  subscription       Subscription? @relation(fields: [subscriptionId], references: [id])
+  @@index([userId, transactionDate])
+  @@index([userId, sourceImageHash])
+  @@index([userId, merchant])
+  @@index([userId, category])
+}
+
+model PendingTransaction {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  payload            Json     // full extracted transaction as stored
+  ocrText            String?  @db.Text
+  sourceImageHash    String?  @db.VarChar(128)
+  confidence         Decimal? @db.Decimal(5, 4)
+  reason             String?  @db.VarChar(128) // e.g. "low_confidence"
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model MerchantRule {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  merchantNormalized String @db.VarChar(256)
+  merchantAliases    Json?  // optional aliases for matching ["alias1", "alias2"]
+  category       String   @db.VarChar(64)
+  subcategory    String?  @db.VarChar(64)
+  isSubscription Boolean  @default(false)
+  confidence     Decimal  @default(1) @db.Decimal(5, 4)
+  lastConfirmedAt DateTime @default(now())
+
+  @@unique([userId, merchantNormalized])
+  @@index([userId])
+}
+
+model Subscription {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  merchant       String   @db.VarChar(256)
+  amount         Decimal  @db.Decimal(18, 4)
+  currency       String   @db.VarChar(6)
+  interval       String   @db.VarChar(32) // monthly | yearly | weekly
+  nextBillingDate DateTime? @db.Date
+  status         String   @db.VarChar(32) // confirmed_subscription | subscription_candidate | non_subscription
+
+  transactions   Transaction[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, merchant])
+  @@index([userId])
+}
+
+model MonthlyAggregate {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  yearMonth      String   @db.VarChar(7) // 2025-03
+  totalSpent     Decimal  @default(0) @db.Decimal(18, 4)
+  totalIncome    Decimal  @default(0) @db.Decimal(18, 4)
+  byCategory     Json     // { food: 100, transport: 50, ... }
+  transactionCount Int    @default(0)
+
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, yearMonth])
+  @@index([userId])
+}
+
+model YearlyAggregate {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  year           Int
+  totalSpent     Decimal  @default(0) @db.Decimal(18, 4)
+  totalIncome    Decimal  @default(0) @db.Decimal(18, 4)
+  topCategories  Json     // [{ category, amount }, ...]
+  subscriptionTotal Decimal? @db.Decimal(18, 4)
+
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, year])
+  @@index([userId])
+}
+
+model AiUsageLog {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  feature        String   @db.VarChar(64) // screenshot_parse | insight | monthly_summary
+  count          Int      @default(1)
+  month          String   @db.VarChar(7) // 2025-03
+
+  createdAt      DateTime @default(now())
+
+  @@index([userId, month])
+}
