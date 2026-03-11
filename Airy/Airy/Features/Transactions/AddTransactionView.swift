@@ -13,6 +13,11 @@ struct AddTransactionView: View {
     var initialType: String?
     /// Called after a successful save (e.g. to pop parent when editing).
     var onSuccess: (() -> Void)?
+    /// Pending transaction from Review screen; when set, uses same UI but confirms with overrides.
+    var pendingTransaction: PendingTransaction?
+    var pendingRememberMerchant: Bool = true
+    var onConfirmPending: ((ConfirmPendingOverrides, Bool) -> Void)?
+    var onCancelPending: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: AddTransactionViewModel
     @State private var showDatePicker = false
@@ -20,12 +25,30 @@ struct AddTransactionView: View {
     @State private var showCustomKeyboard = false
     @State private var calculatorExpression = ""
     @State private var showCategoriesSheet = false
+    @State private var rememberRule: Bool = true
 
     init(transaction: Transaction? = nil, initialType: String? = nil, onSuccess: (() -> Void)? = nil) {
         self.transaction = transaction
         self.initialType = initialType
         self.onSuccess = onSuccess
+        self.pendingTransaction = nil
+        self.pendingRememberMerchant = true
+        self.onConfirmPending = nil
+        self.onCancelPending = nil
         _viewModel = State(initialValue: AddTransactionViewModel(existing: transaction, initialType: initialType))
+    }
+
+    init(pendingTransaction: PendingTransaction, rememberMerchant: Bool, onConfirm: @escaping (ConfirmPendingOverrides, Bool) -> Void, onCancel: @escaping () -> Void) {
+        self.transaction = nil
+        self.initialType = nil
+        self.onSuccess = nil
+        self.pendingTransaction = pendingTransaction
+        self.pendingRememberMerchant = rememberMerchant
+        self.onConfirmPending = onConfirm
+        self.onCancelPending = onCancel
+        let payload = pendingTransaction.decodedPayload
+        _viewModel = State(initialValue: AddTransactionViewModel(existing: nil, initialType: nil, fromPayload: payload))
+        _rememberRule = State(initialValue: rememberMerchant)
     }
 
     private var displayAmountResult: String {
@@ -83,6 +106,9 @@ struct AddTransactionView: View {
             typeToggle
             categorySection
             formFields
+            if pendingTransaction != nil {
+                rememberRuleRow
+            }
             Spacer(minLength: 16)
             actionBar
         }
@@ -109,7 +135,14 @@ struct AddTransactionView: View {
 
     private var headerActions: some View {
         HStack {
-            Button { dismiss() } label: {
+            Button {
+                if pendingTransaction != nil {
+                    onCancelPending?()
+                    dismiss()
+                } else {
+                    dismiss()
+                }
+            } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(OnboardingDesign.textSecondary)
@@ -301,6 +334,12 @@ struct AddTransactionView: View {
 
     private var formFields: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if pendingTransaction != nil {
+                inputRow(icon: "building.2", placeholder: "Merchant", text: Binding(
+                    get: { viewModel.merchant },
+                    set: { viewModel.merchant = $0 }
+                ))
+            }
             HStack(spacing: 12) {
                 Button {
                     showDatePicker = true
@@ -373,6 +412,20 @@ struct AddTransactionView: View {
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.4), lineWidth: 1))
     }
 
+    private var rememberRuleRow: some View {
+        HStack {
+            Text("Remember rule for \(viewModel.merchant.isEmpty ? "this merchant" : viewModel.merchant)")
+                .font(.system(size: 12))
+                .foregroundColor(OnboardingDesign.textTertiary)
+            Spacer()
+            Toggle("", isOn: $rememberRule)
+                .labelsHidden()
+                .tint(OnboardingDesign.accentGreen)
+        }
+        .padding(.vertical, 12)
+        .padding(.bottom, 8)
+    }
+
     private var actionBar: some View {
         VStack(spacing: 12) {
             if let err = viewModel.errorMessage {
@@ -381,7 +434,18 @@ struct AddTransactionView: View {
                     .foregroundColor(.red)
             }
             Button {
-                Task { await viewModel.submit() }
+                if viewModel.isPendingEditMode, let onConfirm = onConfirmPending {
+                    guard let amt = viewModel.amount, amt > 0 else {
+                        viewModel.errorMessage = "Enter a valid amount"
+                        return
+                    }
+                    viewModel.errorMessage = nil
+                    let overrides = viewModel.buildPendingOverrides()
+                    onConfirm(overrides, rememberRule)
+                    dismiss()
+                } else {
+                    Task { await viewModel.submit() }
+                }
             } label: {
                 Text(viewModel.primaryButtonTitle)
                     .font(.system(size: 16, weight: .semibold))

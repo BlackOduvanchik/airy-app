@@ -42,8 +42,9 @@ final class AddTransactionViewModel {
     var didSucceed = false
 
     var existingTransaction: Transaction?
+    var isPendingEditMode: Bool = false
 
-    static let currencies = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD"]
+    static let currencies = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "UAH", "RUB"]
 
     var amount: Double? {
         Double(amountText.replacingOccurrences(of: ",", with: "."))
@@ -52,20 +53,65 @@ final class AddTransactionViewModel {
     var isEditMode: Bool { existingTransaction != nil }
 
     var primaryButtonTitle: String {
-        isEditMode ? "Save" : "Add Transaction"
+        if isPendingEditMode || isEditMode { return "Save" }
+        return "Add Transaction"
     }
 
     var sheetTitle: String {
-        isEditMode ? "Edit Entry" : "New Entry"
+        if isPendingEditMode { return "Edit Entry" }
+        return isEditMode ? "Edit Entry" : "New Entry"
     }
 
-    init(existing: Transaction? = nil, initialType: String? = nil) {
+    func buildPendingOverrides() -> ConfirmPendingOverrides {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateStr = dateFormatter.string(from: dateTime)
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HH:mm"
+        let timeStr = timeFormatter.string(from: dateTime)
+        let (categoryStr, subcategoryStr) = apiCategoryAndSubcategory
+        return ConfirmPendingOverrides(
+            type: transactionType,
+            amountOriginal: amount,
+            currencyOriginal: selectedCurrency,
+            amountBase: amount,
+            baseCurrency: selectedCurrency,
+            merchant: merchant.isEmpty ? nil : merchant,
+            transactionDate: dateStr,
+            transactionTime: timeStr,
+            category: categoryStr,
+            subcategory: subcategoryStr
+        )
+    }
+
+    init(existing: Transaction? = nil, initialType: String? = nil, fromPayload payload: PendingTransactionPayload? = nil) {
         self.existingTransaction = existing
-        if let type = initialType, existing == nil {
+        if let type = initialType, existing == nil, payload == nil {
             transactionType = type
         }
         CategoryStore.ensureDefaults()
-        if let tx = existing {
+        if let p = payload, existing == nil {
+            isPendingEditMode = true
+            amountText = p.amountOriginal.map { String(format: "%.2f", $0) } ?? ""
+            selectedCurrency = p.currencyOriginal ?? "USD"
+            merchant = p.merchant ?? ""
+            selectedCategoryId = mapLegacyCategoryToId(p.category ?? "other")
+            if let subName = p.subcategory, let catId = selectedCategoryId {
+                selectedSubcategoryId = SubcategoryStore.forParent(catId).first { $0.name == subName }?.id
+            }
+            transactionType = (p.type ?? "expense").lowercased()
+            note = p.title ?? ""
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            if let dateStr = p.transactionDate, let timeStr = p.transactionTime,
+               let d = parseDateTime(dateStr: dateStr, timeStr: timeStr) {
+                dateTime = d
+            } else if let dateStr = p.transactionDate, !dateStr.isEmpty,
+                      let d = formatter.date(from: String(dateStr.prefix(10))) {
+                dateTime = d
+            }
+        } else if let tx = existing {
             amountText = String(format: "%.2f", tx.amountOriginal)
             selectedCurrency = tx.currencyOriginal
             merchant = tx.merchant ?? ""

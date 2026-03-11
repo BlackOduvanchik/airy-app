@@ -2,44 +2,53 @@
 //  PendingReviewView.swift
 //  Airy
 //
+//  Review transactions screen. Confirm, edit, or skip before saving.
+//
 
 import SwiftUI
 
 struct PendingReviewView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var viewModel = PendingReviewViewModel()
     @State private var editPending: PendingTransaction?
-    @State private var editOverrides = ConfirmPendingOverrides()
+    @State private var rememberRules: [String: Bool] = [:]
+    @State private var isSaving = false
+    @State private var isSkipping = false
 
     var body: some View {
-        List {
-            if viewModel.isLoading {
-                ProgressView()
-            } else if viewModel.pending.isEmpty {
-                Text("No pending transactions")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(viewModel.pending) { item in
-                    PendingRow(
-                        transaction: item,
-                        onConfirm: { Task { await viewModel.confirm(id: item.id) } },
-                        onReject: { Task { await viewModel.reject(id: item.id) } },
-                        onEdit: {
-                            editOverrides = overridesFromPayload(item.decodedPayload)
-                            editPending = item
+        ZStack(alignment: .bottom) {
+            OnboardingGradientBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    headerSection
+                    if viewModel.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                    } else if viewModel.pending.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(viewModel.pending) { item in
+                            cardFor(item)
                         }
-                    )
+                    }
                 }
+                .padding(20)
+                .padding(.bottom, 140)
             }
+            stickyBottom
         }
-        .navigationTitle("Pending review")
+        .navigationTitle("Review Transactions")
+        .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
         .sheet(item: $editPending) { pending in
-            PendingEditSheet(
-                pending: pending,
-                overrides: $editOverrides,
-                onConfirm: { submittedOverrides in
+            AddTransactionView(
+                pendingTransaction: pending,
+                rememberMerchant: rememberRules[pending.id] ?? true,
+                onConfirm: { overrides, remember in
                     Task {
-                        await viewModel.confirm(id: pending.id, overrides: submittedOverrides.isEmpty ? nil : submittedOverrides)
+                        rememberRules[pending.id] = remember
+                        await viewModel.confirm(id: pending.id, overrides: overrides, rememberMerchant: remember)
                         await MainActor.run { editPending = nil }
                     }
                 },
@@ -48,130 +57,152 @@ struct PendingReviewView: View {
         }
     }
 
-    private func overridesFromPayload(_ payload: PendingTransactionPayload?) -> ConfirmPendingOverrides {
-        guard let p = payload else { return ConfirmPendingOverrides() }
-        return ConfirmPendingOverrides(
-            type: p.type,
-            amountOriginal: p.amountOriginal,
-            currencyOriginal: p.currencyOriginal,
-            amountBase: p.amountBase,
-            baseCurrency: p.baseCurrency,
-            merchant: p.merchant,
-            transactionDate: p.transactionDate,
-            transactionTime: p.transactionTime,
-            category: p.category,
-            subcategory: p.subcategory
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 8) {
+                Text("Review Transactions")
+                    .font(.system(size: 24, weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundColor(OnboardingDesign.textPrimary)
+                Text("\(viewModel.pending.count) found")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(OnboardingDesign.accentGreen)
+                    .clipShape(Capsule())
+            }
+            Text("Tap to edit before saving")
+                .font(.system(size: 14))
+                .foregroundColor(OnboardingDesign.textSecondary)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 48))
+                .foregroundColor(OnboardingDesign.accentGreen)
+            Text("No pending transactions")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(OnboardingDesign.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+    }
+
+    private func cardFor(_ item: PendingTransaction) -> some View {
+        guard let p = item.decodedPayload else { return AnyView(EmptyView()) }
+        let merchant = p.merchant ?? "Transaction"
+        let isLowConfidence = isLowConfidenceMerchant(merchant) || (item.confidence ?? 1) < 0.6
+        let dupText = viewModel.duplicateSeenText(for: p, excludePendingId: item.id)
+        let binding = Binding(
+            get: { rememberRules[item.id] ?? true },
+            set: { rememberRules[item.id] = $0 }
+        )
+        let isIncome = (p.type ?? "expense").lowercased() == "income"
+        return AnyView(
+            TransactionReviewCard(
+                merchant: merchant,
+                amount: p.amountOriginal ?? 0,
+                currency: p.currencyOriginal ?? "USD",
+                date: p.transactionDate ?? "",
+                time: p.transactionTime,
+                isIncome: isIncome,
+                categoryLabel: categoryLabel(for: merchant, categoryId: p.category),
+                categoryIcon: categoryIcon(for: merchant),
+                isLowConfidence: isLowConfidence,
+                confidencePercent: isLowConfidence ? (item.confidence ?? 0.45) * 100 : nil,
+                isDuplicate: dupText != nil,
+                duplicateSeenText: dupText,
+                rememberRule: binding,
+                onTap: { editPending = item }
+            )
         )
     }
-}
 
-private struct PendingRow: View {
-    let transaction: PendingTransaction
-    let onConfirm: () -> Void
-    let onReject: () -> Void
-    let onEdit: () -> Void
+    private var stickyBottom: some View {
+        VStack(spacing: 16) {
+            Button {
+                Task { await saveAll() }
+            } label: {
+                Text("Save All Transactions")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(OnboardingDesign.textPrimary)
+                    .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 8)
+            )
+            .disabled(viewModel.pending.isEmpty || isSaving)
+            .opacity(viewModel.pending.isEmpty ? 0.6 : 1)
 
-    var body: some View {
-        HStack {
-            if let p = transaction.decodedPayload {
-                VStack(alignment: .leading) {
-                    Text(p.merchant ?? "Transaction")
-                        .font(.headline)
-                    if let amount = p.amountOriginal, let currency = p.currencyOriginal, !currency.isEmpty {
-                        Text("\(amount) \(currency)")
-                            .font(.subheadline)
-                    } else if let amount = p.amountOriginal {
-                        Text(String(format: "%.2f", amount))
-                            .font(.subheadline)
-                    }
-                }
-            } else {
-                Text("Transaction")
+            Button {
+                Task { await skipBatch() }
+            } label: {
+                Text("Skip this batch")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(OnboardingDesign.textSecondary)
             }
-            Spacer()
-            HStack(spacing: 8) {
-                Button("Edit") { onEdit() }
-                    .buttonStyle(.bordered)
-                Button("Reject", role: .destructive) { onReject() }
-                    .buttonStyle(.bordered)
-                Button("Confirm", action: onConfirm)
-                    .buttonStyle(.borderedProminent)
-            }
+            .disabled(viewModel.pending.isEmpty || isSkipping)
         }
-    }
-}
-
-private struct PendingEditSheet: View {
-    let pending: PendingTransaction
-    @Binding var overrides: ConfirmPendingOverrides
-    let onConfirm: (ConfirmPendingOverrides) -> Void
-    let onCancel: () -> Void
-
-    @State private var amountText: String = ""
-    @State private var currencyText: String = ""
-    @State private var merchantText: String = ""
-    @State private var dateText: String = ""
-    @State private var categoryText: String = ""
-    @State private var typeText: String = "expense"
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Amount") {
-                    TextField("Amount", text: $amountText)
-                        .keyboardType(.decimalPad)
-                    TextField("Currency", text: $currencyText)
-                        .textInputAutocapitalization(.characters)
-                }
-                Section("Details") {
-                    TextField("Merchant", text: $merchantText)
-                    TextField("Date (YYYY-MM-DD)", text: $dateText)
-                    TextField("Category", text: $categoryText)
-                    Picker("Type", selection: $typeText) {
-                        Text("Expense").tag("expense")
-                        Text("Income").tag("income")
-                    }
-                }
-            }
-            .navigationTitle("Edit transaction")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onCancel() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Confirm") { submitOverrides() }
-                }
-            }
-            .onAppear { fillFromOverrides() }
-        }
-    }
-
-    private func fillFromOverrides() {
-        amountText = overrides.amountOriginal.map { String($0) } ?? ""
-        currencyText = overrides.currencyOriginal ?? ""
-        merchantText = overrides.merchant ?? ""
-        dateText = overrides.transactionDate ?? ""
-        categoryText = overrides.category ?? ""
-        typeText = overrides.type ?? "expense"
-    }
-
-    private func submitOverrides() {
-        let submitted = ConfirmPendingOverrides(
-            type: typeText,
-            amountOriginal: Double(amountText),
-            currencyOriginal: currencyText.isEmpty ? nil : currencyText,
-            amountBase: nil,
-            baseCurrency: nil,
-            merchant: merchantText.isEmpty ? nil : merchantText,
-            transactionDate: dateText.isEmpty ? nil : dateText,
-            transactionTime: nil,
-            category: categoryText.isEmpty ? nil : categoryText,
-            subcategory: nil
+        .padding(20)
+        .padding(.bottom, 40)
+        .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(
+                colors: [.clear, OnboardingDesign.bgBottomRight],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         )
-        overrides = submitted
-        onConfirm(submitted)
+        .frame(maxWidth: .infinity)
+        .allowsHitTesting(!isSaving && !isSkipping)
     }
+
+    private func saveAll() async {
+        isSaving = true
+        await viewModel.confirmAll(rememberRules: rememberRules)
+        isSaving = false
+        dismiss()
+    }
+
+    private func skipBatch() async {
+        isSkipping = true
+        await viewModel.rejectAll()
+        isSkipping = false
+        dismiss()
+    }
+
+    private func isLowConfidenceMerchant(_ merchant: String) -> Bool {
+        merchant.contains("_") || merchant.count < 3 || merchant == "Transaction"
+    }
+
+    private func categoryLabel(for merchant: String, categoryId: String?) -> String {
+        if let cat = categoryId, !cat.isEmpty, cat != "other" {
+            if let c = CategoryStore.byId(cat) { return c.name }
+        }
+        let m = merchant.lowercased()
+        if m.contains("coffee") || m.contains("food") || m.contains("restaurant") || m.contains("grocery") { return "Food & Drink" }
+        if m.contains("gas") || m.contains("shell") || m.contains("uber") || m.contains("taxi") || m.contains("transit") { return "Transportation" }
+        if m.contains("grocery") || m.contains("whole foods") || m.contains("market") { return "Groceries" }
+        if m.contains("netflix") || m.contains("spotify") || m.contains("hulu") || m.contains("entertainment") { return "Entertainment" }
+        return "Other"
+    }
+
+    private func categoryIcon(for merchant: String) -> String {
+        let m = merchant.lowercased()
+        if m.contains("coffee") || m.contains("food") || m.contains("restaurant") { return "cup.and.saucer.fill" }
+        if m.contains("gas") || m.contains("shell") || m.contains("uber") || m.contains("taxi") || m.contains("transit") { return "car.fill" }
+        if m.contains("grocery") || m.contains("whole foods") || m.contains("market") { return "bag.fill" }
+        if m.contains("netflix") || m.contains("spotify") || m.contains("hulu") { return "rectangle.grid.1x2.fill" }
+        return "creditcard.fill"
+    }
+
 }
 
 #Preview {

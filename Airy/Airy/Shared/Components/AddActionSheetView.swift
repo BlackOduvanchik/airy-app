@@ -19,6 +19,7 @@ struct AddActionSheetView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            Spacer(minLength: 0)
             RoundedRectangle(cornerRadius: 2)
                 .fill(Color.white.opacity(0.5))
                 .frame(width: 36, height: 4)
@@ -62,6 +63,7 @@ struct AddActionSheetView: View {
             )
             .buttonStyle(.plain)
             .padding(.top, 6)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)

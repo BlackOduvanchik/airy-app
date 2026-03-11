@@ -7,12 +7,18 @@
 
 import SwiftUI
 
+private struct ImagesToAnalyze: Identifiable {
+    let id = UUID()
+    let images: [UIImage]
+}
+
 struct MainTabView: View {
     @State private var selectedTab: Tab = .dashboard
     @State private var showAddSheet = false
     @State private var showAddTransaction = false
     @State private var addTransactionInitialType: String? = nil
     @State private var showGalleryPicker = false
+    @State private var imagesToAnalyze: ImagesToAnalyze? = nil
     @State private var showPendingReview = false
     @State private var pasteNoImageAlert = false
     @State private var importViewModel = ImportViewModel()
@@ -62,15 +68,10 @@ struct MainTabView: View {
                 onPasteFromClipboard: {
                     showAddSheet = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        Task {
-                            let ok = await importViewModel.processImageFromClipboard()
-                            await MainActor.run {
-                                if ok && importViewModel.pendingCount > 0 {
-                                    showPendingReview = true
-                                } else if !ok {
-                                    pasteNoImageAlert = true
-                                }
-                            }
+                        if let image = UIPasteboard.general.image {
+                            imagesToAnalyze = ImagesToAnalyze(images: [image])
+                        } else {
+                            pasteNoImageAlert = true
                         }
                     }
                 },
@@ -84,7 +85,7 @@ struct MainTabView: View {
                     showAddSheet = false
                 }
             )
-            .presentationDetents([.height(460), .large])
+            .presentationDetents([.height(300)])
             .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showAddTransaction) {
@@ -95,18 +96,28 @@ struct MainTabView: View {
         }
         .fullScreenCover(isPresented: $showGalleryPicker) {
             GalleryPickerView(
-                onImagePicked: { image in
+                onImagesPicked: { images in
                     showGalleryPicker = false
-                    Task {
-                        await importViewModel.processImage(image)
-                        await MainActor.run {
-                            if importViewModel.pendingCount > 0 {
-                                showPendingReview = true
-                            }
-                        }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        imagesToAnalyze = ImagesToAnalyze(images: images)
                     }
                 },
                 onCancel: { showGalleryPicker = false }
+            )
+        }
+        .fullScreenCover(item: $imagesToAnalyze) { wrapper in
+            AnalyzingTransactionsView(
+                images: wrapper.images,
+                importViewModel: importViewModel,
+                onConfirm: {
+                    imagesToAnalyze = nil
+                    if importViewModel.pendingCount > 0 {
+                        showPendingReview = true
+                    }
+                },
+                onCancel: {
+                    imagesToAnalyze = nil
+                }
             )
         }
         .fullScreenCover(isPresented: $showPendingReview) {

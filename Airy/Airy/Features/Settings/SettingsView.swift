@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var spendingAlertsOn = false
     @State private var faceIdLockOn = true
     @State private var showDeleteConfirmation = false
+    @State private var showAIParsingRules = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -29,6 +30,7 @@ struct SettingsView: View {
                     headerSection
                     proCardSection
                     preferencesSection
+                    aiParsingSection
                     dataSection
                     notificationsSection
                     privacySection
@@ -52,6 +54,9 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will sign you out. All data is stored locally on this device.")
+        }
+        .sheet(isPresented: $showAIParsingRules) {
+            AIParsingRulesSheetView()
         }
     }
 
@@ -155,6 +160,50 @@ struct SettingsView: View {
         .frame(width: 32, height: 32)
         .background(Color.white.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: - AI Parsing Rules
+
+    private var aiParsingSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionCaption("AI Parsing Rules")
+            Button {
+                showAIParsingRules = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 18))
+                        .foregroundColor(OnboardingDesign.accentBlue)
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.5))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Improve parsing with AI")
+                            .font(.system(size: 15))
+                            .foregroundColor(OnboardingDesign.textPrimary)
+                        Text("Generate rules from sample, use locally")
+                            .font(.system(size: 13))
+                            .foregroundColor(OnboardingDesign.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 64)
+                .frame(maxWidth: .infinity)
+                .background(.ultraThinMaterial)
+                .overlay(OnboardingDesign.glassBg.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 28))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28)
+                        .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.top, 10)
     }
 
     // MARK: - Data

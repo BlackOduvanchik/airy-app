@@ -114,12 +114,24 @@ final class LocalDataStore {
         try? ctx.save()
     }
 
-    func confirmPending(id: String, overrides: ConfirmPendingOverrides?) -> Bool {
+    func confirmPending(id: String, overrides: ConfirmPendingOverrides? = nil, rememberMerchant: Bool = true) -> Bool {
         guard let ctx = context else { return false }
         var descriptor = FetchDescriptor<LocalPendingTransaction>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         guard let pending = try? ctx.fetch(descriptor).first,
               let payload = pending.decodedPayload else { return false }
+        if rememberMerchant,
+           let o = overrides, let corrected = o.merchant, !corrected.isEmpty,
+           corrected != (payload.merchant ?? "Transaction"),
+           let amt = payload.amountOriginal ?? o.amountOriginal,
+           let dt = payload.transactionDate ?? o.transactionDate {
+            MerchantCorrectionStore.shared.saveCorrection(
+                amount: amt,
+                date: dt,
+                originalMerchant: payload.merchant,
+                correctedMerchant: corrected
+            )
+        }
         let merged = mergePayloadWithOverrides(payload, overrides)
         let tx = LocalTransaction(
             type: merged.type ?? "expense",
@@ -267,16 +279,32 @@ final class LocalDataStore {
         return items
     }
 
-    func duplicateByHash(_ hash: String) -> Bool {
-        guard let ctx = context else { return false }
-        let txDescriptor = FetchDescriptor<LocalTransaction>(
-            predicate: #Predicate { $0.sourceImageHash == hash }
-        )
-        if (try? ctx.fetchCount(txDescriptor)) ?? 0 > 0 { return true }
-        let pendingDescriptor = FetchDescriptor<LocalPendingTransaction>(
-            predicate: #Predicate { $0.sourceImageHash == hash }
-        )
-        return (try? ctx.fetchCount(pendingDescriptor)) ?? 0 > 0
+    /// True if a transaction with same merchant, same date, same amount already exists (saved or pending).
+    func isExactDuplicateTransaction(merchant: String?, date: String, amount: Double) -> Bool {
+        let dateStr = String(date.prefix(10))
+        let merchantLower = (merchant ?? "").lowercased()
+        guard !merchantLower.isEmpty else { return false }
+        let transactions = fetchTransactions(limit: 500)
+        for tx in transactions {
+            guard abs(tx.amountOriginal - amount) < 0.01 else { continue }
+            guard String(tx.transactionDate.prefix(10)) == dateStr else { continue }
+            let txMerchant = (tx.merchant ?? "").lowercased()
+            guard txMerchant.contains(merchantLower) || merchantLower.contains(txMerchant) else { continue }
+            return true
+        }
+        let pendingList = fetchPendingTransactions()
+        for p in pendingList {
+            guard let pl = p.decodedPayload,
+                  let amt = pl.amountOriginal,
+                  abs(amt - amount) < 0.01,
+                  let pd = pl.transactionDate,
+                  String(pd.prefix(10)) == dateStr,
+                  let pm = pl.merchant, !pm.isEmpty else { continue }
+            let pmLower = pm.lowercased()
+            guard pmLower.contains(merchantLower) || merchantLower.contains(pmLower) else { continue }
+            return true
+        }
+        return false
     }
 
     private func monthKey(for date: Date) -> String {

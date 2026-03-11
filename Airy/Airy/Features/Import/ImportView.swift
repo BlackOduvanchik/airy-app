@@ -13,7 +13,7 @@ enum ImportSource {
 
 struct ImportView: View {
     var initialSource: ImportSource = .gallery
-    @State private var selectedItem: PhotosPickerItem?
+    @State private var selectedItems: [PhotosPickerItem] = []
     @State private var viewModel = ImportViewModel()
     @State private var didAttemptClipboard = false
 
@@ -34,7 +34,8 @@ struct ImportView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         PhotosPicker(
-                            selection: $selectedItem,
+                            selection: $selectedItems,
+                            maxSelectionCount: 3,
                             matching: .images,
                             photoLibrary: .shared()
                         ) {
@@ -46,7 +47,8 @@ struct ImportView: View {
                     }
                 } else {
                     PhotosPicker(
-                        selection: $selectedItem,
+                        selection: $selectedItems,
+                        maxSelectionCount: 3,
                         matching: .images,
                         photoLibrary: .shared()
                     ) {
@@ -75,9 +77,13 @@ struct ImportView: View {
             .sheet(isPresented: $viewModel.showPaywall) {
                 PaywallView()
             }
-            .onChange(of: selectedItem) { _, new in
-                guard let new = new else { return }
-                Task { await viewModel.processImage(new) }
+            .onChange(of: selectedItems) { _, new in
+                guard !new.isEmpty else { return }
+                let items = new
+                Task {
+                    await viewModel.processImages(items)
+                    await MainActor.run { selectedItems = [] }
+                }
             }
             .task {
                 if initialSource == .clipboard && !didAttemptClipboard {
