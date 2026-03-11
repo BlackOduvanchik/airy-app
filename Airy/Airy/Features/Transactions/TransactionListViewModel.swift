@@ -2,6 +2,8 @@
 //  TransactionListViewModel.swift
 //  Airy
 //
+//  Local-only: fetch from SwiftData.
+//
 
 import SwiftUI
 
@@ -111,20 +113,10 @@ final class TransactionListViewModel {
     func load(append: Bool = false) async {
         if !append { isLoading = true }
         defer { if !append { Task { @MainActor in isLoading = false } } }
-        do {
-            let cursor = append ? nextCursor : nil
-            let res = try await APIClient.shared.getTransactions(limit: 100, cursor: cursor)
-            await MainActor.run {
-                if append {
-                    transactions.append(contentsOf: res.transactions)
-                } else {
-                    transactions = res.transactions
-                }
-                nextCursor = res.nextCursor
-                hasMore = res.hasMore ?? false
-            }
-        } catch {
-            await MainActor.run { if !append { transactions = [] }; errorMessage = error.localizedDescription }
+        await MainActor.run {
+            transactions = LocalDataStore.shared.fetchTransactions(limit: 100)
+            nextCursor = nil
+            hasMore = false
         }
     }
 }

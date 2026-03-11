@@ -2,6 +2,8 @@
 //  PendingReviewViewModel.swift
 //  Airy
 //
+//  Local-only: fetch/confirm/reject from SwiftData.
+//
 
 import SwiftUI
 
@@ -12,34 +14,24 @@ final class PendingReviewViewModel {
     var errorMessage: String?
 
     func load() async {
-        isLoading = true
+        await MainActor.run { isLoading = true }
         defer { Task { @MainActor in isLoading = false } }
-        do {
-            let res = try await APIClient.shared.getPendingTransactions()
-            await MainActor.run { pending = res.pending }
-        } catch {
-            await MainActor.run {
-                pending = []
-                errorMessage = error.localizedDescription
-            }
+        await MainActor.run {
+            pending = LocalDataStore.shared.fetchPendingTransactions()
         }
     }
 
     func confirm(id: String, overrides: ConfirmPendingOverrides? = nil) async {
-        do {
-            try await APIClient.shared.confirmPending(id: id, overrides: overrides)
+        let ok = await MainActor.run { LocalDataStore.shared.confirmPending(id: id, overrides: overrides) }
+        if ok {
             await load()
-        } catch {
-            await MainActor.run { errorMessage = error.localizedDescription }
+        } else {
+            await MainActor.run { errorMessage = "Failed to confirm" }
         }
     }
 
     func reject(id: String) async {
-        do {
-            try await APIClient.shared.rejectPending(id: id)
-            await load()
-        } catch {
-            await MainActor.run { errorMessage = error.localizedDescription }
-        }
+        await MainActor.run { LocalDataStore.shared.rejectPending(id: id) }
+        await load()
     }
 }

@@ -2,6 +2,8 @@
 //  InsightsViewModel.swift
 //  Airy
 //
+//  Local-only: compute from SwiftData.
+//
 
 import SwiftUI
 
@@ -13,7 +15,6 @@ final class InsightsViewModel {
     var showPaywall = false
     var errorMessage: String?
 
-    /// For comparison tiles (this month vs last month).
     var thisMonthSpent: Double = 0
     var lastMonthSpent: Double = 0
     var deltaPercent: Double = 0
@@ -21,37 +22,14 @@ final class InsightsViewModel {
     func load() async {
         isLoading = true
         defer { Task { @MainActor in isLoading = false } }
-        do {
-            async let summaryTask = APIClient.shared.getMonthlySummary(month: nil)
-            async let insightsTask = APIClient.shared.getBehavioralInsights()
-            async let dashboardTask = APIClient.shared.getDashboard()
-
-            let s = try await summaryTask
-            await MainActor.run {
-                summary = s.summary
-                deltaPercent = s.deltaPercent
-            }
-
-            let i = try await insightsTask
-            await MainActor.run { insights = i }
-
-            do {
-                let d = try await dashboardTask
-                await MainActor.run {
-                    thisMonthSpent = d.thisMonth.totalSpent
-                    lastMonthSpent = d.previousMonthSpent
-                    if deltaPercent == 0 { deltaPercent = d.deltaPercent }
-                }
-            } catch {
-                // Dashboard optional; summary/insights already applied
-            }
-        } catch APIError.paymentRequired {
-            let entitlements = try? await APIClient.shared.getEntitlements()
-            await MainActor.run {
-                if entitlements?.unlimitedAiAnalysis != true { showPaywall = true }
-            }
-        } catch {
-            await MainActor.run { summary = ""; insights = []; errorMessage = error.localizedDescription }
+        await MainActor.run {
+            let (thisMonth, prev, delta) = LocalDataStore.shared.dashboardSummary()
+            thisMonthSpent = thisMonth.totalSpent
+            lastMonthSpent = prev
+            deltaPercent = delta
+            let (sum, _) = LocalDataStore.shared.monthlySummary(month: nil)
+            summary = sum
+            insights = LocalDataStore.shared.behavioralInsights()
         }
     }
 }

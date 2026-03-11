@@ -2,6 +2,8 @@
 //  SubscriptionsViewModel.swift
 //  Airy
 //
+//  Local-only: derive from SwiftData transactions.
+//
 
 import SwiftUI
 
@@ -12,7 +14,6 @@ final class SubscriptionsViewModel {
     var showPaywall = false
     var errorMessage: String?
 
-    /// Subscriptions sorted by next billing date (soonest first) for "Next Up" strip.
     var nextUpSubscriptions: [Subscription] {
         subscriptions
             .filter { $0.nextBillingDate != nil && !($0.nextBillingDate?.isEmpty ?? true) }
@@ -22,7 +23,6 @@ final class SubscriptionsViewModel {
             }
     }
 
-    /// Total monthly equivalent (monthly amount + annual/12).
     var totalMonthly: Double {
         subscriptions.reduce(0) { sum, sub in
             let monthly: Double
@@ -38,16 +38,8 @@ final class SubscriptionsViewModel {
     func load() async {
         isLoading = true
         defer { Task { @MainActor in isLoading = false } }
-        do {
-            let res = try await APIClient.shared.getSubscriptions()
-            await MainActor.run { subscriptions = res.subscriptions }
-        } catch APIError.paymentRequired {
-            let entitlements = try? await APIClient.shared.getEntitlements()
-            await MainActor.run {
-                if entitlements?.unlimitedAiAnalysis != true { showPaywall = true }
-            }
-        } catch {
-            await MainActor.run { subscriptions = []; errorMessage = error.localizedDescription }
+        await MainActor.run {
+            subscriptions = LocalDataStore.shared.subscriptionsFromTransactions()
         }
     }
 }

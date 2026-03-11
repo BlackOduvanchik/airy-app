@@ -46,7 +46,7 @@ struct TransactionDetailView: View {
 
     private func deleteTransaction() async {
         do {
-            try await APIClient.shared.deleteTransaction(id: transaction.id)
+            try LocalDataStore.shared.deleteTransaction(id: transaction.id)
             await MainActor.run { dismiss() }
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }

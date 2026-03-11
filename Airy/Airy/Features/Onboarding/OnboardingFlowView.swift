@@ -1429,12 +1429,7 @@ struct OnboardingProOfferPage: View {
             guard let transaction = try await StoreKitService.shared.purchase(product) else {
                 return
             }
-            await performAutoLogin()
-            try await StoreKitService.shared.syncToBackend(
-                productId: transaction.productID,
-                transactionId: String(transaction.id),
-                expiresAt: transaction.expirationDate
-            )
+            performAutoLogin(transactionId: String(transaction.id))
             await MainActor.run { onFinish() }
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }
@@ -1447,8 +1442,10 @@ struct OnboardingProOfferPage: View {
         errorMessage = nil
         defer { Task { @MainActor in isRestoring = false } }
         do {
-            try await StoreKitService.shared.restore()
-            await performAutoLogin()
+            let txId = try await StoreKitService.shared.restore()
+            if let id = txId {
+                performAutoLogin(transactionId: id)
+            }
             await MainActor.run { onFinish() }
         } catch StoreKitError.noPurchasesFound {
             await MainActor.run { errorMessage = (StoreKitError.noPurchasesFound as LocalizedError).errorDescription }
@@ -1457,24 +1454,10 @@ struct OnboardingProOfferPage: View {
         }
     }
 
-    /// Auto-login via device registration after purchase/trial. Sets auth token so user goes to MainTabView.
-    private func performAutoLogin() async {
-        let id: String
-        if let stored = UserDefaults.standard.string(forKey: deviceIdKey) {
-            id = stored
-        } else {
-            id = "device-\(UUID().uuidString.prefix(12))"
-            UserDefaults.standard.set(id, forKey: deviceIdKey)
-        }
-        do {
-            let res = try await APIClient.shared.registerOrLogin(externalId: id, email: nil)
-            await APIClient.shared.setAuthToken(res.token)
-            await MainActor.run {
-                authStore.setAuth(token: res.token, userId: res.user.id)
-            }
-        } catch {
-            // Continue to onFinish; user will see login page if auth fails
-        }
+    /// Local-only: after purchase, create session so user enters app. No backend.
+    private func performAutoLogin(transactionId: String) {
+        let id = "storekit-\(transactionId)"
+        authStore.setAuth(userIdentifier: id)
     }
 }
 

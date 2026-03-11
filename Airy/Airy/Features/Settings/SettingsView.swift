@@ -51,7 +51,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will sign you out and remove local data. Your account data on the server may still exist.")
+            Text("This will sign you out. All data is stored locally on this device.")
         }
     }
 

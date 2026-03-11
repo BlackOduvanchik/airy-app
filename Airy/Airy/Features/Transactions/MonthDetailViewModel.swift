@@ -2,7 +2,7 @@
 //  MonthDetailViewModel.swift
 //  Airy
 //
-//  Loads transactions for a selected month and builds calendar + list for MonthDetailView.
+//  Local-only: fetch from SwiftData.
 //
 
 import SwiftUI
@@ -52,27 +52,16 @@ final class MonthDetailViewModel {
         }
         isLoading = true
         defer { Task { @MainActor in isLoading = false } }
-        do {
-            let res = try await APIClient.shared.getTransactions(
-                limit: 200,
-                cursor: nil,
-                month: String(format: "%02d", ym.month),
-                year: String(ym.year)
-            )
-            await MainActor.run {
-                transactions = res.transactions.sorted { a, b in
+        await MainActor.run {
+            let monthStr = String(format: "%02d", ym.month)
+            let yearStr = String(ym.year)
+            transactions = LocalDataStore.shared.fetchTransactions(limit: 200, month: monthStr, year: yearStr)
+                .sorted { a, b in
                     (a.transactionDate, a.transactionTime ?? "") < (b.transactionDate, b.transactionTime ?? "")
                 }
-                totalSpent = transactions
-                    .filter { $0.type.lowercased() != "income" }
-                    .reduce(0) { $0 + $1.amountOriginal }
-            }
-        } catch {
-            await MainActor.run {
-                transactions = []
-                totalSpent = 0
-                errorMessage = error.localizedDescription
-            }
+            totalSpent = transactions
+                .filter { $0.type.lowercased() != "income" }
+                .reduce(0) { $0 + $1.amountOriginal }
         }
     }
 }

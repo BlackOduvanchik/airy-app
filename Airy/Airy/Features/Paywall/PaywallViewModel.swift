@@ -1,7 +1,7 @@
 //
 //  PaywallViewModel.swift
 //  Airy
-//  StoreKit 2 purchase/restore and backend sync.
+//  StoreKit 2 purchase/restore. Local-only, no backend.
 //
 
 import SwiftUI
@@ -21,13 +21,14 @@ final class PaywallViewModel {
     var isRestoring = false
     var errorMessage: String?
     var didSucceed = false
-    private let storeKit = StoreKitService()
+    private let storeKit = StoreKitService.shared
 
-    /// Load entitlements first; if already Pro, set didSucceed and skip purchase UI. Otherwise load StoreKit products.
+    /// Check StoreKit entitlements; if already Pro, skip. Otherwise load products.
     func loadProducts() async {
         do {
-            let entitlements = try await APIClient.shared.getEntitlements()
-            if entitlements.unlimitedAiAnalysis == true {
+            let entitlements = await storeKit.currentEntitlements()
+            let hasPro = entitlements.contains { $0.productID == StoreKitService.productId || $0.productID == StoreKitService.productIdYearly }
+            if hasPro {
                 await MainActor.run { didSucceed = true }
                 return
             }
@@ -56,15 +57,9 @@ final class PaywallViewModel {
                 await MainActor.run { errorMessage = "Product not available" }
                 return
             }
-            guard let transaction = try await storeKit.purchase(product) else {
+            guard let _ = try await storeKit.purchase(product) else {
                 return
             }
-            let exp = transaction.expirationDate
-            try await storeKit.syncToBackend(
-                productId: transaction.productID,
-                transactionId: String(transaction.id),
-                expiresAt: exp
-            )
             await MainActor.run { didSucceed = true }
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }
@@ -76,7 +71,7 @@ final class PaywallViewModel {
         errorMessage = nil
         defer { Task { @MainActor in isRestoring = false } }
         do {
-            try await storeKit.restore()
+            _ = try await storeKit.restore()
             await MainActor.run { didSucceed = true }
         } catch StoreKitError.noPurchasesFound {
             await MainActor.run { errorMessage = (StoreKitError.noPurchasesFound as LocalizedError).errorDescription }

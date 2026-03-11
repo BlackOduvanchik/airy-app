@@ -66,17 +66,11 @@ actor StoreKitService {
         return txs
     }
 
-    func syncToBackend(productId: String?, transactionId: String?, expiresAt: Date?) async throws {
-        let expiresAtStr = expiresAt.map { ISO8601DateFormatter().string(from: $0) }
-        _ = try await APIClient.shared.syncBilling(
-            productId: productId,
-            transactionId: transactionId,
-            expiresAt: expiresAtStr
-        )
-    }
+    /// No-op: local-only, no backend sync.
+    func syncToBackend(productId: String?, transactionId: String?, expiresAt: Date?) async throws {}
 
-    /// Restores purchases; syncs latest Pro entitlement to backend. Throws `StoreKitError.noPurchasesFound` if no Pro entitlement exists.
-    func restore() async throws {
+    /// Restores purchases. Returns transaction ID for local session. Throws if no Pro entitlement.
+    func restore() async throws -> String? {
         try await AppStore.sync()
         let entitlements = await currentEntitlements()
         guard let latest = entitlements
@@ -84,12 +78,7 @@ actor StoreKitService {
             .max(by: { $0.purchaseDate < $1.purchaseDate }) else {
             throw StoreKitError.noPurchasesFound
         }
-        let exp = latest.expirationDate
-        try await syncToBackend(
-            productId: latest.productID,
-            transactionId: String(latest.id),
-            expiresAt: exp
-        )
+        return String(latest.id)
     }
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
@@ -101,24 +90,14 @@ actor StoreKitService {
         }
     }
 
-    /// Call from app launch when user is logged in. Listens to Transaction.updates, syncs to backend, and posts AiryEntitlementsDidChange.
+    /// Listens to Transaction.updates, finishes transactions, posts AiryEntitlementsDidChange. No backend.
     func startTransactionUpdatesListener() async {
         for await result in StoreKit.Transaction.updates {
             guard case .verified(let transaction) = result else { continue }
             guard transaction.productID == Self.productId || transaction.productID == Self.productIdYearly else { continue }
-            do {
-                try await syncToBackend(
-                    productId: transaction.productID,
-                    transactionId: String(transaction.id),
-                    expiresAt: transaction.expirationDate
-                )
-                await transaction.finish()
-                await MainActor.run {
-                    NotificationCenter.default.post(name: .airyEntitlementsDidChange, object: nil)
-                }
-            } catch {
-                // Log and continue; do not finish transaction so it may be retried
-                continue
+            await transaction.finish()
+            await MainActor.run {
+                NotificationCenter.default.post(name: .airyEntitlementsDidChange, object: nil)
             }
         }
     }

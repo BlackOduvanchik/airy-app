@@ -2,33 +2,36 @@
 //  AuthStore.swift
 //  Airy
 //
+//  Local-only auth: Sign in with Apple, stored in Keychain. No backend.
+//
 
 import Foundation
 import SwiftUI
 
 @Observable
 final class AuthStore {
-    var token: String? {
-        didSet { UserDefaults.standard.set(token, forKey: "airy_token") }
-    }
+    /// Apple user identifier (from ASAuthorizationAppleIDCredential.user). Used as local session.
     var userId: String? {
-        didSet { UserDefaults.standard.set(userId, forKey: "airy_user_id") }
+        didSet {
+            if let id = userId {
+                KeychainHelper.saveUserIdentifier(id)
+            } else {
+                KeychainHelper.deleteUserIdentifier()
+            }
+        }
     }
 
-    var isLoggedIn: Bool { token != nil }
+    var isLoggedIn: Bool { userId != nil }
 
     init() {
-        self.token = UserDefaults.standard.string(forKey: "airy_token")
-        self.userId = UserDefaults.standard.string(forKey: "airy_user_id")
+        self.userId = KeychainHelper.loadUserIdentifier()
     }
 
-    func setAuth(token: String, userId: String) {
-        self.token = token
-        self.userId = userId
+    func setAuth(userIdentifier: String) {
+        self.userId = userIdentifier
     }
 
     func logout() {
-        token = nil
         userId = nil
     }
 }

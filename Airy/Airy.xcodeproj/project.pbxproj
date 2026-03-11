@@ -44,6 +44,10 @@
 		B00100000000000000000025 /* Subcategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000025 /* Subcategory.swift */; };
 		B00100000000000000000026 /* NewSubcategorySheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000026 /* NewSubcategorySheetView.swift */; };
 		B00100000000000000000027 /* CategoriesSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000027 /* CategoriesSheetView.swift */; };
+		B00100000000000000000028 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000028 /* KeychainHelper.swift */; };
+		B00100000000000000000029 /* LocalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000029 /* LocalModels.swift */; };
+		B0010000000000000000002A /* LocalDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002A /* LocalDataStore.swift */; };
+		B0010000000000000000002B /* LocalOCRParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002B /* LocalOCRParser.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -86,6 +90,10 @@
 		F00100000000000000000025 /* Subcategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Subcategory.swift; sourceTree = "<group>"; };
 		F00100000000000000000026 /* NewSubcategorySheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSubcategorySheetView.swift; sourceTree = "<group>"; };
 		F00100000000000000000027 /* CategoriesSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesSheetView.swift; sourceTree = "<group>"; };
+		F00100000000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		F00100000000000000000029 /* LocalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModels.swift; sourceTree = "<group>"; };
+		F0010000000000000000002A /* LocalDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDataStore.swift; sourceTree = "<group>"; };
+		F0010000000000000000002B /* LocalOCRParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalOCRParser.swift; sourceTree = "<group>"; };
 		TARG00000000000000000001 /* Airy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Airy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -145,8 +153,18 @@
 			children = (
 				GRP0000000000000000000A /* API */,
 				GRP0000000000000000000B /* Auth */,
+				GRP00000000000000000015 /* Storage */,
 			);
 			path = Core;
+			sourceTree = "<group>";
+		};
+		GRP00000000000000000015 /* Storage */ = {
+			isa = PBXGroup;
+			children = (
+				F00100000000000000000029 /* LocalModels.swift */,
+				F0010000000000000000002A /* LocalDataStore.swift */,
+			);
+			path = Storage;
 			sourceTree = "<group>";
 		};
 		GRP00000000000000000007 /* Features */ = {
@@ -176,6 +194,7 @@
 			isa = PBXGroup;
 			children = (
 				F0010000000000000000001B /* OCRService.swift */,
+				F0010000000000000000002B /* LocalOCRParser.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -194,6 +213,7 @@
 			children = (
 				F0010000000000000000001F /* AppleSignInService.swift */,
 				F00100000000000000000005 /* AuthStore.swift */,
+				F00100000000000000000028 /* KeychainHelper.swift */,
 			);
 			path = Auth;
 			sourceTree = "<group>";
@@ -390,6 +410,10 @@
 				B0010000000000000000001B /* OCRService.swift in Sources */,
 				B0010000000000000000001E /* AppleSignInService.swift in Sources */,
 				B00100000000000000000020 /* OnboardingFlowView.swift in Sources */,
+				B00100000000000000000028 /* KeychainHelper.swift in Sources */,
+				B00100000000000000000029 /* LocalModels.swift in Sources */,
+				B0010000000000000000002A /* LocalDataStore.swift in Sources */,
+				B0010000000000000000002B /* LocalOCRParser.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

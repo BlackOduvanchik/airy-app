@@ -2,6 +2,8 @@
 //  AddTransactionViewModel.swift
 //  Airy
 //
+//  Local-only: create/update via SwiftData.
+//
 
 import SwiftUI
 
@@ -107,7 +109,6 @@ final class AddTransactionViewModel {
     var errorMessage: String?
     var didSucceed = false
 
-    /// When set, we're in edit mode and submit calls PATCH.
     var existingTransaction: Transaction?
 
     static let currencies = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD"]
@@ -152,7 +153,6 @@ final class AddTransactionViewModel {
         }
     }
 
-    /// Category and subcategory strings for API.
     private var apiCategoryAndSubcategory: (String, String?) {
         if let custom = selectedCustomSubcategory {
             return (custom.parentCategoryId, custom.name)
@@ -176,7 +176,6 @@ final class AddTransactionViewModel {
         return formatter.date(from: "\(dStr) \(timeStr)")
     }
 
-    /// All subcategory items for the current parent (built-in + custom).
     var subcategoryDisplayItems: [SubcategoryDisplayItem] {
         let builtIn = selectedSheetCategory.subcategories.map { SubcategoryDisplayItem.builtIn($0) }
         let custom = SubcategoryStore.forParent(selectedSheetCategory.apiCategoryValue).map { SubcategoryDisplayItem.custom($0) }
@@ -187,7 +186,6 @@ final class AddTransactionViewModel {
         selectedSheetCategory = cat
         selectedCustomSubcategory = nil
         if cat.subcategories.contains(selectedCategory) {
-            // Keep current subcategory if it belongs to new main category
         } else {
             selectedCategory = cat.subcategories.first ?? cat.transactionCategory
         }
@@ -235,7 +233,7 @@ final class AddTransactionViewModel {
                 comment: note.isEmpty ? nil : note
             )
             do {
-                _ = try await APIClient.shared.updateTransaction(id: existing.id, body: body)
+                _ = try await LocalDataStore.shared.updateTransaction(id: existing.id, body: body)
                 await MainActor.run { didSucceed = true }
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }
@@ -258,7 +256,7 @@ final class AddTransactionViewModel {
                 sourceType: "manual"
             )
             do {
-                _ = try await APIClient.shared.createTransaction(body)
+                _ = try await LocalDataStore.shared.createTransaction(body)
                 await MainActor.run { didSucceed = true }
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }

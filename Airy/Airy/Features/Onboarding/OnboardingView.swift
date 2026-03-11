@@ -2,7 +2,7 @@
 //  OnboardingView.swift
 //  Airy
 //
-//  Login page with Sign in with Apple. Shown when user taps "I already have an account" or after onboarding.
+//  Login with Sign in with Apple. Local-only: no backend, store userIdentifier in Keychain.
 //
 
 import AuthenticationServices
@@ -225,50 +225,26 @@ struct OnboardingView: View {
             return
         }
         guard case .success(let authorization) = result,
-              let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
-              let tokenData = appleIDCredential.identityToken,
-              let identityToken = String(data: tokenData, encoding: .utf8)
+              let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential
         else {
             errorMessage = "Sign in failed"
             return
         }
-        let email = appleIDCredential.email
+        let userIdentifier = appleIDCredential.user
         isSigningIn = true
         errorMessage = nil
-        Task {
-            do {
-                await APIClient.shared.setAuthToken(nil)
-                let res = try await APIClient.shared.loginWithApple(identityToken: identityToken, email: email)
-                await MainActor.run {
-                    authStore.setAuth(token: res.token, userId: res.user.id)
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                }
-            }
-            await MainActor.run { isSigningIn = false }
-        }
+        authStore.setAuth(userIdentifier: userIdentifier)
+        isSigningIn = false
     }
 
     private func signInDemo() {
+        #if DEBUG
         isSigningIn = true
         errorMessage = nil
-        Task {
-            do {
-                await APIClient.shared.setAuthToken(nil)
-                let externalId = "demo-\(UUID().uuidString.prefix(8))"
-                let res = try await APIClient.shared.registerOrLogin(externalId: externalId, email: nil)
-                await MainActor.run {
-                    authStore.setAuth(token: res.token, userId: res.user.id)
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                }
-            }
-            await MainActor.run { isSigningIn = false }
-        }
+        let demoId = "demo-\(UUID().uuidString.prefix(8))"
+        authStore.setAuth(userIdentifier: demoId)
+        isSigningIn = false
+        #endif
     }
 }
 
