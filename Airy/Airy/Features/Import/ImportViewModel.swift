@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PhotosUI
+import UIKit
 
 @Observable
 final class ImportViewModel {
@@ -20,17 +21,21 @@ final class ImportViewModel {
     private let parser = LocalOCRParser()
 
     func processImage(_ item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else {
+            await MainActor.run { resultMessage = "Could not load image" }
+            return
+        }
+        await processImage(image)
+    }
+
+    func processImage(_ image: UIImage) async {
         isProcessing = true
         resultMessage = nil
         errorMessage = nil
         pendingCount = 0
         defer { Task { @MainActor in isProcessing = false } }
         do {
-            guard let data = try await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data) else {
-                await MainActor.run { resultMessage = "Could not load image" }
-                return
-            }
             let ocrText = try await ocrService.recognizeText(from: image)
             let hash = ocrService.imageHash(for: image)
 
@@ -86,5 +91,14 @@ final class ImportViewModel {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    /// Attempts to process image from clipboard. Returns true if clipboard had an image.
+    func processImageFromClipboard() async -> Bool {
+        guard let image = UIPasteboard.general.image else {
+            return false
+        }
+        await processImage(image)
+        return true
     }
 }

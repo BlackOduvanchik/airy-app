@@ -58,4 +58,10 @@ enum SubcategoryStore {
     static func forParent(_ parentCategoryId: String) -> [Subcategory] {
         load().filter { $0.parentCategoryId == parentCategoryId }
     }
+
+    static func deleteByParent(parentCategoryId: String) {
+        var list = load()
+        list.removeAll { $0.parentCategoryId == parentCategoryId }
+        save(list)
+    }
 }

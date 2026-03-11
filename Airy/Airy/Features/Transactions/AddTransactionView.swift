@@ -19,7 +19,6 @@ struct AddTransactionView: View {
     @State private var showTimePicker = false
     @State private var showCustomKeyboard = false
     @State private var calculatorExpression = ""
-    @State private var showNewSubcategory = false
     @State private var showCategoriesSheet = false
 
     init(transaction: Transaction? = nil, initialType: String? = nil, onSuccess: (() -> Void)? = nil) {
@@ -93,13 +92,11 @@ struct AddTransactionView: View {
         .background(
             RoundedRectangle(cornerRadius: 40)
                 .fill(Color.white.opacity(0.4))
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 40))
                 .overlay(
                     RoundedRectangle(cornerRadius: 40)
                         .stroke(Color.white.opacity(0.7), lineWidth: 1)
                 )
         )
-        .padding(.top, 12)
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -217,137 +214,88 @@ struct AddTransactionView: View {
                 .padding(.leading, 4)
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                ForEach(AddSheetCategory.allCases, id: \.rawValue) { cat in
-                    Button {
-                        viewModel.selectSheetCategory(cat)
-                        if cat == .other {
-                            showCategoriesSheet = true
-                        }
-                    } label: {
-                        VStack(spacing: 8) {
-                            categoryIcon(cat)
-                            Text(cat.displayName)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(OnboardingDesign.textSecondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 18)
-                                .fill(viewModel.selectedSheetCategory == cat ? Color.white : Color.white.opacity(0.3))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18)
-                                .stroke(viewModel.selectedSheetCategory == cat ? OnboardingDesign.accentGreen : Color.white.opacity(0.4), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
+                ForEach(viewModel.lastUsedCategoryIds, id: \.self) { catId in
+                    categoryPill(categoryId: catId, isOther: false)
                 }
-            }
-
-            if viewModel.subcategoryDisplayItems.count >= 1 {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(viewModel.subcategoryDisplayItems) { item in
-                            let isSelected: Bool = {
-                                switch item {
-                                case .builtIn(let cat): return viewModel.selectedCustomSubcategory == nil && viewModel.selectedCategory == cat
-                                case .custom(let sub): return viewModel.selectedCustomSubcategory?.id == sub.id
-                                }
-                            }()
-                            Button {
-                                switch item {
-                                case .builtIn(let cat): viewModel.selectSubcategory(cat)
-                                case .custom(let sub): viewModel.selectCustomSubcategory(sub)
-                                }
-                            } label: {
-                                Text(item.displayName)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(isSelected ? OnboardingDesign.textPrimary : OnboardingDesign.textSecondary)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 14)
-                                            .fill(isSelected ? Color.white : Color.white.opacity(0.3))
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 14)
-                                            .stroke(isSelected ? OnboardingDesign.accentGreen : Color.white.opacity(0.4), lineWidth: 1)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        Button {
-                            showNewSubcategory = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 13, weight: .medium))
-                                Text("New")
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                            .foregroundColor(OnboardingDesign.accentGreen)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .fill(Color.white.opacity(0.3))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(OnboardingDesign.accentGreen.opacity(0.6), lineWidth: 1)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.top, 4)
-            }
-        }
-        .sheet(isPresented: $showNewSubcategory) {
-            NewSubcategorySheetView(
-                parentCategoryId: viewModel.selectedSheetCategory.apiCategoryValue,
-                parentDisplayName: viewModel.selectedSheetCategory.displayName
-            ) { sub in
-                viewModel.addCustomSubcategory(sub)
+                categoryPill(categoryId: "other", isOther: true)
             }
         }
         .sheet(isPresented: $showCategoriesSheet) {
             CategoriesSheetView(
-                parentCategoryId: AddSheetCategory.other.apiCategoryValue,
-                parentDisplayName: AddSheetCategory.other.displayName,
-                items: viewModel.subcategoryDisplayItems
-            ) { item in
-                switch item {
-                case .builtIn(let cat): viewModel.selectSubcategory(cat)
-                case .custom(let sub): viewModel.selectCustomSubcategory(sub)
-                }
-            } onNewCategory: { sub in
-                viewModel.addCustomSubcategory(sub)
-            }
+                onSelect: { catId, subId in
+                    viewModel.selectCategory(categoryId: catId, subcategoryId: subId)
+                    showCategoriesSheet = false
+                },
+                initialCategoryId: viewModel.selectedCategoryId,
+                initialSubcategoryId: viewModel.selectedSubcategoryId,
+                showHandle: false
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .padding(.bottom, 24)
     }
 
-    private func categoryIcon(_ cat: AddSheetCategory) -> some View {
-        let isActive = viewModel.selectedSheetCategory == cat
-        return ZStack {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.5))
-                .frame(width: 32, height: 32)
-            Image(systemName: iconName(for: cat))
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(isActive ? OnboardingDesign.accentGreen : OnboardingDesign.textSecondary)
+    private func categoryPill(categoryId: String, isOther: Bool) -> some View {
+        let cat = CategoryStore.byId(categoryId)
+        let displayName = quickPickLabel(for: categoryId)
+        let isSelected: Bool = {
+            if isOther { return viewModel.selectedCategoryId == "other" && viewModel.selectedSubcategoryId == nil }
+            return viewModel.selectedCategoryId == categoryId && viewModel.selectedSubcategoryId == nil
+        }()
+
+        return Button {
+            if isOther {
+                showCategoriesSheet = true
+            } else {
+                viewModel.selectCategory(categoryId: categoryId, subcategoryId: nil)
+            }
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.white.opacity(0.5))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: iconName(for: categoryId))
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(isSelected ? (cat?.color ?? OnboardingDesign.accentGreen) : OnboardingDesign.textSecondary)
+                }
+                Text(displayName)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(OnboardingDesign.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(isSelected ? Color.white : Color.white.opacity(0.3))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(isSelected ? OnboardingDesign.accentGreen : Color.white.opacity(0.4), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func quickPickLabel(for categoryId: String) -> String {
+        switch categoryId {
+        case "food": return "Food"
+        case "transport": return "Travel"
+        case "housing": return "Home"
+        case "other": return "Other"
+        default: return CategoryStore.byId(categoryId)?.name ?? categoryId.capitalized
         }
     }
 
-    private func iconName(for cat: AddSheetCategory) -> String {
-        switch cat {
-        case .food: return "cart.fill"
-        case .transport: return "car.fill"
-        case .bills: return "house.fill"
-        case .other: return "plus.circle.fill"
+    private func iconName(for categoryId: String) -> String {
+        switch categoryId {
+        case "food": return "cart.fill"
+        case "transport": return "car.fill"
+        case "housing": return "house.fill"
+        case "other": return "plus.circle.fill"
+        default: return "tag.fill"
         }
     }
 

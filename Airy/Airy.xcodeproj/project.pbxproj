@@ -44,10 +44,13 @@
 		B00100000000000000000025 /* Subcategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000025 /* Subcategory.swift */; };
 		B00100000000000000000026 /* NewSubcategorySheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000026 /* NewSubcategorySheetView.swift */; };
 		B00100000000000000000027 /* CategoriesSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000027 /* CategoriesSheetView.swift */; };
+		B0010000000000000000002C /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002C /* Category.swift */; };
+		B0010000000000000000002D /* NewCategorySheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002D /* NewCategorySheetView.swift */; };
 		B00100000000000000000028 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000028 /* KeychainHelper.swift */; };
 		B00100000000000000000029 /* LocalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000029 /* LocalModels.swift */; };
 		B0010000000000000000002A /* LocalDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002A /* LocalDataStore.swift */; };
 		B0010000000000000000002B /* LocalOCRParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002B /* LocalOCRParser.swift */; };
+		B0010000000000000000002E /* GalleryPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002E /* GalleryPickerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -90,10 +93,13 @@
 		F00100000000000000000025 /* Subcategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Subcategory.swift; sourceTree = "<group>"; };
 		F00100000000000000000026 /* NewSubcategorySheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSubcategorySheetView.swift; sourceTree = "<group>"; };
 		F00100000000000000000027 /* CategoriesSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesSheetView.swift; sourceTree = "<group>"; };
+		F0010000000000000000002C /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
+		F0010000000000000000002D /* NewCategorySheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewCategorySheetView.swift; sourceTree = "<group>"; };
 		F00100000000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		F00100000000000000000029 /* LocalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModels.swift; sourceTree = "<group>"; };
 		F0010000000000000000002A /* LocalDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDataStore.swift; sourceTree = "<group>"; };
 		F0010000000000000000002B /* LocalOCRParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalOCRParser.swift; sourceTree = "<group>"; };
+		F0010000000000000000002E /* GalleryPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryPickerView.swift; sourceTree = "<group>"; };
 		TARG00000000000000000001 /* Airy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Airy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -230,6 +236,7 @@
 		GRP0000000000000000000D /* Import */ = {
 			isa = PBXGroup;
 			children = (
+				F0010000000000000000002E /* GalleryPickerView.swift */,
 				F00100000000000000000008 /* ImportView.swift */,
 				F00100000000000000000009 /* ImportViewModel.swift */,
 				F0010000000000000000000A /* PendingReviewView.swift */,
@@ -297,6 +304,8 @@
 				F00100000000000000000025 /* Subcategory.swift */,
 				F00100000000000000000026 /* NewSubcategorySheetView.swift */,
 				F00100000000000000000027 /* CategoriesSheetView.swift */,
+				F0010000000000000000002C /* Category.swift */,
+				F0010000000000000000002D /* NewCategorySheetView.swift */,
 			);
 			path = Transactions;
 			sourceTree = "<group>";
@@ -407,6 +416,8 @@
 				B00100000000000000000025 /* Subcategory.swift in Sources */,
 				B00100000000000000000026 /* NewSubcategorySheetView.swift in Sources */,
 				B00100000000000000000027 /* CategoriesSheetView.swift in Sources */,
+				B0010000000000000000002C /* Category.swift in Sources */,
+				B0010000000000000000002D /* NewCategorySheetView.swift in Sources */,
 				B0010000000000000000001B /* OCRService.swift in Sources */,
 				B0010000000000000000001E /* AppleSignInService.swift in Sources */,
 				B00100000000000000000020 /* OnboardingFlowView.swift in Sources */,
@@ -414,6 +425,7 @@
 				B00100000000000000000029 /* LocalModels.swift in Sources */,
 				B0010000000000000000002A /* LocalDataStore.swift in Sources */,
 				B0010000000000000000002B /* LocalOCRParser.swift in Sources */,
+				B0010000000000000000002E /* GalleryPickerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

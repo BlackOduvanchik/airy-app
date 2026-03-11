@@ -12,7 +12,10 @@ struct MainTabView: View {
     @State private var showAddSheet = false
     @State private var showAddTransaction = false
     @State private var addTransactionInitialType: String? = nil
-    @State private var showImportView = false
+    @State private var showGalleryPicker = false
+    @State private var showPendingReview = false
+    @State private var pasteNoImageAlert = false
+    @State private var importViewModel = ImportViewModel()
 
     enum Tab: Int {
         case dashboard = 0
@@ -56,17 +59,32 @@ struct MainTabView: View {
                         showAddTransaction = true
                     }
                 },
-                onScreenshot: {
+                onPasteFromClipboard: {
                     showAddSheet = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        showImportView = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        Task {
+                            let ok = await importViewModel.processImageFromClipboard()
+                            await MainActor.run {
+                                if ok && importViewModel.pendingCount > 0 {
+                                    showPendingReview = true
+                                } else if !ok {
+                                    pasteNoImageAlert = true
+                                }
+                            }
+                        }
+                    }
+                },
+                onOpenGallery: {
+                    showAddSheet = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showGalleryPicker = true
                     }
                 },
                 onCancel: {
                     showAddSheet = false
                 }
             )
-            .presentationDetents([.height(420)])
+            .presentationDetents([.height(460), .large])
             .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showAddTransaction) {
@@ -75,8 +93,36 @@ struct MainTabView: View {
                 addTransactionInitialType = nil
             })
         }
-        .sheet(isPresented: $showImportView) {
-            ImportView()
+        .fullScreenCover(isPresented: $showGalleryPicker) {
+            GalleryPickerView(
+                onImagePicked: { image in
+                    showGalleryPicker = false
+                    Task {
+                        await importViewModel.processImage(image)
+                        await MainActor.run {
+                            if importViewModel.pendingCount > 0 {
+                                showPendingReview = true
+                            }
+                        }
+                    }
+                },
+                onCancel: { showGalleryPicker = false }
+            )
+        }
+        .fullScreenCover(isPresented: $showPendingReview) {
+            NavigationStack {
+                PendingReviewView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showPendingReview = false }
+                        }
+                    }
+            }
+        }
+        .alert("No image in clipboard", isPresented: $pasteNoImageAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Copy an image first, then try again.")
         }
     }
 
@@ -89,18 +135,22 @@ struct MainTabView: View {
             navButton(tab: .settings, icon: "gearshape.fill")
         }
         .padding(.horizontal, 32)
-        .padding(.vertical, 12)
-        .padding(.bottom, 30)
+        .frame(height: 72)
         .background(
             RoundedRectangle(cornerRadius: 36)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 36)
-                        .stroke(Color.white.opacity(0.8), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 36)
+                    .fill(Color.white.opacity(0.5))
                 )
-                .shadow(color: OnboardingDesign.textPrimary.opacity(0.1), radius: 20, x: 0, y: 10)
+                .overlay(
+                RoundedRectangle(cornerRadius: 36)
+                    .stroke(Color.white.opacity(0.8), lineWidth: 1)
+                )
+                .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 24, x: 0, y: 8)
         )
         .padding(.horizontal, 20)
+        .padding(.bottom, 30)
     }
 
     private func navButton(tab: Tab, icon: String) -> some View {
@@ -111,11 +161,13 @@ struct MainTabView: View {
                 selectedTab = tab
             }
         } label: {
-            Image(systemName: icon)
-                .font(.system(size: 24))
-                .foregroundColor(selectedTab == tab ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
-                .frame(width: 48, height: 48)
-                .contentShape(Rectangle())
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(selectedTab == tab ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+            }
+            .frame(width: 48, height: 48)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -124,11 +176,10 @@ struct MainTabView: View {
         Button {
             showAddSheet = true
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 28, weight: .medium))
-                .foregroundColor(OnboardingDesign.textPrimary)
-                .frame(width: 68, height: 68)
-                .background(
+            ZStack {
+                Color.clear
+                    .frame(width: 88, height: 88)
+                ZStack {
                     Circle()
                         .fill(
                             LinearGradient(
@@ -138,9 +189,15 @@ struct MainTabView: View {
                             )
                         )
                         .overlay(Circle().stroke(Color.white, lineWidth: 1))
-                        .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 16, x: 0, y: 8)
-                        .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 4)
-                )
+                        .shadow(color: OnboardingDesign.accentGreen.opacity(0.25), radius: 12, x: 0, y: 6)
+                        .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 3)
+                    Image(systemName: "plus")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundColor(OnboardingDesign.textPrimary)
+                }
+                .frame(width: 68, height: 68)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .offset(y: -24)
