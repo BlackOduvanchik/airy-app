@@ -6,7 +6,5 @@
 	<array>
 		<string>Default</string>
 	</array>
-	<key>com.apple.In-App-Purchase</key>
-	<true/>
 </dict>
 </plist>

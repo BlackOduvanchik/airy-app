@@ -26,7 +26,7 @@ final class DashboardViewModel {
         do {
             async let dashboardTask = APIClient.shared.getDashboard()
             async let transactionsTask = APIClient.shared.getTransactions(limit: 5)
-            async let subscriptionsTask: Result<SubscriptionsResponse, Error> = Result { try await APIClient.shared.getSubscriptions() }
+            async let subscriptionsTask = APIClient.shared.getSubscriptions()
 
             let res = try await dashboardTask
             await MainActor.run {
@@ -38,8 +38,8 @@ final class DashboardViewModel {
             let txRes = try await transactionsTask
             await MainActor.run { recentTransactions = txRes.transactions }
 
-            switch await subscriptionsTask {
-            case .success(let subRes):
+            do {
+                let subRes = try await subscriptionsTask
                 let sorted = subRes.subscriptions
                     .filter { $0.nextBillingDate != nil && !($0.nextBillingDate?.isEmpty ?? true) }
                     .sorted { (a, b) in
@@ -47,7 +47,7 @@ final class DashboardViewModel {
                         return da.compare(db) == .orderedAscending
                     }
                 await MainActor.run { upcomingSubscriptions = Array(sorted.prefix(5)) }
-            case .failure:
+            } catch {
                 await MainActor.run { upcomingSubscriptions = [] }
             }
 

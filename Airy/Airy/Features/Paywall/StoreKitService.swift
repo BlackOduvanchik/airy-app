@@ -28,7 +28,7 @@ extension Notification.Name {
 
 @available(iOS 15.0, *)
 actor StoreKitService {
-    nonisolated(unsafe) static let shared = StoreKitService()
+    static let shared = StoreKitService()
     static let productId = "airy_pro_monthly"
     static let productIdYearly = "airy_pro_yearly"
 
@@ -42,7 +42,7 @@ actor StoreKitService {
         return try await Product.products(for: Set([Self.productId, Self.productIdYearly]))
     }
 
-    func purchase(_ product: Product) async throws -> Transaction? {
+    func purchase(_ product: Product) async throws -> StoreKit.Transaction? {
         let result = try await product.purchase()
         switch result {
         case .success(let verification):
@@ -56,9 +56,9 @@ actor StoreKitService {
         }
     }
 
-    func currentEntitlements() async -> [Transaction] {
-        var txs: [Transaction] = []
-        for await result in Transaction.currentEntitlements {
+    func currentEntitlements() async -> [StoreKit.Transaction] {
+        var txs: [StoreKit.Transaction] = []
+        for await result in StoreKit.Transaction.currentEntitlements {
             if case .verified(let tx) = result {
                 txs.append(tx)
             }
@@ -103,7 +103,7 @@ actor StoreKitService {
 
     /// Call from app launch when user is logged in. Listens to Transaction.updates, syncs to backend, and posts AiryEntitlementsDidChange.
     func startTransactionUpdatesListener() async {
-        for await result in Transaction.updates {
+        for await result in StoreKit.Transaction.updates {
             guard case .verified(let transaction) = result else { continue }
             guard transaction.productID == Self.productId || transaction.productID == Self.productIdYearly else { continue }
             do {

@@ -24,7 +24,7 @@ final class InsightsViewModel {
         do {
             async let summaryTask = APIClient.shared.getMonthlySummary(month: nil)
             async let insightsTask = APIClient.shared.getBehavioralInsights()
-            async let dashboardTask: Result<DashboardResponse, Error> = Result { try await APIClient.shared.getDashboard() }
+            async let dashboardTask = APIClient.shared.getDashboard()
 
             let s = try await summaryTask
             await MainActor.run {
@@ -35,12 +35,15 @@ final class InsightsViewModel {
             let i = try await insightsTask
             await MainActor.run { insights = i }
 
-            if case .success(let d) = await dashboardTask {
+            do {
+                let d = try await dashboardTask
                 await MainActor.run {
                     thisMonthSpent = d.thisMonth.totalSpent
                     lastMonthSpent = d.previousMonthSpent
                     if deltaPercent == 0 { deltaPercent = d.deltaPercent }
                 }
+            } catch {
+                // Dashboard optional; summary/insights already applied
             }
         } catch APIError.paymentRequired {
             let entitlements = try? await APIClient.shared.getEntitlements()

@@ -9,17 +9,28 @@ import SwiftUI
 
 struct AddTransactionView: View {
     var transaction: Transaction?
+    /// Initial transaction type when creating new (e.g. "income" for Add Income flow).
+    var initialType: String?
     /// Called after a successful save (e.g. to pop parent when editing).
     var onSuccess: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: AddTransactionViewModel
     @State private var showDatePicker = false
     @State private var showTimePicker = false
+    @State private var showCustomKeyboard = false
+    @State private var calculatorExpression = ""
+    @State private var showNewSubcategory = false
+    @State private var showCategoriesSheet = false
 
-    init(transaction: Transaction? = nil, onSuccess: (() -> Void)? = nil) {
+    init(transaction: Transaction? = nil, initialType: String? = nil, onSuccess: (() -> Void)? = nil) {
         self.transaction = transaction
+        self.initialType = initialType
         self.onSuccess = onSuccess
-        _viewModel = State(initialValue: AddTransactionViewModel(existing: transaction))
+        _viewModel = State(initialValue: AddTransactionViewModel(existing: transaction, initialType: initialType))
+    }
+
+    private var displayAmountResult: String {
+        String(format: "%.2f", evaluateAmountExpression(calculatorExpression) ?? 0)
     }
 
     var body: some View {
@@ -28,7 +39,35 @@ struct AddTransactionView: View {
                 .ignoresSafeArea()
 
             sheetContent
+
+            if showCustomKeyboard {
+                VStack {
+                    Spacer()
+                    AmountKeyboardView(
+                        expression: $calculatorExpression,
+                        amountText: $viewModel.amountText,
+                        transactionType: $viewModel.transactionType,
+                        selectedCurrency: $viewModel.selectedCurrency,
+                        currencies: AddTransactionViewModel.currencies,
+                        onDismiss: {
+                            if !calculatorExpression.isEmpty {
+                                viewModel.amountText = displayAmountResult
+                                calculatorExpression = ""
+                            }
+                            withAnimation(.easeInOut(duration: 0.32)) { showCustomKeyboard = false }
+                        }
+                    )
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                    ))
+                }
+                .ignoresSafeArea(edges: .bottom)
+            }
         }
+        .animation(.easeInOut(duration: 0.32), value: showCustomKeyboard)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
         .onChange(of: viewModel.didSucceed) { _, ok in
             if ok {
                 dismiss()
@@ -60,7 +99,8 @@ struct AddTransactionView: View {
                         .stroke(Color.white.opacity(0.7), lineWidth: 1)
                 )
         )
-        .padding(.top, 60)
+        .padding(.top, 12)
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private var handleBar: some View {
@@ -108,12 +148,36 @@ struct AddTransactionView: View {
             }
             .disabled(viewModel.isEditMode)
 
-            TextField("0.00", text: $viewModel.amountText)
-                .font(.system(size: 56, weight: .light))
-                .tracking(-2)
-                .foregroundColor(OnboardingDesign.textPrimary)
-                .multilineTextAlignment(.center)
-                .keyboardType(.decimalPad)
+            if viewModel.isEditMode {
+                TextField("0.00", text: $viewModel.amountText)
+                    .font(.system(size: 56, weight: .light))
+                    .tracking(-2)
+                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .keyboardType(.decimalPad)
+            } else {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.32)) { showCustomKeyboard = true }
+                } label: {
+                    VStack(spacing: 4) {
+                        if showCustomKeyboard && !calculatorExpression.isEmpty {
+                            Text(displayAmountResult)
+                                .font(.system(size: 56, weight: .light))
+                                .tracking(-2)
+                                .foregroundColor(OnboardingDesign.textPrimary)
+                            Text(calculatorExpression)
+                                .font(.system(size: 15))
+                                .foregroundColor(OnboardingDesign.textSecondary)
+                        } else {
+                            Text(viewModel.amountText.isEmpty ? "0.00" : viewModel.amountText)
+                                .font(.system(size: 56, weight: .light))
+                                .tracking(-2)
+                                .foregroundColor(OnboardingDesign.textPrimary)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.bottom, 30)
     }
@@ -156,6 +220,9 @@ struct AddTransactionView: View {
                 ForEach(AddSheetCategory.allCases, id: \.rawValue) { cat in
                     Button {
                         viewModel.selectSheetCategory(cat)
+                        if cat == .other {
+                            showCategoriesSheet = true
+                        }
                     } label: {
                         VStack(spacing: 8) {
                             categoryIcon(cat)
@@ -177,6 +244,87 @@ struct AddTransactionView: View {
                     }
                     .buttonStyle(.plain)
                 }
+            }
+
+            if viewModel.subcategoryDisplayItems.count >= 1 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(viewModel.subcategoryDisplayItems) { item in
+                            let isSelected: Bool = {
+                                switch item {
+                                case .builtIn(let cat): return viewModel.selectedCustomSubcategory == nil && viewModel.selectedCategory == cat
+                                case .custom(let sub): return viewModel.selectedCustomSubcategory?.id == sub.id
+                                }
+                            }()
+                            Button {
+                                switch item {
+                                case .builtIn(let cat): viewModel.selectSubcategory(cat)
+                                case .custom(let sub): viewModel.selectCustomSubcategory(sub)
+                                }
+                            } label: {
+                                Text(item.displayName)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(isSelected ? OnboardingDesign.textPrimary : OnboardingDesign.textSecondary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 14)
+                                            .fill(isSelected ? Color.white : Color.white.opacity(0.3))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14)
+                                            .stroke(isSelected ? OnboardingDesign.accentGreen : Color.white.opacity(0.4), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Button {
+                            showNewSubcategory = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 13, weight: .medium))
+                                Text("New")
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            .foregroundColor(OnboardingDesign.accentGreen)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color.white.opacity(0.3))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(OnboardingDesign.accentGreen.opacity(0.6), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .sheet(isPresented: $showNewSubcategory) {
+            NewSubcategorySheetView(
+                parentCategoryId: viewModel.selectedSheetCategory.apiCategoryValue,
+                parentDisplayName: viewModel.selectedSheetCategory.displayName
+            ) { sub in
+                viewModel.addCustomSubcategory(sub)
+            }
+        }
+        .sheet(isPresented: $showCategoriesSheet) {
+            CategoriesSheetView(
+                parentCategoryId: AddSheetCategory.other.apiCategoryValue,
+                parentDisplayName: AddSheetCategory.other.displayName,
+                items: viewModel.subcategoryDisplayItems
+            ) { item in
+                switch item {
+                case .builtIn(let cat): viewModel.selectSubcategory(cat)
+                case .custom(let sub): viewModel.selectCustomSubcategory(sub)
+                }
+            } onNewCategory: { sub in
+                viewModel.addCustomSubcategory(sub)
             }
         }
         .padding(.bottom, 24)
@@ -318,7 +466,8 @@ private struct DateTimePickerSheetView: View {
                 .padding()
             Spacer()
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }

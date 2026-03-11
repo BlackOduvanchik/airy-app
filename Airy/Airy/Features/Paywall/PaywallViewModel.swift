@@ -37,7 +37,7 @@ final class PaywallViewModel {
                     ProductDisplay(
                         id: $0.id,
                         displayName: $0.displayName,
-                        displayPrice: $0.displayPrice.formatted()
+                        displayPrice: String(describing: $0.displayPrice)
                     )
                 }
             }

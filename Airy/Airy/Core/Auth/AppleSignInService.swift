@@ -42,7 +42,7 @@ final class AppleSignInService: NSObject {
 
 extension AppleSignInService: ASAuthorizationControllerDelegate {
     nonisolated func authorizationController(
-        _ controller: ASAuthorizationController,
+        controller: ASAuthorizationController,
         didCompleteWithAuthorization authorization: ASAuthorization
     ) {
         Task { @MainActor in
@@ -72,7 +72,7 @@ extension AppleSignInService: ASAuthorizationControllerDelegate {
     }
 
     nonisolated func authorizationController(
-        _ controller: ASAuthorizationController,
+        controller: ASAuthorizationController,
         didCompleteWithError error: Error
     ) {
         Task { @MainActor in
@@ -88,7 +88,7 @@ extension AppleSignInService: ASAuthorizationControllerDelegate {
 }
 
 extension AppleSignInService: ASAuthorizationControllerPresentationContextProviding {
-    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
             return ASPresentationAnchor()

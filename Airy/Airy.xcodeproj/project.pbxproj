@@ -32,14 +32,18 @@
 		B00100000000000000000017 /* TransactionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000017 /* TransactionDetailView.swift */; };
 		B00100000000000000000018 /* TransactionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000018 /* TransactionListView.swift */; };
 		B00100000000000000000019 /* TransactionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000019 /* TransactionListViewModel.swift */; };
-		B00100000000000000000021 /* MonthDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000021 /* MonthDetailView.swift */; };
-		B00100000000000000000022 /* MonthDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000022 /* MonthDetailViewModel.swift */; };
 		B0010000000000000000001A /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000001A /* MainTabView.swift */; };
 		B0010000000000000000001B /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000001B /* OCRService.swift */; };
-		B0010000000000000000001C /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000001C /* Info.plist */; };
 		B0010000000000000000001D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000001D /* Assets.xcassets */; };
 		B0010000000000000000001E /* AppleSignInService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000001F /* AppleSignInService.swift */; };
 		B00100000000000000000020 /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000020 /* OnboardingFlowView.swift */; };
+		B00100000000000000000021 /* MonthDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000021 /* MonthDetailView.swift */; };
+		B00100000000000000000022 /* MonthDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000022 /* MonthDetailViewModel.swift */; };
+		B00100000000000000000023 /* AmountKeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000023 /* AmountKeyboardView.swift */; };
+		B00100000000000000000024 /* AddActionSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000024 /* AddActionSheetView.swift */; };
+		B00100000000000000000025 /* Subcategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000025 /* Subcategory.swift */; };
+		B00100000000000000000026 /* NewSubcategorySheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000026 /* NewSubcategorySheetView.swift */; };
+		B00100000000000000000027 /* CategoriesSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000027 /* CategoriesSheetView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -68,8 +72,6 @@
 		F00100000000000000000017 /* TransactionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDetailView.swift; sourceTree = "<group>"; };
 		F00100000000000000000018 /* TransactionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionListView.swift; sourceTree = "<group>"; };
 		F00100000000000000000019 /* TransactionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionListViewModel.swift; sourceTree = "<group>"; };
-		F00100000000000000000021 /* MonthDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthDetailView.swift; sourceTree = "<group>"; };
-		F00100000000000000000022 /* MonthDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthDetailViewModel.swift; sourceTree = "<group>"; };
 		F0010000000000000000001A /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		F0010000000000000000001B /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		F0010000000000000000001C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -77,6 +79,13 @@
 		F0010000000000000000001E /* Airy.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Airy.entitlements; sourceTree = "<group>"; };
 		F0010000000000000000001F /* AppleSignInService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInService.swift; sourceTree = "<group>"; };
 		F00100000000000000000020 /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
+		F00100000000000000000021 /* MonthDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthDetailView.swift; sourceTree = "<group>"; };
+		F00100000000000000000022 /* MonthDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthDetailViewModel.swift; sourceTree = "<group>"; };
+		F00100000000000000000023 /* AmountKeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmountKeyboardView.swift; sourceTree = "<group>"; };
+		F00100000000000000000024 /* AddActionSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddActionSheetView.swift; sourceTree = "<group>"; };
+		F00100000000000000000025 /* Subcategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Subcategory.swift; sourceTree = "<group>"; };
+		F00100000000000000000026 /* NewSubcategorySheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSubcategorySheetView.swift; sourceTree = "<group>"; };
+		F00100000000000000000027 /* CategoriesSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesSheetView.swift; sourceTree = "<group>"; };
 		TARG00000000000000000001 /* Airy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Airy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -91,6 +100,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		BUILT000000000000000001 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				TARG00000000000000000001 /* Airy.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		GRP00000000000000000001 = {
 			isa = PBXGroup;
 			children = (
@@ -251,11 +268,15 @@
 			children = (
 				F00100000000000000000015 /* AddTransactionView.swift */,
 				F00100000000000000000016 /* AddTransactionViewModel.swift */,
+				F00100000000000000000023 /* AmountKeyboardView.swift */,
 				F00100000000000000000017 /* TransactionDetailView.swift */,
 				F00100000000000000000018 /* TransactionListView.swift */,
 				F00100000000000000000019 /* TransactionListViewModel.swift */,
 				F00100000000000000000021 /* MonthDetailView.swift */,
 				F00100000000000000000022 /* MonthDetailViewModel.swift */,
+				F00100000000000000000025 /* Subcategory.swift */,
+				F00100000000000000000026 /* NewSubcategorySheetView.swift */,
+				F00100000000000000000027 /* CategoriesSheetView.swift */,
 			);
 			path = Transactions;
 			sourceTree = "<group>";
@@ -263,17 +284,10 @@
 		GRP00000000000000000014 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				F00100000000000000000024 /* AddActionSheetView.swift */,
 				F0010000000000000000001A /* MainTabView.swift */,
 			);
 			path = Components;
-			sourceTree = "<group>";
-		};
-		BUILT000000000000000001 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				TARG00000000000000000001 /* Airy.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -292,6 +306,7 @@
 			dependencies = (
 			);
 			name = Airy;
+			productName = Airy;
 			productReference = TARG00000000000000000001 /* Airy.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -328,7 +343,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B0010000000000000000001C /* Info.plist in Resources */,
 				B0010000000000000000001D /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -367,7 +381,12 @@
 				B00100000000000000000019 /* TransactionListViewModel.swift in Sources */,
 				B00100000000000000000021 /* MonthDetailView.swift in Sources */,
 				B00100000000000000000022 /* MonthDetailViewModel.swift in Sources */,
+				B00100000000000000000023 /* AmountKeyboardView.swift in Sources */,
 				B0010000000000000000001A /* MainTabView.swift in Sources */,
+				B00100000000000000000024 /* AddActionSheetView.swift in Sources */,
+				B00100000000000000000025 /* Subcategory.swift in Sources */,
+				B00100000000000000000026 /* NewSubcategorySheetView.swift in Sources */,
+				B00100000000000000000027 /* CategoriesSheetView.swift in Sources */,
 				B0010000000000000000001B /* OCRService.swift in Sources */,
 				B0010000000000000000001E /* AppleSignInService.swift in Sources */,
 				B00100000000000000000020 /* OnboardingFlowView.swift in Sources */,
@@ -497,10 +516,11 @@
 				AIRY_API_BASE_URL = "http://localhost:3000";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "Airy/Airy.entitlements";
+				CODE_SIGN_ENTITLEMENTS = Airy/Airy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 9QHBAG79D9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
@@ -508,6 +528,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -515,10 +536,14 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.solosoft.airy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -528,10 +553,11 @@
 				AIRY_API_BASE_URL = "https://api.airy.app";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "Airy/Airy.entitlements";
+				CODE_SIGN_ENTITLEMENTS = Airy/Airy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 9QHBAG79D9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
@@ -539,6 +565,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -546,10 +573,14 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.solosoft.airy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};

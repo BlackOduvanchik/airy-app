@@ -6,7 +6,7 @@
 import Foundation
 
 actor APIClient {
-    nonisolated(unsafe) static let shared = APIClient()
+    static let shared = APIClient()
     private let baseURL: URL
     private let session: URLSession
     var authToken: String?

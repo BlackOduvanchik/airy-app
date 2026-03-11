@@ -323,7 +323,6 @@ struct SubscriptionsView: View {
         let a: CGFloat = 40 / total
         let b: CGFloat = 30 / total
         let c: CGFloat = 20 / total
-        let d: CGFloat = 10 / total
         return [
             (0, a, OnboardingDesign.accentBlue),
             (a, a + b, OnboardingDesign.accentGreen),

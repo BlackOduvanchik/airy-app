@@ -64,21 +64,143 @@ struct OnboardingGradientBackground: View {
     }
 }
 
+// MARK: - Fade slide-in animation for page content
+
+private struct FadeSlideInModifier: ViewModifier {
+    @State private var opacity: Double = 0
+    @State private var offset: CGFloat = 16
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(opacity)
+            .offset(y: offset)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.7).delay(0.2)) {
+                    opacity = 1
+                    offset = 0
+                }
+            }
+    }
+}
+
+/// Fade slide-in that triggers when `isActive` becomes true (for TabView pages that preload).
+private struct FadeSlideInWhenActiveModifier: ViewModifier {
+    let isActive: Bool
+    @State private var opacity: Double = 0
+    @State private var offset: CGFloat = 16
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(opacity)
+            .offset(y: offset)
+            .onChange(of: isActive) { _, active in
+                if active {
+                    withAnimation(.easeOut(duration: 0.7).delay(0.2)) {
+                        opacity = 1
+                        offset = 0
+                    }
+                } else {
+                    opacity = 0
+                    offset = 16
+                }
+            }
+            .onAppear {
+                if isActive {
+                    withAnimation(.easeOut(duration: 0.7).delay(0.2)) {
+                        opacity = 1
+                        offset = 0
+                    }
+                }
+            }
+    }
+}
+
+private extension View {
+    func fadeSlideIn() -> some View {
+        modifier(FadeSlideInModifier())
+    }
+
+    func fadeSlideIn(whenActive isActive: Bool) -> some View {
+        modifier(FadeSlideInWhenActiveModifier(isActive: isActive))
+    }
+}
+
 // MARK: - Progress dots (6 dots, active index 0...5)
+// Design: inactive 6pt, active 18pt width, text-primary / rgba(30,45,36,0.15)
 
 struct OnboardingProgressDots: View {
     let currentPage: Int
+    /// When true, active dot has stretching animation (page 0 only).
+    var animateActiveDot: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
             ForEach(0..<6, id: \.self) { index in
                 Capsule()
-                    .fill(index == currentPage ? OnboardingDesign.accentGreen : Color.white.opacity(0.4))
-                    .overlay(
-                        Capsule()
-                            .stroke(index == currentPage ? OnboardingDesign.accentGreen : Color.white, lineWidth: 1)
-                    )
-                    .frame(width: index == currentPage ? 24 : 8, height: 8)
+                    .fill(index == currentPage ? OnboardingDesign.textPrimary : OnboardingDesign.textPrimary.opacity(0.15))
+                    .frame(width: dotWidth(for: index), height: 6)
+            }
+        }
+        .frame(height: 24)
+    }
+
+    private func dotWidth(for index: Int) -> CGFloat {
+        if index == currentPage {
+            return animateActiveDot ? 36 : 18
+        }
+        return 6
+    }
+}
+
+/// Progress dots with stretching animation on active (for page 0).
+struct OnboardingProgressDotsAnimated: View {
+    @State private var activeWidth: CGFloat = 18
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Capsule()
+                .fill(OnboardingDesign.textPrimary)
+                .frame(width: activeWidth, height: 6)
+            ForEach(1..<6, id: \.self) { _ in
+                Capsule()
+                    .fill(OnboardingDesign.textPrimary.opacity(0.15))
+                    .frame(width: 6, height: 6)
+            }
+        }
+        .frame(height: 24)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
+                activeWidth = 40
+            }
+        }
+        .onDisappear {
+            activeWidth = 18
+        }
+    }
+}
+
+// MARK: - Page layout (content-shell + bottom-shell per design)
+
+struct OnboardingPageLayout<Content: View, Bottom: View>: View {
+    let content: Content
+    let bottom: Bottom
+
+    init(@ViewBuilder content: () -> Content, @ViewBuilder bottom: () -> Bottom) {
+        self.content = content()
+        self.bottom = bottom()
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 20)
+
+                bottom
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40 + geo.safeAreaInsets.bottom)
             }
         }
     }
@@ -96,13 +218,13 @@ struct OnboardingFlowView: View {
             TabView(selection: $currentPage) {
                 OnboardingWelcomePage(onNext: { currentPage = 1 }, onSkipToSignIn: onFinish)
                     .tag(0)
-                OnboardingScreenshotsPage(onNext: { currentPage = 2 }, onSkip: onFinish)
+                OnboardingScreenshotsPage(onNext: { currentPage = 2 }, onSkip: { currentPage = 5 })
                     .tag(1)
-                OnboardingSpendingPage(onNext: { currentPage = 3 }, onSkip: onFinish)
+                OnboardingSpendingPage(onNext: { currentPage = 3 }, onSkip: { currentPage = 5 }, isActive: currentPage == 2)
                     .tag(2)
-                OnboardingSubscriptionsPage(onNext: { currentPage = 4 }, onSkip: onFinish)
+                OnboardingSubscriptionsPage(onNext: { currentPage = 4 }, onSkip: { currentPage = 5 })
                     .tag(3)
-                OnboardingMirrorPage(onNext: { currentPage = 5 }, onSkip: onFinish)
+                OnboardingMirrorPage(onNext: { currentPage = 5 }, onSkip: { currentPage = 5 })
                     .tag(4)
                 OnboardingProOfferPage(onFinish: onFinish)
                     .tag(5)
@@ -119,90 +241,110 @@ struct OnboardingWelcomePage: View {
     var onNext: () -> Void
     var onSkipToSignIn: () -> Void
 
-    @State private var haloScale: CGFloat = 1.0
+    @State private var haloInnerScale: CGFloat = 1.0
+    @State private var haloInnerOpacity: Double = 1.0
+    @State private var haloMidScale: CGFloat = 1.0
+    @State private var haloMidOpacity: Double = 1.0
+    @State private var haloOuterScale: CGFloat = 1.0
+    @State private var haloOuterOpacity: Double = 0.6
     @State private var mascotOffset: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Top: halos + mascot
-            ZStack {
-                haloCircle(size: 200, color: Color(white: 1, opacity: 0.05), delay: 1.0)
-                haloCircle(size: 140, color: Color(red: 0.482, green: 0.616, blue: 0.671, opacity: 0.1), delay: 0.5)
-                haloCircle(size: 100, color: Color.white.opacity(0.2), delay: 0)
+        OnboardingPageLayout {
+            VStack(spacing: 0) {
+                topSection
+                Text("Airy")
+                    .font(.system(size: 13, weight: .medium))
+                    .tracking(2.6)
+                    .textCase(.uppercase)
+                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .padding(.bottom, 24)
 
-                mascotCircle
-            }
-            .frame(height: 220)
-            .padding(.top, 40)
-
-            Text("AIRY")
-                .font(.system(size: 13, weight: .medium))
-                .tracking(2)
-                .foregroundColor(OnboardingDesign.textTertiary)
-                .padding(.top, 32)
-
-            VStack(spacing: 8) {
-                Text("Your money,\nclearly understood.")
-                    .font(.system(size: 40, weight: .light))
-                    .tracking(-1.5)
-                    .lineSpacing(2)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(OnboardingDesign.textPrimary)
-
-                Text("A calm, intelligent space for your finances.")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(OnboardingDesign.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .frame(maxWidth: 280)
-            }
-            .padding(.top, 20)
-
-            OnboardingProgressDots(currentPage: 0)
-                .padding(.top, 40)
-
-            Spacer(minLength: 24)
-
-            VStack(spacing: 12) {
-                Button(action: onNext) {
-                    Text("Get Started")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
+                VStack(spacing: 8) {
+                    Text("Your money,\nclearly understood.")
+                        .font(.system(size: 38, weight: .light))
+                        .tracking(-1)
+                        .lineSpacing(2)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(OnboardingDesign.textPrimary)
+                    Text("A calm, intelligent space for your finances.")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .frame(maxWidth: 300)
                 }
-                .background(OnboardingDesign.accentGreen)
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                )
-                .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: 400)
+            .fadeSlideIn()
+        } bottom: {
+            VStack(spacing: 0) {
+                OnboardingProgressDotsAnimated()
+                    .padding(.bottom, 24)
+                    .fadeSlideIn()
 
-                Button(action: onSkipToSignIn) {
-                    Text("I already have an account")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                VStack(spacing: 12) {
+                    Button(action: onNext) {
+                        Text("Get Started")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                    }
+                    .background(OnboardingDesign.accentGreen)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+                    Button(action: onSkipToSignIn) {
+                        Text("I already have an account")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(OnboardingDesign.textTertiary)
+                            .frame(height: 44)
+                    }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 40)
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                haloScale = 1.05
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) {
+                haloInnerScale = 1.05
+                haloInnerOpacity = 0.4
             }
-            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true).delay(0.5)) {
+                haloMidScale = 1.05
+                haloMidOpacity = 0.4
+            }
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true).delay(1.0)) {
+                haloOuterScale = 1.12
+                haloOuterOpacity = 0
+            }
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
                 mascotOffset = -6
             }
         }
     }
 
-    private func haloCircle(size: CGFloat, color: Color, delay: Double) -> some View {
-        Circle()
-            .stroke(color, lineWidth: 1)
-            .frame(width: size, height: size)
-            .scaleEffect(haloScale)
+    private var topSection: some View {
+        ZStack {
+            Circle()
+                .stroke(OnboardingDesign.accentBlue.opacity(0.05), lineWidth: 1)
+                .frame(width: 200, height: 200)
+                .scaleEffect(haloOuterScale)
+                .opacity(haloOuterOpacity)
+            Circle()
+                .stroke(OnboardingDesign.accentBlue.opacity(0.1), lineWidth: 1)
+                .frame(width: 140, height: 140)
+                .scaleEffect(haloMidScale)
+                .opacity(haloMidOpacity)
+            Circle()
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                .frame(width: 100, height: 100)
+                .scaleEffect(haloInnerScale)
+                .opacity(haloInnerOpacity)
+            mascotCircle
+        }
+        .frame(width: 200, height: 200)
+        .padding(.bottom, 24)
     }
 
     private var mascotCircle: some View {
@@ -217,15 +359,11 @@ struct OnboardingWelcomePage: View {
                     )
                 )
                 .frame(width: 96, height: 96)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.5), lineWidth: 1)
-                )
+                .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
                 .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 8)
                 .shadow(color: Color.white.opacity(0.8), radius: 2, x: 0, y: 2)
                 .offset(y: mascotOffset)
-
-            Image(systemName: "cloud.fill")
+            Image(systemName: "cloud")
                 .font(.system(size: 48, weight: .regular))
                 .foregroundColor(OnboardingDesign.textPrimary)
                 .offset(y: mascotOffset)
@@ -240,100 +378,74 @@ struct OnboardingScreenshotsPage: View {
     var onSkip: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            OnboardingProgressDots(currentPage: 1)
-                .padding(.top, 60)
+        OnboardingPageLayout {
+            VStack(spacing: 0) {
+                illustrationArea
+                    .frame(maxWidth: .infinity)
 
-            illustrationArea
-                .padding(.top, 60)
-
-            VStack(spacing: 16) {
-                Text("Screenshots become data.")
-                    .font(.system(size: 38, weight: .light))
-                    .tracking(-1)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(OnboardingDesign.textPrimary)
-
-                Text("Point your camera at any receipt or bank statement. Airy reads it instantly.")
-                    .font(.system(size: 15))
-                    .foregroundColor(OnboardingDesign.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 300)
-
-                aiChip
-            }
-            .padding(.horizontal, 40)
-            .padding(.top, 40)
-
-            Spacer(minLength: 24)
-
-            VStack(spacing: 20) {
-                Button(action: onNext) {
-                    Text("Continue")
-                        .font(.system(size: 17, weight: .semibold))
+                VStack(spacing: 8) {
+                    Text("Screenshots become data.")
+                        .font(.system(size: 38, weight: .light))
+                        .tracking(-1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
                         .foregroundColor(OnboardingDesign.textPrimary)
-                        .frame(width: 310, height: 60)
-                }
-                .background(OnboardingDesign.glassBg)
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
-                )
-                .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
 
-                Button(action: onSkip) {
-                    Text("Skip")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                    Text("Point your camera at any receipt or bank statement. Airy reads it instantly.")
+                        .font(.system(size: 15))
+                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 300)
+
+                    aiChip
+                }
+                .padding(.top, 32)
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: 400)
+            .fadeSlideIn()
+        } bottom: {
+            VStack(spacing: 0) {
+                OnboardingProgressDots(currentPage: 1)
+                    .padding(.bottom, 24)
+                    .fadeSlideIn()
+
+                VStack(spacing: 12) {
+                    Button(action: onNext) {
+                        Text("Continue")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                    }
+                    .background(OnboardingDesign.accentGreen)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+
+                    Button(action: onSkip) {
+                        Text("Skip")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(OnboardingDesign.textTertiary)
+                            .frame(height: 44)
+                    }
                 }
             }
-            .padding(.bottom, 50)
         }
     }
 
     private var illustrationArea: some View {
         ZStack(alignment: .bottom) {
-            // Dotted arc
-            GeometryReader { geo in
-                Path { p in
-                    p.move(to: CGPoint(x: 42, y: 278))
-                    p.addCurve(
-                        to: CGPoint(x: 200, y: 80),
-                        control1: CGPoint(x: 80, y: 200),
-                        control2: CGPoint(x: 120, y: 100)
-                    )
-                }
-                .trim(from: 0, to: 1)
-                .stroke(
-                    OnboardingDesign.accentBlue.opacity(0.4),
-                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [8, 8])
-                )
-                .frame(width: 300, height: 320)
-            }
-            .frame(width: 300, height: 320)
+            dottedArcPathView
 
-            // Camera icon (bottom-left)
-            HStack {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 22)
-                        .fill(.ultraThinMaterial)
-                        .overlay(OnboardingDesign.glassBg.opacity(0.6))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 22)
-                                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
-                        )
-                        .frame(width: 44, height: 44)
-
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(OnboardingDesign.textPrimary)
-                }
-                .padding(.leading, 20)
-                .padding(.bottom, 20)
-
-                Spacer()
+            // Camera icon (bottom-left) — circle only, no square frame
+            ZStack(alignment: .bottomLeading) {
+                Color.clear
+                    .frame(width: 300, height: 320)
+                cameraIconView
+                    .padding(.leading, 20)
+                    .padding(.bottom, 20)
             }
             .frame(width: 300, height: 320)
 
@@ -355,6 +467,45 @@ struct OnboardingScreenshotsPage: View {
             .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
         }
         .frame(width: 300, height: 320)
+    }
+
+    /// Uses TimelineView so animation continues smoothly when swiping back to this page (no onAppear reset).
+    private var dottedArcPathView: some View {
+        TimelineView(.animation(minimumInterval: 1.0/30)) { timeline in
+            let elapsed = timeline.date.timeIntervalSinceReferenceDate
+            let cycle = 20.0
+            let t = (elapsed.truncatingRemainder(dividingBy: cycle)) / cycle
+            let phase = t < 0.5 ? t * 400 : (1 - t) * 400
+            Path { p in
+                p.move(to: CGPoint(x: 42, y: 278))
+                p.addCurve(
+                    to: CGPoint(x: 200, y: 80),
+                    control1: CGPoint(x: 80, y: 200),
+                    control2: CGPoint(x: 120, y: 100)
+                )
+            }
+            .trim(from: 0, to: 1)
+            .stroke(
+                OnboardingDesign.accentBlue.opacity(0.4),
+                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [8, 8], dashPhase: phase)
+            )
+            .frame(width: 300, height: 320)
+        }
+    }
+
+    private var cameraIconView: some View {
+        ZStack {
+            Circle()
+                .fill(OnboardingDesign.glassBg)
+                .overlay(Circle().stroke(OnboardingDesign.glassBorder, lineWidth: 1))
+                .frame(width: 44, height: 44)
+
+            Image(systemName: "camera.fill")
+                .font(.system(size: 20))
+                .foregroundColor(OnboardingDesign.textPrimary)
+        }
+        .frame(width: 44, height: 44)
+        .clipShape(Circle())
     }
 
     private func screenshotThumb(line1: CGFloat, line2: CGFloat) -> some View {
@@ -380,21 +531,18 @@ struct OnboardingScreenshotsPage: View {
     private var aiChip: some View {
         HStack(spacing: 6) {
             Image(systemName: "sparkles")
-                .font(.system(size: 14))
+                .font(.system(size: 14, weight: .semibold))
             Text("Powered by on-device AI")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .bold))
         }
         .foregroundColor(OnboardingDesign.accentBlue)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
-        .overlay(OnboardingDesign.glassBg.opacity(0.5))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(OnboardingDesign.glassBg)
         .clipShape(Capsule())
-        .overlay(
-            Capsule()
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
-        )
-        .padding(.top, 10)
+        .overlay(Capsule().stroke(OnboardingDesign.glassBorder, lineWidth: 1))
+        .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 8, x: 0, y: 4)
+        .padding(.top, 16)
     }
 }
 
@@ -403,19 +551,21 @@ struct OnboardingScreenshotsPage: View {
 struct OnboardingSpendingPage: View {
     var onNext: () -> Void
     var onSkip: () -> Void
+    var isActive: Bool = true
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 32) {
+        OnboardingPageLayout {
+            VStack(spacing: 0) {
                 Text("See where it\nall goes.")
                     .font(.system(size: 38, weight: .light))
                     .tracking(-1)
                     .lineSpacing(2)
                     .multilineTextAlignment(.center)
                     .foregroundColor(OnboardingDesign.textPrimary)
-                    .padding(.horizontal, 20)
+                    .padding(.bottom, 32)
 
                 spendingGlassPanel
+                    .padding(.bottom, 24)
 
                 Text("AI reads your spending and explains it in plain language — no spreadsheets.")
                     .font(.system(size: 15))
@@ -423,15 +573,17 @@ struct OnboardingSpendingPage: View {
                     .foregroundColor(OnboardingDesign.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 300)
+
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity)
             .padding(.top, 60)
-            .padding(.horizontal, 20)
-
-            Spacer(minLength: 24)
-
-            VStack(spacing: 24) {
+            .frame(maxWidth: 400)
+            .fadeSlideIn(whenActive: isActive)
+        } bottom: {
+            VStack(spacing: 0) {
                 OnboardingProgressDots(currentPage: 2)
+                    .padding(.bottom, 24)
+                    .fadeSlideIn(whenActive: isActive)
 
                 VStack(spacing: 12) {
                     Button(action: onNext) {
@@ -441,20 +593,19 @@ struct OnboardingSpendingPage: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                     }
-                    .background(OnboardingDesign.textPrimary)
+                    .background(OnboardingDesign.accentGreen)
                     .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
 
                     Button(action: onSkip) {
                         Text("Skip")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textSecondary)
-                            .frame(maxWidth: .infinity)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(OnboardingDesign.textTertiary)
                             .frame(height: 44)
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 40)
         }
     }
 
@@ -556,71 +707,78 @@ struct OnboardingSubscriptionsPage: View {
 
     private let cardMaxWidth: CGFloat = 310
 
+    @State private var card1Offset: CGFloat = 0
+    @State private var card2Offset: CGFloat = 20
+    @State private var card3Offset: CGFloat = 40
+    @State private var badgeScale: CGFloat = 1
+    @State private var badgeOpacity: Double = 1
+
     var body: some View {
-        VStack(spacing: 0) {
-            illustrationStack
-                .frame(height: 320)
-                .padding(.top, 60)
+        OnboardingPageLayout {
+            VStack(spacing: 0) {
+                illustrationStack
+                    .frame(height: 320)
 
-            contentArea
-                .padding(.horizontal, 10)
+                contentArea
+                    .padding(.top, 24)
 
-            Spacer(minLength: 24)
-
-            VStack(spacing: 32) {
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: 400)
+            .fadeSlideIn()
+        } bottom: {
+            VStack(spacing: 0) {
                 OnboardingProgressDots(currentPage: 3)
+                    .padding(.bottom, 24)
+                    .fadeSlideIn()
 
-                HStack {
+                VStack(spacing: 12) {
+                    Button(action: onNext) {
+                        Text("Continue")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                    }
+                    .background(OnboardingDesign.accentGreen)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+
                     Button(action: onSkip) {
                         Text("Skip")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 15, weight: .medium))
                             .foregroundColor(OnboardingDesign.textTertiary)
+                            .frame(height: 44)
                     }
-                    Spacer()
-                    Button(action: onNext) {
-                        HStack(spacing: 8) {
-                            Text("Continue")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 16)
-                    }
-                    .background(OnboardingDesign.textPrimary)
-                    .clipShape(Capsule())
-                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 10)
                 }
-                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 40)
         }
     }
 
     private var contentArea: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             Text("Never pay twice.")
                 .font(.system(size: 38, weight: .light))
                 .tracking(-1)
                 .foregroundColor(OnboardingDesign.textPrimary)
                 .multilineTextAlignment(.center)
+                .padding(.bottom, 16)
 
             Text("Airy finds duplicate charges, forgotten trials, and quietly expensive subscriptions.")
                 .font(.system(size: 15))
-                .lineSpacing(2)
+                .lineSpacing(1.5)
                 .foregroundColor(OnboardingDesign.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 280)
         }
+        .padding(.horizontal, 10)
         .padding(.top, 24)
     }
 
     private var illustrationStack: some View {
         ZStack {
-            // Card 3 (back)
+            // Card 3 (back) — Adobe CC, green tint
             subRowCard(
                 iconColor: Color(red: 1, green: 0, blue: 0),
                 iconName: "doc.fill",
@@ -628,16 +786,15 @@ struct OnboardingSubscriptionsPage: View {
                 pill: "Monthly",
                 price: "$52.99",
                 badge: nil,
-                badgeBottom: false
+                badgeBottom: false,
+                cardBackground: OnboardingDesign.accentGreen.opacity(0.15)
             )
             .scaleEffect(0.92)
-            .offset(y: 40)
+            .offset(y: card3Offset)
             .opacity(0.8)
-            .background(OnboardingDesign.accentGreen.opacity(0.15))
-            .clipShape(RoundedRectangle(cornerRadius: 20))
             .zIndex(1)
 
-            // Card 2 (middle)
+            // Card 2 (middle) — Spotify, default glass
             subRowCard(
                 iconColor: Color(red: 0.114, green: 0.725, blue: 0.329),
                 iconName: "music.note",
@@ -645,14 +802,17 @@ struct OnboardingSubscriptionsPage: View {
                 pill: "Individual",
                 price: "$10.99",
                 badge: "Trial ending in 2 days",
-                badgeBottom: true
+                badgeBottom: true,
+                cardBackground: nil,
+                badgeScale: badgeScale,
+                badgeOpacity: badgeOpacity
             )
             .scaleEffect(0.96)
-            .offset(y: 20)
+            .offset(y: card2Offset)
             .opacity(0.95)
             .zIndex(2)
 
-            // Card 1 (front)
+            // Card 1 (front) — Netflix, amber tint
             subRowCard(
                 iconColor: Color(red: 0.898, green: 0.035, blue: 0.078),
                 iconName: "play.rectangle.fill",
@@ -660,15 +820,31 @@ struct OnboardingSubscriptionsPage: View {
                 pill: "Family Plan",
                 price: "$19.99",
                 badge: "Duplicate detected",
-                badgeBottom: false
+                badgeBottom: false,
+                cardBackground: OnboardingDesign.accentAmber.opacity(0.12),
+                badgeScale: badgeScale,
+                badgeOpacity: badgeOpacity
             )
             .scaleEffect(1)
-            .offset(y: 0)
-            .background(OnboardingDesign.accentAmber.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .offset(y: card1Offset)
             .zIndex(3)
         }
         .frame(maxWidth: .infinity)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) {
+                card1Offset = -6
+            }
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true).delay(0.4)) {
+                card2Offset = 14
+            }
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true).delay(0.8)) {
+                card3Offset = 34
+            }
+            withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) {
+                badgeScale = 0.97
+                badgeOpacity = 0.75
+            }
+        }
     }
 
     private func subRowCard(
@@ -678,7 +854,10 @@ struct OnboardingSubscriptionsPage: View {
         pill: String,
         price: String,
         badge: String?,
-        badgeBottom: Bool
+        badgeBottom: Bool,
+        cardBackground: Color? = nil,
+        badgeScale: CGFloat = 1,
+        badgeOpacity: Double = 1
     ) -> some View {
         HStack(spacing: 14) {
             RoundedRectangle(cornerRadius: 14)
@@ -689,7 +868,7 @@ struct OnboardingSubscriptionsPage: View {
                         .font(.system(size: 20))
                         .foregroundColor(.white)
                 )
-                .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 4)
+                .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 4)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
@@ -713,8 +892,8 @@ struct OnboardingSubscriptionsPage: View {
         }
         .padding(16)
         .frame(maxWidth: cardMaxWidth)
+        .background(cardBackground ?? OnboardingDesign.glassBg)
         .background(.ultraThinMaterial)
-        .overlay(OnboardingDesign.glassBg.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
@@ -724,12 +903,16 @@ struct OnboardingSubscriptionsPage: View {
         .overlay(alignment: .topTrailing) {
             if let badge = badge, !badgeBottom {
                 badgeLabel(badge)
+                    .scaleEffect(badgeScale)
+                    .opacity(badgeOpacity)
                     .offset(x: 12, y: -10)
             }
         }
         .overlay(alignment: .bottomTrailing) {
             if let badge = badge, badgeBottom {
                 badgeLabel(badge)
+                    .scaleEffect(badgeScale)
+                    .opacity(badgeOpacity)
                     .offset(x: 12, y: 8)
             }
         }
@@ -743,7 +926,7 @@ struct OnboardingSubscriptionsPage: View {
             .padding(.vertical, 4)
             .background(OnboardingDesign.accentAmber)
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(color: OnboardingDesign.accentAmber.opacity(0.3), radius: 6, x: 0, y: 4)
+            .shadow(color: OnboardingDesign.accentAmber.opacity(0.3), radius: 12, x: 0, y: 4)
     }
 }
 
@@ -754,33 +937,38 @@ struct OnboardingMirrorPage: View {
     var onSkip: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                Text("Your money has patterns.")
-                    .font(.system(size: 38, weight: .light))
-                    .tracking(-1)
-                    .lineSpacing(2)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(OnboardingDesign.textPrimary)
+        OnboardingPageLayout {
+            VStack(spacing: 0) {
+                VStack(spacing: 8) {
+                    Text("Your money has patterns.")
+                        .font(.system(size: 38, weight: .light))
+                        .tracking(-1)
+                        .lineSpacing(2)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(OnboardingDesign.textPrimary)
 
-                Text("Money Mirror reflects your habits back to you — gently, honestly, and clearly.")
-                    .font(.system(size: 15))
-                    .lineSpacing(4)
-                    .foregroundColor(OnboardingDesign.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 300)
+                    Text("Money Mirror reflects your habits back to you — gently, honestly, and clearly.")
+                        .font(.system(size: 15))
+                        .lineSpacing(1.5)
+                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 300)
+                }
+                .padding(.bottom, 24)
+
+                mirrorGlassPanel
+                    .padding(.horizontal, 20)
+
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 40)
             .padding(.top, 60)
-            .padding(.bottom, 24)
-
-            mirrorGlassPanel
-                .padding(.horizontal, 20)
-
-            Spacer(minLength: 24)
-
-            VStack(spacing: 32) {
+            .frame(maxWidth: 400)
+            .fadeSlideIn()
+        } bottom: {
+            VStack(spacing: 0) {
                 OnboardingProgressDots(currentPage: 4)
+                    .padding(.bottom, 24)
+                    .fadeSlideIn()
 
                 VStack(spacing: 12) {
                     Button(action: onNext) {
@@ -790,21 +978,19 @@ struct OnboardingMirrorPage: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                     }
-                    .background(OnboardingDesign.textPrimary)
+                    .background(OnboardingDesign.accentGreen)
                     .clipShape(Capsule())
-                    .shadow(color: OnboardingDesign.textPrimary.opacity(0.1), radius: 10, x: 0, y: 10)
+                    .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
 
                     Button(action: onSkip) {
                         Text("Skip for now")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(OnboardingDesign.textSecondary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
+                            .frame(height: 44)
                     }
                 }
-                .padding(.horizontal, 20)
             }
-            .padding(.bottom, 40)
         }
     }
 
@@ -862,44 +1048,43 @@ struct OnboardingMirrorPage: View {
         .overlay(
             RoundedRectangle(cornerRadius: 2)
                 .fill(accentColor)
-                .frame(width: 4, maxHeight: .infinity),
+                .frame(width: 4)
+                .frame(maxHeight: .infinity),
             alignment: .leading
         )
     }
 
     private var sparklineView: some View {
         GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            let pts: [(CGFloat, CGFloat)] = [
-                (0, 0.83), (0.17, 0.33), (0.33, 0.75), (0.5, 0.25), (0.67, 0.75), (0.83, 0.5), (1, 0.67)
-            ]
-            ZStack(alignment: .topLeading) {
-                Path { p in
-                    guard pts.count >= 2 else { return }
-                    let xs = pts.map { $0.0 * w }
-                    let ys = pts.map { (1 - $0.1) * h }
-                    p.move(to: CGPoint(x: xs[0], y: ys[0]))
-                    for i in 1..<pts.count {
-                        p.addLine(to: CGPoint(x: xs[i], y: ys[i]))
-                    }
-                    p.addLine(to: CGPoint(x: xs.last!, y: h))
-                    p.addLine(to: CGPoint(x: xs[0], y: h))
-                    p.closeSubpath()
-                }
-                .fill(OnboardingDesign.accentGreen.opacity(0.05))
+            sparklinePaths(width: geo.size.width, height: geo.size.height)
+        }
+    }
 
-                Path { p in
-                    guard pts.count >= 2 else { return }
-                    let xs = pts.map { $0.0 * w }
-                    let ys = pts.map { (1 - $0.1) * h }
-                    p.move(to: CGPoint(x: xs[0], y: ys[0]))
-                    for i in 1..<pts.count {
-                        p.addLine(to: CGPoint(x: xs[i], y: ys[i]))
-                    }
-                }
-                .stroke(OnboardingDesign.accentGreen, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+    private func sparklinePaths(width w: CGFloat, height h: CGFloat) -> some View {
+        let sx = w / 300
+        let sy = h / 60
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: x * sx, y: y * sy)
+        }
+        return ZStack(alignment: .topLeading) {
+            Path { p in
+                p.move(to: pt(0, 50))
+                p.addQuadCurve(to: pt(100, 45), control: pt(50, 20))
+                p.addQuadCurve(to: pt(200, 15), control: pt(150, 70))
+                p.addQuadCurve(to: pt(300, 40), control: pt(250, -40))
+                p.addLine(to: pt(300, 60))
+                p.addLine(to: pt(0, 60))
+                p.closeSubpath()
             }
+            .fill(OnboardingDesign.accentGreen.opacity(0.05))
+
+            Path { p in
+                p.move(to: pt(0, 50))
+                p.addQuadCurve(to: pt(100, 45), control: pt(50, 20))
+                p.addQuadCurve(to: pt(200, 15), control: pt(150, 70))
+                p.addQuadCurve(to: pt(300, 40), control: pt(250, -40))
+            }
+            .stroke(OnboardingDesign.accentGreen, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
         }
     }
 }
@@ -963,7 +1148,10 @@ struct OnboardingGenericPage: View {
 
 // MARK: - Page 6: Airy Pro offer (subscribe / trial / maybe later)
 
+private let deviceIdKey = "airy_device_id"
+
 struct OnboardingProOfferPage: View {
+    @Environment(AuthStore.self) private var authStore
     var onFinish: () -> Void
 
     enum Plan: String, CaseIterable {
@@ -976,35 +1164,81 @@ struct OnboardingProOfferPage: View {
     @State private var isPurchasing = false
     @State private var isRestoring = false
     @State private var errorMessage: String?
-    @State private var haloRotation: Double = 0
 
     var body: some View {
-        ScrollView {
+        OnboardingPageLayout {
             VStack(spacing: 0) {
                 headerSection
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 16)
 
                 featuresCard
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 16)
 
                 pricingToggle
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 12)
 
-                ctaSection
-                    .padding(.horizontal, 24)
+                Text("No charge today · Cancel anytime")
+                    .font(.system(size: 13))
+                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .padding(.bottom, 4)
+
+                if let err = errorMessage {
+                    Text(err)
+                        .font(.system(size: 13))
+                        .foregroundColor(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 4)
+                }
+
+                HStack(spacing: 40) {
+                    Button("Restore Purchase") { Task { await restore() } }
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .disabled(isRestoring)
+                }
+                .padding(.bottom, 16)
+
+                Spacer(minLength: 0)
             }
-            .padding(.top, 40)
-            .padding(.bottom, 40)
+            .padding(.top, 24)
+            .frame(maxWidth: 400)
+            .fadeSlideIn()
+        } bottom: {
+            VStack(spacing: 0) {
+                OnboardingProgressDots(currentPage: 5)
+                    .padding(.bottom, 24)
+                    .fadeSlideIn()
+
+                VStack(spacing: 12) {
+                    Button {
+                        Task { await startTrialOrSubscribe() }
+                    } label: {
+                        Text("Start Free 7-Day Trial")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                    }
+                    .background(OnboardingDesign.accentGreen)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+                    .disabled(isPurchasing)
+                    .overlay {
+                        if isPurchasing {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                    }
+
+                    Button("Maybe later") { onFinish() }
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .frame(height: 44)
+                }
+            }
         }
-        .scrollIndicators(.hidden)
         .task { await loadProducts() }
-        .onAppear {
-            withAnimation(.linear(duration: 10).repeatForever(autoreverses: false)) {
-                haloRotation = 360
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .airyEntitlementsDidChange)) { _ in
             onFinish()
         }
@@ -1012,30 +1246,6 @@ struct OnboardingProOfferPage: View {
 
     private var headerSection: some View {
         VStack(spacing: 0) {
-            ZStack {
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 64, height: 64)
-                    .shadow(color: Color.white.opacity(0.8), radius: 15, x: 0, y: 0)
-                    .shadow(color: OnboardingDesign.accentAmber.opacity(0.2), radius: 30, x: 0, y: 0)
-
-                Circle()
-                    .stroke(Color.white.opacity(0.4), lineWidth: 2)
-                    .frame(width: 80, height: 80)
-                    .rotationEffect(.degrees(haloRotation))
-
-                Image(systemName: "cloud.fill")
-                    .font(.system(size: 32))
-                    .foregroundColor(OnboardingDesign.textPrimary)
-            }
-            .padding(.bottom, 16)
-
-            Text("AIRY PRO")
-                .font(.system(size: 10, weight: .bold))
-                .tracking(2)
-                .foregroundColor(OnboardingDesign.textTertiary)
-                .padding(.bottom, 8)
-
             Text("Think clearly\nabout money.")
                 .font(.system(size: 40, weight: .light))
                 .tracking(-1)
@@ -1129,15 +1339,18 @@ struct OnboardingProOfferPage: View {
 
     private var pricingToggle: some View {
         VStack(spacing: 10) {
-            planOption(plan: .monthly, label: "Monthly", price: monthlyPrice)
-            planOption(plan: .yearly, label: "Yearly", price: yearlyPrice, badge: "SAVE 40%")
+            planOption(plan: .monthly, label: "Monthly", price: monthlyPrice, productId: StoreKitService.productId)
+            planOption(plan: .yearly, label: "Yearly", price: yearlyPrice, badge: "SAVE 40%", productId: StoreKitService.productIdYearly)
         }
     }
 
-    private func planOption(plan: Plan, label: String, price: String, badge: String? = nil) -> some View {
+    private func planOption(plan: Plan, label: String, price: String, badge: String? = nil, productId: String) -> some View {
         let isSelected = selectedPlan == plan
         return Button {
-            selectedPlan = plan
+            withAnimation(.easeOut(duration: 0.2)) {
+                selectedPlan = plan
+            }
+            Task { await purchase(productId: productId) }
         } label: {
             HStack {
                 HStack(spacing: 8) {
@@ -1161,6 +1374,8 @@ struct OnboardingProOfferPage: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(isSelected ? Color.white.opacity(0.6) : Color.white.opacity(0.3))
@@ -1169,7 +1384,8 @@ struct OnboardingProOfferPage: View {
                 .stroke(isSelected ? OnboardingDesign.accentGreen : Color.white.opacity(0.5), lineWidth: isSelected ? 1.5 : 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .shadow(color: isSelected ? OnboardingDesign.accentGreen.opacity(0.2) : .clear, radius: 8, x: 0, y: 0)
+        .shadow(color: isSelected ? OnboardingDesign.accentGreen.opacity(0.2) : .clear, radius: 15, x: 0, y: 0)
+        .disabled(isPurchasing)
     }
 
     private var monthlyPrice: String {
@@ -1180,65 +1396,12 @@ struct OnboardingProOfferPage: View {
         products.first(where: { $0.id == StoreKitService.productIdYearly })?.displayPrice ?? "$49.99"
     }
 
-    private var ctaSection: some View {
-        VStack(spacing: 0) {
-            Button {
-                Task { await startTrialOrSubscribe() }
-            } label: {
-                Text("Start Free 7-Day Trial")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-            }
-            .background(OnboardingDesign.accentGreen)
-            .clipShape(Capsule())
-            .shadow(color: OnboardingDesign.accentGreen.opacity(0.3), radius: 10, x: 0, y: 8)
-            .disabled(isPurchasing)
-            .overlay {
-                if isPurchasing {
-                    ProgressView()
-                        .tint(.white)
-                }
-            }
-            .padding(.bottom, 12)
-
-            Text("No charge today · Cancel anytime")
-                .font(.system(size: 12))
-                .foregroundColor(OnboardingDesign.textTertiary)
-                .padding(.bottom, 24)
-
-            if let err = errorMessage {
-                Text(err)
-                    .font(.system(size: 13))
-                    .foregroundColor(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 8)
-            }
-
-            HStack(spacing: 40) {
-                Button("Maybe later") {
-                    onFinish()
-                }
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(OnboardingDesign.textTertiary)
-
-                Button("Restore Purchase") {
-                    Task { await restore() }
-                }
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(OnboardingDesign.textTertiary)
-                .disabled(isRestoring)
-            }
-        }
-    }
-
     private func loadProducts() async {
         guard #available(iOS 15.0, *) else { return }
         do {
             let list = try await StoreKitService.shared.loadAllProProducts()
             await MainActor.run {
-                products = list.map { StoreKitProductInfo(id: $0.id, displayPrice: $0.displayPrice.formatted()) }
+                products = list.map { StoreKitProductInfo(id: $0.id, displayPrice: String(describing: $0.displayPrice)) }
             }
         } catch {
             await MainActor.run {
@@ -1247,14 +1410,18 @@ struct OnboardingProOfferPage: View {
         }
     }
 
+    /// Start Free Trial: 7 days free, then monthly subscription ($6.99/mo).
     private func startTrialOrSubscribe() async {
+        await purchase(productId: StoreKitService.productId)
+    }
+
+    private func purchase(productId: String) async {
         guard #available(iOS 15.0, *) else { onFinish(); return }
         isPurchasing = true
         errorMessage = nil
         defer { Task { @MainActor in isPurchasing = false } }
         do {
             let list = try await StoreKitService.shared.loadAllProProducts()
-            let productId = selectedPlan == .yearly ? StoreKitService.productIdYearly : StoreKitService.productId
             guard let product = list.first(where: { $0.id == productId }) else {
                 await MainActor.run { errorMessage = "Product not available" }
                 return
@@ -1262,6 +1429,7 @@ struct OnboardingProOfferPage: View {
             guard let transaction = try await StoreKitService.shared.purchase(product) else {
                 return
             }
+            await performAutoLogin()
             try await StoreKitService.shared.syncToBackend(
                 productId: transaction.productID,
                 transactionId: String(transaction.id),
@@ -1280,11 +1448,32 @@ struct OnboardingProOfferPage: View {
         defer { Task { @MainActor in isRestoring = false } }
         do {
             try await StoreKitService.shared.restore()
+            await performAutoLogin()
             await MainActor.run { onFinish() }
         } catch StoreKitError.noPurchasesFound {
             await MainActor.run { errorMessage = (StoreKitError.noPurchasesFound as LocalizedError).errorDescription }
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }
+        }
+    }
+
+    /// Auto-login via device registration after purchase/trial. Sets auth token so user goes to MainTabView.
+    private func performAutoLogin() async {
+        let id: String
+        if let stored = UserDefaults.standard.string(forKey: deviceIdKey) {
+            id = stored
+        } else {
+            id = "device-\(UUID().uuidString.prefix(12))"
+            UserDefaults.standard.set(id, forKey: deviceIdKey)
+        }
+        do {
+            let res = try await APIClient.shared.registerOrLogin(externalId: id, email: nil)
+            await APIClient.shared.setAuthToken(res.token)
+            await MainActor.run {
+                authStore.setAuth(token: res.token, userId: res.user.id)
+            }
+        } catch {
+            // Continue to onFinish; user will see login page if auth fails
         }
     }
 }
@@ -1338,4 +1527,5 @@ private struct StoreKitProductInfo: Identifiable {
         OnboardingGradientBackground()
         OnboardingProOfferPage(onFinish: {})
     }
+    .environment(AuthStore())
 }
