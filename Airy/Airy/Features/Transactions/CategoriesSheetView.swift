@@ -36,76 +36,58 @@ struct CategoriesSheetView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.2)
-                .ignoresSafeArea()
-                .onTapGesture { dismiss() }
-
-            VStack(spacing: 0) {
-                if showHandle {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.black.opacity(0.08))
-                        .frame(width: 36, height: 5)
-                        .padding(.top, 16)
-                        .padding(.bottom, 20)
-                } else {
-                    Spacer().frame(height: 16)
-                }
-
-                VStack(spacing: 0) {
-                    header
-                    searchBar
-                    categoryList
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
-                .background(
-                    ZStack {
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 40,
-                            bottomLeadingRadius: 0,
-                            bottomTrailingRadius: 0,
-                            topTrailingRadius: 40
-                        )
-                        .fill(.ultraThinMaterial)
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 40,
-                            bottomLeadingRadius: 0,
-                            bottomTrailingRadius: 0,
-                            topTrailingRadius: 40
-                        )
-                        .fill(Color(red: 0.956, green: 0.969, blue: 0.961).opacity(0.95))
-                    }
-                )
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 40,
-                        bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 40
-                    )
-                )
-                .overlay(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 40,
-                        bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 40
-                    )
-                    .stroke(Color.white.opacity(0.7), lineWidth: 1)
-                )
-                .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.1), radius: 40, x: 0, y: -8)
-                .onTapGesture { }
+        VStack(spacing: 0) {
+            if showHandle {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.black.opacity(0.08))
+                    .frame(width: 36, height: 5)
+                    .padding(.top, 16)
+                    .padding(.bottom, 20)
+            } else {
+                Spacer().frame(height: 24)
             }
+            header
+            searchBar
+            categoryList
         }
+        .padding(.horizontal, 20)
+        .padding(.top, showHandle ? 0 : 8)
+        .padding(.bottom, 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 40,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 40
+                )
+                .fill(Color(red: 0.956, green: 0.969, blue: 0.961))
+            )
+            .clipShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 40,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 40
+                )
+            )
+            .overlay(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 40,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 40
+                )
+                .stroke(Color.white.opacity(0.7), lineWidth: 1)
+            )
+            .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 24, x: 0, y: -4)
+        .ignoresSafeArea(edges: .bottom)
         .onAppear {
             CategoryStore.ensureDefaults()
             categories = CategoryStore.load()
             selectedCategoryId = initialCategoryId
             selectedSubcategoryId = initialSubcategoryId
-            if let catId = initialCategoryId, !SubcategoryStore.forParent(catId).isEmpty {
-                expandedCategoryIds.insert(catId)
-            }
+            expandedCategoryIds = []
         }
         .sheet(isPresented: $showNewCategory) {
             NewCategorySheetView(
@@ -203,14 +185,79 @@ struct CategoriesSheetView: View {
     }
 
     private var categoryList: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                ForEach(filteredCategories) { cat in
-                    categoryItem(cat)
+        Group {
+            if showEditMode {
+                List {
+                    ForEach(categories) { cat in
+                        editModeCategoryRow(cat)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if cat.id != "other" {
+                                    Button(role: .destructive) {
+                                        deleteCategory(cat)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                            }
+                    }
+                    .onMove { from, to in
+                        categories.move(fromOffsets: from, toOffset: to)
+                        CategoryStore.reorder(categories)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.editMode, .constant(.active))
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(filteredCategories) { cat in
+                            categoryItem(cat)
+                        }
+                    }
+                    .padding(.bottom, 40)
                 }
             }
-            .padding(.bottom, 40)
         }
+        .frame(maxHeight: .infinity)
+    }
+
+    private func editModeCategoryRow(_ cat: Category) -> some View {
+        let isAccentBlueCategory = cat.colorHex == CategoryStore.defaultColorBlue
+        return HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isAccentBlueCategory ? OnboardingDesign.accentBlue.opacity(0.08) : Self.iconBoxBg)
+                    .frame(width: 40, height: 40)
+                Image(systemName: iconName(for: cat))
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(cat.color)
+            }
+            Text(cat.name)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(OnboardingDesign.textPrimary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.white.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.white.opacity(0.6), lineWidth: 1)
+        )
+    }
+
+    private func deleteCategory(_ cat: Category) {
+        guard cat.id != "other" else { return }
+        LocalDataStore.shared.reassignTransactionsToOther(fromCategory: cat.id)
+        CategoryStore.delete(id: cat.id)
+        categories = CategoryStore.load()
     }
 
     private static let iconBoxBg = Color(red: 0.956, green: 0.969, blue: 0.961)
@@ -256,21 +303,23 @@ struct CategoriesSheetView: View {
                         }
                         .padding(.trailing, 4)
                     }
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(isExpanded ? OnboardingDesign.accentBlue : cat.color)
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            let _ = withAnimation(.easeInOut(duration: 0.3)) {
-                                if isExpanded {
-                                    expandedCategoryIds.remove(cat.id)
-                                } else {
-                                    expandedCategoryIds.insert(cat.id)
+                    if hasSubcategories {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(isExpanded ? OnboardingDesign.accentBlue : cat.color)
+                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                let _ = withAnimation(.easeInOut(duration: 0.3)) {
+                                    if isExpanded {
+                                        expandedCategoryIds.remove(cat.id)
+                                    } else {
+                                        expandedCategoryIds.insert(cat.id)
+                                    }
                                 }
                             }
-                        }
+                    }
                 }
                 .padding(4)
                 .contentShape(Rectangle())
@@ -352,6 +401,7 @@ struct CategoriesSheetView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }

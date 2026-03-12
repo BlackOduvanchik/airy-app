@@ -86,12 +86,14 @@ struct SubscriptionsView: View {
             } else {
                 subsGlassPanel {
                     VStack(spacing: 8) {
-                        (Text(formatCurrencyWhole(viewModel.totalMonthly))
-                            .font(.system(size: 32, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textPrimary)
-                        + Text("/mo")
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundColor(OnboardingDesign.textSecondary))
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text(formatCurrencyWhole(viewModel.totalMonthly))
+                                .font(.system(size: 32, weight: .medium))
+                                .foregroundColor(OnboardingDesign.textPrimary)
+                            Text("/mo")
+                                .font(.system(size: 16, weight: .regular))
+                                .foregroundColor(OnboardingDesign.textSecondary)
+                        }
                         deltaChip(text: "+$12 vs last month")
                         Text("\(viewModel.subscriptions.count) active subscriptions")
                             .font(.system(size: 14))

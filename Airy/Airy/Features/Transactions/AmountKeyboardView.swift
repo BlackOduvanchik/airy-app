@@ -223,7 +223,8 @@ struct AmountKeyboardView: View {
         VStack(spacing: 0) {
             RoundedRectangle(cornerRadius: 3)
                 .fill(Color.black.opacity(0.08))
-                .frame(width: 36, height: 4)
+                .frame(width: 36, height: 5)
+                .padding(.top, 16)
                 .padding(.bottom, 20)
             HStack {
                 Text("Currency")

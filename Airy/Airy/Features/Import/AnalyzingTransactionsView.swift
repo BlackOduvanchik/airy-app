@@ -18,7 +18,8 @@ struct AnalyzingTransactionsView: View {
     @State private var isProcessing = true
     @State private var statusPhraseIndex = 0
     @State private var visibleItemCount = 0
-    @State private var thumbHighlightIndex = 0
+    @State private var thumbOrder: [Int] = [0, 1, 2]
+    @State private var thumbSwapPairIndex = 0
 
     private let statusPhrases = [
         "Reading amounts...",
@@ -67,32 +68,53 @@ struct AnalyzingTransactionsView: View {
             }
         }
         .onReceive(Timer.publish(every: 2.5, on: .main, in: .common).autoconnect()) { _ in
-            if isProcessing {
-                statusPhraseIndex = (statusPhraseIndex + 1) % statusPhrases.count
-            }
+            statusPhraseIndex = (statusPhraseIndex + 1) % statusPhrases.count
         }
-        .onReceive(Timer.publish(every: 1.2, on: .main, in: .common).autoconnect()) { _ in
-            if isProcessing {
-                thumbHighlightIndex = (thumbHighlightIndex + 1) % 3
-            }
+        .onReceive(Timer.publish(every: 2.4, on: .main, in: .common).autoconnect()) { _ in
+            performThumbSwap()
         }
     }
 
+    private static let thumbWidth: CGFloat = 60
+    private static let thumbHeight: CGFloat = 80
+    private static let thumbGap: CGFloat = 12
+    private static let thumbSwapPairs: [(Int, Int)] = [(0, 1), (1, 2), (0, 2), (2, 1), (0, 2), (1, 0)]
+
     private var uploadPreviews: some View {
-        HStack(spacing: 12) {
-            ForEach(0..<3, id: \.self) { i in
-                thumbnailBoxPlaceholder(isHighlighted: i == thumbHighlightIndex)
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            ZStack(alignment: .leading) {
+                ForEach(0..<3, id: \.self) { cardId in
+                    let slot = thumbOrder.firstIndex(of: cardId) ?? cardId
+                    let x = CGFloat(slot) * (Self.thumbWidth + Self.thumbGap)
+                    thumbnailBoxPlaceholder(opacity: slot == 1 ? 1 : (slot == 0 ? 0.9 : 0.6))
+                        .offset(x: x)
+                        .animation(.easeInOut(duration: 0.7), value: thumbOrder)
+                }
             }
+            .frame(width: Self.thumbWidth * 3 + Self.thumbGap * 2, height: Self.thumbHeight)
+            Spacer(minLength: 0)
         }
         .padding(.top, 10)
         .padding(.bottom, 20)
     }
 
-    private func thumbnailBoxPlaceholder(isHighlighted: Bool) -> some View {
+    private func performThumbSwap() {
+        let (a, b) = Self.thumbSwapPairs[thumbSwapPairIndex % Self.thumbSwapPairs.count]
+        thumbSwapPairIndex += 1
+        let slotA = thumbOrder.firstIndex(of: a)!
+        let slotB = thumbOrder.firstIndex(of: b)!
+        withAnimation(.easeInOut(duration: 0.7)) {
+            thumbOrder[slotA] = b
+            thumbOrder[slotB] = a
+        }
+    }
+
+    private func thumbnailBoxPlaceholder(opacity: Double) -> some View {
         RoundedRectangle(cornerRadius: 12)
             .fill(
                 LinearGradient(
-                    colors: [Color.white.opacity(isHighlighted ? 0.9 : 0.6), Color.white.opacity(isHighlighted ? 0.4 : 0.2)],
+                    colors: [Color.white.opacity(opacity * 0.9), Color.white.opacity(opacity * 0.4)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -106,10 +128,7 @@ struct AnalyzingTransactionsView: View {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
             )
-            .frame(width: 60, height: 80)
-            .opacity(isHighlighted ? 1 : 0.6)
-            .scaleEffect(isHighlighted ? 1.02 : 1)
-            .animation(.easeInOut(duration: 0.4), value: thumbHighlightIndex)
+            .frame(width: Self.thumbWidth, height: Self.thumbHeight)
     }
 
     private var processingCenter: some View {
@@ -133,38 +152,15 @@ struct AnalyzingTransactionsView: View {
                         value: isProcessing
                     )
 
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [Color.white.opacity(0.9), Color.white.opacity(0.2)],
-                                center: .topLeading,
-                                startRadius: 0,
-                                endRadius: 45
-                            )
-                        )
-                        .frame(width: 80, height: 80)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.5), lineWidth: 1)
-                        )
-                        .shadow(color: .black.opacity(0.05), radius: 24, x: 0, y: 8)
-                    Image(systemName: "cloud.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(OnboardingDesign.textPrimary)
-                }
-                .offset(y: isProcessing ? -12 : 0)
-                .animation(
-                    isProcessing ? .easeInOut(duration: 4).repeatForever(autoreverses: true) : .default,
-                    value: isProcessing
-                )
+                CloudFloatView()
             }
 
-            Text(statusPhrases[statusPhraseIndex])
+            Text(isProcessing ? statusPhrases[statusPhraseIndex] : "Ready")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundColor(OnboardingDesign.textSecondary)
                 .frame(height: 20)
                 .animation(.easeInOut(duration: 0.3), value: statusPhraseIndex)
+                .animation(.easeInOut(duration: 0.2), value: isProcessing)
         }
         .padding(.vertical, 20)
     }
@@ -175,7 +171,7 @@ struct AnalyzingTransactionsView: View {
             progressLine
             stepView(label: "Extract", isCompleted: !isProcessing, isActive: isProcessing)
             progressLine
-            stepView(label: "Review", isCompleted: !isProcessing && !extractedItems.isEmpty, isActive: false)
+            stepView(label: "Review", isCompleted: false, isActive: false)
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 24)
@@ -219,7 +215,7 @@ struct AnalyzingTransactionsView: View {
                     ForEach(Array(extractedItems.prefix(visibleItemCount).enumerated()), id: \.offset) { _, item in
                         extractionRow(item: item)
                             .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .top)),
+                                insertion: .opacity.combined(with: .scale(scale: 0.92)).combined(with: .move(edge: .top)),
                                 removal: .opacity
                             ))
                     }
@@ -242,7 +238,8 @@ struct AnalyzingTransactionsView: View {
             }
             .frame(maxHeight: 320)
         }
-        .padding(20)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 20)
         .background(
             RoundedRectangle(cornerRadius: 28)
                 .fill(OnboardingDesign.glassBg)
@@ -325,10 +322,10 @@ struct AnalyzingTransactionsView: View {
     private func revealItemsStaggered() {
         Task { @MainActor in
             for i in 0..<extractedItems.count {
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
                     visibleItemCount = i + 1
                 }
-                try? await Task.sleep(nanoseconds: 80_000_000)
+                try? await Task.sleep(nanoseconds: 120_000_000)
             }
         }
     }
@@ -362,6 +359,39 @@ struct AnalyzingTransactionsView: View {
     }
 }
 
+private struct CloudFloatView: View {
+    @State private var offset: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.9), Color.white.opacity(0.2)],
+                        center: .topLeading,
+                        startRadius: 0,
+                        endRadius: 45
+                    )
+                )
+                .frame(width: 80, height: 80)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.05), radius: 24, x: 0, y: 8)
+            Image(systemName: "cloud.fill")
+                .font(.system(size: 40))
+                .foregroundColor(OnboardingDesign.textPrimary)
+        }
+        .offset(y: offset)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) {
+                offset = -12
+            }
+        }
+    }
+}
+
 private struct ShimmerRowView: View {
     @State private var opacity: Double = 0.3
 
@@ -371,9 +401,15 @@ private struct ShimmerRowView: View {
                 .fill(Color.white.opacity(opacity))
                 .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 6) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(opacity))
-                    .frame(width: 120, height: 14)
+                HStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(opacity))
+                        .frame(width: 120, height: 14)
+                    Spacer()
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(opacity))
+                        .frame(width: 40, height: 14)
+                }
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color.white.opacity(opacity * 0.7))
                     .frame(width: 60, height: 10)

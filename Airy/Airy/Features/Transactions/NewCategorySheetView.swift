@@ -8,14 +8,20 @@
 import SwiftUI
 
 private let designIconOptions: [String] = [
-    "creditcard", "dollarsign", "face.smiling", "briefcase",
-    "shield.fill", "square.grid.3x3", "heart.fill", "bolt",
-    "clock", "archivebox.fill", "cloud", "gift",
+    "creditcard.fill", "dollarsign", "face.smiling", "briefcase.fill",
+    "shield.fill", "square.grid.3x3", "heart.fill", "bolt.fill",
+    "clock.fill", "archivebox.fill", "cloud.fill", "gift.fill",
+    "cart.fill", "car.fill", "house.fill", "bag.fill",
+    "star.fill", "flag.fill", "book.fill", "gamecontroller.fill",
+    "tv.fill", "phone.fill", "envelope.fill", "airplane",
+    "cup.and.saucer.fill", "fork.knife", "leaf.fill", "flame.fill",
 ]
 
 private let designColors: [String] = [
     "#67A082", "#7B9DAB", "#C4956A", "#E07A7A",
-    "#9B7EC8", "#E8A838", "#5E7A6B",
+    "#9B7EC8", "#E8A838", "#5E7A6B", "#4A90A4",
+    "#6B9B7A", "#B87D5B", "#D4A574", "#8B7EC8",
+    "#5B8A9E", "#E07A5F", "#81B29A", "#3D5A80",
 ]
 
 struct NewCategorySheetView: View {
@@ -24,7 +30,7 @@ struct NewCategorySheetView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var shortDescription = ""
-    @State private var selectedIcon = "creditcard"
+    @State private var selectedIcon = "creditcard.fill"
     @State private var selectedColorHex = "#67A082"
     @State private var parentCategoryId: String? = nil
     @State private var showParentPicker = false
@@ -43,7 +49,7 @@ struct NewCategorySheetView: View {
         VStack(spacing: 0) {
             handleBar
             header
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     sectionLabel("Name")
                     inputField(placeholder: "e.g. Subscriptions", text: $name, field: .name)
@@ -67,9 +73,11 @@ struct NewCategorySheetView: View {
 
                     createButton
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 40)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(sheetBackground)
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 40, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 40))
@@ -221,7 +229,7 @@ struct NewCategorySheetView: View {
     }
 
     private var colorRow: some View {
-        HStack {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 8), spacing: 12) {
             ForEach(designColors, id: \.self) { hex in
                 let isSelected = selectedColorHex == hex
                 Button {
@@ -237,10 +245,10 @@ struct NewCategorySheetView: View {
                                 .frame(width: 40, height: 40)
                         }
                     }
+                    .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
             }
-            Spacer()
         }
         .padding(4)
         .padding(.bottom, 22)
@@ -335,7 +343,7 @@ private struct ParentCategoryPickerSheet: View {
                     .fill(Color.black.opacity(0.08))
                     .frame(width: 36, height: 5)
                     .padding(.top, 16)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 20)
 
                 HStack {
                     Text("Parent Category")
@@ -444,6 +452,7 @@ private struct ParentCategoryPickerSheet: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 18))
             .shadow(color: isSelected ? Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.06) : .clear, radius: 8, x: 0, y: 2)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

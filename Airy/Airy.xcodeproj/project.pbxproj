@@ -44,15 +44,14 @@
 		B00100000000000000000025 /* Subcategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000025 /* Subcategory.swift */; };
 		B00100000000000000000026 /* NewSubcategorySheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000026 /* NewSubcategorySheetView.swift */; };
 		B00100000000000000000027 /* CategoriesSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000027 /* CategoriesSheetView.swift */; };
-		B0010000000000000000002C /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002C /* Category.swift */; };
-		B0010000000000000000002D /* NewCategorySheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002D /* NewCategorySheetView.swift */; };
 		B00100000000000000000028 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000028 /* KeychainHelper.swift */; };
 		B00100000000000000000029 /* LocalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000029 /* LocalModels.swift */; };
 		B0010000000000000000002A /* LocalDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002A /* LocalDataStore.swift */; };
 		B0010000000000000000002B /* LocalOCRParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002B /* LocalOCRParser.swift */; };
+		B0010000000000000000002C /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002C /* Category.swift */; };
+		B0010000000000000000002D /* NewCategorySheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002D /* NewCategorySheetView.swift */; };
 		B0010000000000000000002E /* GalleryPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002E /* GalleryPickerView.swift */; };
 		B0010000000000000000002F /* AnalyzingTransactionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002F /* AnalyzingTransactionsView.swift */; };
-		B00100000000000000000030 /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000030 /* DebugLog.swift */; };
 		B00100000000000000000031 /* MerchantCorrectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000031 /* MerchantCorrectionStore.swift */; };
 		B00100000000000000000032 /* ParsingRulesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000032 /* ParsingRulesStore.swift */; };
 		B00100000000000000000033 /* GPTRulesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000033 /* GPTRulesService.swift */; };
@@ -64,6 +63,13 @@
 		B00100000000000000000039 /* ExtractionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000039 /* ExtractionResult.swift */; };
 		B0010000000000000000003A /* ReviewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000003A /* ReviewModels.swift */; };
 		B0010000000000000000003B /* TransactionReviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000003B /* TransactionReviewCard.swift */; };
+		B0010000000000000000003C /* BottomNavBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000003C /* BottomNavBarView.swift */; };
+		B0010000000000000000003D /* CalendarPickerSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000003D /* CalendarPickerSheetView.swift */; };
+		B0010000000000000000003E /* CategoryBreakdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000003E /* CategoryBreakdownView.swift */; };
+		B0010000000000000000003F /* CategoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000003F /* CategoryDetailView.swift */; };
+		B00100000000000000000040 /* TimePickerPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000040 /* TimePickerPopoverView.swift */; };
+		B00100000000000000000041 /* DatePickerPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000041 /* DatePickerPopoverView.swift */; };
+		B00100000000000000000042 /* ScrollViewNoBounce.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000042 /* ScrollViewNoBounce.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -106,15 +112,14 @@
 		F00100000000000000000025 /* Subcategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Subcategory.swift; sourceTree = "<group>"; };
 		F00100000000000000000026 /* NewSubcategorySheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSubcategorySheetView.swift; sourceTree = "<group>"; };
 		F00100000000000000000027 /* CategoriesSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesSheetView.swift; sourceTree = "<group>"; };
-		F0010000000000000000002C /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
-		F0010000000000000000002D /* NewCategorySheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewCategorySheetView.swift; sourceTree = "<group>"; };
 		F00100000000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		F00100000000000000000029 /* LocalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModels.swift; sourceTree = "<group>"; };
 		F0010000000000000000002A /* LocalDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDataStore.swift; sourceTree = "<group>"; };
 		F0010000000000000000002B /* LocalOCRParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalOCRParser.swift; sourceTree = "<group>"; };
+		F0010000000000000000002C /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
+		F0010000000000000000002D /* NewCategorySheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewCategorySheetView.swift; sourceTree = "<group>"; };
 		F0010000000000000000002E /* GalleryPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryPickerView.swift; sourceTree = "<group>"; };
 		F0010000000000000000002F /* AnalyzingTransactionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyzingTransactionsView.swift; sourceTree = "<group>"; };
-		F00100000000000000000030 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		F00100000000000000000031 /* MerchantCorrectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantCorrectionStore.swift; sourceTree = "<group>"; };
 		F00100000000000000000032 /* ParsingRulesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParsingRulesStore.swift; sourceTree = "<group>"; };
 		F00100000000000000000033 /* GPTRulesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTRulesService.swift; sourceTree = "<group>"; };
@@ -126,6 +131,13 @@
 		F00100000000000000000039 /* ExtractionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionResult.swift; sourceTree = "<group>"; };
 		F0010000000000000000003A /* ReviewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewModels.swift; sourceTree = "<group>"; };
 		F0010000000000000000003B /* TransactionReviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionReviewCard.swift; sourceTree = "<group>"; };
+		F0010000000000000000003C /* BottomNavBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomNavBarView.swift; sourceTree = "<group>"; };
+		F0010000000000000000003D /* CalendarPickerSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarPickerSheetView.swift; sourceTree = "<group>"; };
+		F0010000000000000000003E /* CategoryBreakdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryBreakdownView.swift; sourceTree = "<group>"; };
+		F0010000000000000000003F /* CategoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryDetailView.swift; sourceTree = "<group>"; };
+		F00100000000000000000040 /* TimePickerPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimePickerPopoverView.swift; sourceTree = "<group>"; };
+		F00100000000000000000041 /* DatePickerPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatePickerPopoverView.swift; sourceTree = "<group>"; };
+		F00100000000000000000042 /* ScrollViewNoBounce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollViewNoBounce.swift; sourceTree = "<group>"; };
 		TARG00000000000000000001 /* Airy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Airy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -190,18 +202,6 @@
 			path = Core;
 			sourceTree = "<group>";
 		};
-		GRP00000000000000000015 /* Storage */ = {
-			isa = PBXGroup;
-			children = (
-				F00100000000000000000029 /* LocalModels.swift */,
-				F00100000000000000000030 /* DebugLog.swift */,
-				F00100000000000000000031 /* MerchantCorrectionStore.swift */,
-				F00100000000000000000032 /* ParsingRulesStore.swift */,
-				F0010000000000000000002A /* LocalDataStore.swift */,
-			);
-			path = Storage;
-			sourceTree = "<group>";
-		};
 		GRP00000000000000000007 /* Features */ = {
 			isa = PBXGroup;
 			children = (
@@ -221,8 +221,17 @@
 			isa = PBXGroup;
 			children = (
 				GRP00000000000000000014 /* Components */,
+				GRP00000000000000000017 /* Utilities */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		GRP00000000000000000017 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				F00100000000000000000042 /* ScrollViewNoBounce.swift */,
+			);
+			path = Utilities;
 			sourceTree = "<group>";
 		};
 		GRP00000000000000000009 /* Services */ = {
@@ -259,6 +268,8 @@
 			children = (
 				F00100000000000000000006 /* DashboardView.swift */,
 				F00100000000000000000007 /* DashboardViewModel.swift */,
+				F0010000000000000000003E /* CategoryBreakdownView.swift */,
+				F0010000000000000000003F /* CategoryDetailView.swift */,
 			);
 			path = Dashboard;
 			sourceTree = "<group>";
@@ -276,19 +287,6 @@
 				F0010000000000000000000B /* PendingReviewViewModel.swift */,
 			);
 			path = Import;
-			sourceTree = "<group>";
-		};
-		GRP00000000000000000016 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				F00100000000000000000035 /* ScreenType.swift */,
-				F00100000000000000000036 /* TransactionStatus.swift */,
-				F00100000000000000000037 /* TransactionType.swift */,
-				F00100000000000000000038 /* CandidateTransaction.swift */,
-				F00100000000000000000039 /* ExtractionResult.swift */,
-				F0010000000000000000003A /* ReviewModels.swift */,
-			);
-			path = Models;
 			sourceTree = "<group>";
 		};
 		GRP0000000000000000000E /* Insights */ = {
@@ -342,12 +340,15 @@
 			children = (
 				F00100000000000000000015 /* AddTransactionView.swift */,
 				F00100000000000000000016 /* AddTransactionViewModel.swift */,
+				F00100000000000000000040 /* TimePickerPopoverView.swift */,
+				F00100000000000000000041 /* DatePickerPopoverView.swift */,
 				F00100000000000000000023 /* AmountKeyboardView.swift */,
 				F00100000000000000000017 /* TransactionDetailView.swift */,
 				F00100000000000000000018 /* TransactionListView.swift */,
 				F00100000000000000000019 /* TransactionListViewModel.swift */,
 				F00100000000000000000021 /* MonthDetailView.swift */,
 				F00100000000000000000022 /* MonthDetailViewModel.swift */,
+				F0010000000000000000003D /* CalendarPickerSheetView.swift */,
 				F00100000000000000000025 /* Subcategory.swift */,
 				F00100000000000000000026 /* NewSubcategorySheetView.swift */,
 				F00100000000000000000027 /* CategoriesSheetView.swift */,
@@ -361,9 +362,34 @@
 			isa = PBXGroup;
 			children = (
 				F00100000000000000000024 /* AddActionSheetView.swift */,
+				F0010000000000000000003C /* BottomNavBarView.swift */,
 				F0010000000000000000001A /* MainTabView.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		GRP00000000000000000015 /* Storage */ = {
+			isa = PBXGroup;
+			children = (
+				F00100000000000000000029 /* LocalModels.swift */,
+				F00100000000000000000031 /* MerchantCorrectionStore.swift */,
+				F00100000000000000000032 /* ParsingRulesStore.swift */,
+				F0010000000000000000002A /* LocalDataStore.swift */,
+			);
+			path = Storage;
+			sourceTree = "<group>";
+		};
+		GRP00000000000000000016 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				F00100000000000000000035 /* ScreenType.swift */,
+				F00100000000000000000036 /* TransactionStatus.swift */,
+				F00100000000000000000037 /* TransactionType.swift */,
+				F00100000000000000000038 /* CandidateTransaction.swift */,
+				F00100000000000000000039 /* ExtractionResult.swift */,
+				F0010000000000000000003A /* ReviewModels.swift */,
+			);
+			path = Models;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -437,6 +463,8 @@
 				B00100000000000000000005 /* AuthStore.swift in Sources */,
 				B00100000000000000000006 /* DashboardView.swift in Sources */,
 				B00100000000000000000007 /* DashboardViewModel.swift in Sources */,
+				B0010000000000000000003E /* CategoryBreakdownView.swift in Sources */,
+				B0010000000000000000003F /* CategoryDetailView.swift in Sources */,
 				B00100000000000000000008 /* ImportView.swift in Sources */,
 				B00100000000000000000009 /* ImportViewModel.swift in Sources */,
 				B0010000000000000000000A /* PendingReviewView.swift in Sources */,
@@ -452,11 +480,15 @@
 				B00100000000000000000014 /* SubscriptionsViewModel.swift in Sources */,
 				B00100000000000000000015 /* AddTransactionView.swift in Sources */,
 				B00100000000000000000016 /* AddTransactionViewModel.swift in Sources */,
+				B00100000000000000000040 /* TimePickerPopoverView.swift in Sources */,
+				B00100000000000000000041 /* DatePickerPopoverView.swift in Sources */,
+				B00100000000000000000042 /* ScrollViewNoBounce.swift in Sources */,
 				B00100000000000000000017 /* TransactionDetailView.swift in Sources */,
 				B00100000000000000000018 /* TransactionListView.swift in Sources */,
 				B00100000000000000000019 /* TransactionListViewModel.swift in Sources */,
 				B00100000000000000000021 /* MonthDetailView.swift in Sources */,
 				B00100000000000000000022 /* MonthDetailViewModel.swift in Sources */,
+				B0010000000000000000003D /* CalendarPickerSheetView.swift in Sources */,
 				B00100000000000000000023 /* AmountKeyboardView.swift in Sources */,
 				B0010000000000000000001A /* MainTabView.swift in Sources */,
 				B00100000000000000000024 /* AddActionSheetView.swift in Sources */,
@@ -474,7 +506,6 @@
 				B0010000000000000000002B /* LocalOCRParser.swift in Sources */,
 				B0010000000000000000002E /* GalleryPickerView.swift in Sources */,
 				B0010000000000000000002F /* AnalyzingTransactionsView.swift in Sources */,
-				B00100000000000000000030 /* DebugLog.swift in Sources */,
 				B00100000000000000000031 /* MerchantCorrectionStore.swift in Sources */,
 				B00100000000000000000032 /* ParsingRulesStore.swift in Sources */,
 				B00100000000000000000033 /* GPTRulesService.swift in Sources */,
@@ -486,6 +517,7 @@
 				B00100000000000000000039 /* ExtractionResult.swift in Sources */,
 				B0010000000000000000003A /* ReviewModels.swift in Sources */,
 				B0010000000000000000003B /* TransactionReviewCard.swift in Sources */,
+				B0010000000000000000003C /* BottomNavBarView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

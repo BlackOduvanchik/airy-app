@@ -27,7 +27,10 @@ final class LocalDataStore {
     func fetchTransactions(limit: Int = 100, month: String? = nil, year: String? = nil) -> [Transaction] {
         guard let ctx = context else { return [] }
         var descriptor = FetchDescriptor<LocalTransaction>(
-            sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
+            sortBy: [
+                SortDescriptor(\.transactionDate, order: .reverse),
+                SortDescriptor(\.createdAt, order: .reverse)
+            ]
         )
         descriptor.fetchLimit = limit
         if let m = month, let y = year, let yy = Int(y), let mm = Int(m), mm >= 1, mm <= 12 {
@@ -90,6 +93,18 @@ final class LocalDataStore {
         guard let tx = try ctx.fetch(descriptor).first else { throw LocalStoreError.notFound }
         ctx.delete(tx)
         try ctx.save()
+    }
+
+    /// Reassigns all transactions from a category to "other" (used when deleting a category).
+    func reassignTransactionsToOther(fromCategory categoryId: String) {
+        guard let ctx = context else { return }
+        let descriptor = FetchDescriptor<LocalTransaction>(predicate: #Predicate<LocalTransaction> { $0.category == categoryId })
+        guard let list = try? ctx.fetch(descriptor) else { return }
+        for tx in list {
+            tx.category = "other"
+            tx.subcategory = nil
+        }
+        try? ctx.save()
     }
 
     // MARK: - Pending

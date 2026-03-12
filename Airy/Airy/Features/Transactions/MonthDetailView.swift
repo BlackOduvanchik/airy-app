@@ -10,12 +10,15 @@ import SwiftUI
 struct MonthDetailView: View {
     let monthKey: String
     let monthLabel: String
+    @Binding var monthPath: [MonthDetailDestination]
     @State private var viewModel: MonthDetailViewModel
+    @State private var showCalendarPicker = false
     @Environment(\.dismiss) private var dismiss
 
-    init(monthKey: String, monthLabel: String) {
+    init(monthKey: String, monthLabel: String, monthPath: Binding<[MonthDetailDestination]> = .constant([])) {
         self.monthKey = monthKey
         self.monthLabel = monthLabel
+        _monthPath = monthPath
         _viewModel = State(initialValue: MonthDetailViewModel(monthKey: monthKey, monthLabel: monthLabel))
     }
 
@@ -51,6 +54,17 @@ struct MonthDetailView: View {
                     }
                 }
             }
+            .fullScreenCover(isPresented: $showCalendarPicker) {
+                CalendarPickerSheetView(
+                    monthKey: monthKey,
+                    monthLabel: monthLabel,
+                    onSelect: { dest, _ in
+                        showCalendarPicker = false
+                        monthPath = [dest]
+                    },
+                    onCancel: { showCalendarPicker = false }
+                )
+            }
             .task { await viewModel.load() }
     }
 
@@ -83,13 +97,15 @@ struct MonthDetailView: View {
             Text("Spent this month")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundColor(OnboardingDesign.textSecondary)
-            (Text(formatCurrencyWhole(total))
-                .font(.system(size: 36, weight: .light))
-                .tracking(-1)
-                .foregroundColor(OnboardingDesign.textPrimary)
-            + Text(formatCents(total))
-                .font(.system(size: 24, weight: .light))
-                .foregroundColor(OnboardingDesign.textTertiary))
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(formatCurrencyWhole(total))
+                    .font(.system(size: 36, weight: .light))
+                    .tracking(-1)
+                    .foregroundColor(OnboardingDesign.textPrimary)
+                Text(formatCents(total))
+                    .font(.system(size: 24, weight: .light))
+                    .foregroundColor(OnboardingDesign.textTertiary)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
@@ -102,7 +118,7 @@ struct MonthDetailView: View {
         let calendarDays = buildCalendarDays(monthKey: monthKey, daysWithActivity: viewModel.daysWithTransactions)
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("PAYMENT CALENDAR")
+                Text("SPENDING CALENDAR")
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(0.5)
                     .foregroundColor(OnboardingDesign.textTertiary)
@@ -113,34 +129,38 @@ struct MonthDetailView: View {
             }
             .padding(.horizontal, 4)
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
-                ForEach(["M", "T", "W", "T", "F", "S", "S"], id: \.self) { label in
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
+                ForEach(["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"], id: \.self) { label in
                     Text(label)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(OnboardingDesign.textTertiary)
                         .frame(maxWidth: .infinity)
-                        .padding(.bottom, 4)
+                        .padding(.bottom, 8)
                 }
                 ForEach(calendarDays, id: \.offset) { item in
                     if let day = item.day {
                         let hasActivity = item.hasActivity
-                        Text("\(day)")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(hasActivity ? .white : OnboardingDesign.textTertiary)
-                            .frame(maxWidth: .infinity)
-                            .aspectRatio(1, contentMode: .fit)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(hasActivity ? OnboardingDesign.accentGreen : Color.clear)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.clear, lineWidth: 0)
-                            )
-                            .shadow(color: hasActivity ? OnboardingDesign.accentGreen.opacity(0.3) : .clear, radius: 5, x: 0, y: 4)
+                        let isPrevMonth = item.isPrevMonth
+                        ZStack(alignment: .bottom) {
+                            Text("\(day)")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(isPrevMonth ? OnboardingDesign.textTertiary : OnboardingDesign.textPrimary)
+                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: 36)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color.clear)
+                                )
+                            if hasActivity {
+                                Circle()
+                                    .fill(OnboardingDesign.accentGreen)
+                                    .frame(width: 4, height: 4)
+                                    .padding(.bottom, 4)
+                            }
+                        }
                     } else {
                         Color.clear
-                            .aspectRatio(1, contentMode: .fit)
+                            .frame(minHeight: 36)
                     }
                 }
             }
@@ -148,16 +168,20 @@ struct MonthDetailView: View {
         }
         .padding(24)
         .modifier(MonthDetailGlassModifier())
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showCalendarPicker = true
+        }
     }
 
-    /// Builds (day number or nil for empty, hasActivity) for the month grid. Monday first.
-    private func buildCalendarDays(monthKey: String, daysWithActivity: Set<Int>) -> [(offset: Int, day: Int?, hasActivity: Bool)] {
+    /// Builds (day number or nil, hasActivity, isPrevMonth) for the month grid. Sunday first (Su Mo Tu We Th Fr Sa).
+    private func buildCalendarDays(monthKey: String, daysWithActivity: Set<Int>) -> [(offset: Int, day: Int?, hasActivity: Bool, isPrevMonth: Bool)] {
         let parts = monthKey.split(separator: "-")
         guard parts.count >= 2,
               let y = Int(parts[0]),
               let m = Int(parts[1]) else { return [] }
         var cal = Calendar.current
-        cal.firstWeekday = 2
+        cal.firstWeekday = 1
         var comp = DateComponents()
         comp.year = y
         comp.month = m
@@ -166,15 +190,32 @@ struct MonthDetailView: View {
               let range = cal.range(of: .day, in: .month, for: first) else { return [] }
         let lastDay = range.count
         let weekday = cal.component(.weekday, from: first)
-        let startOffset = (weekday - 2 + 7) % 7
-        var result: [(Int, Int?, Bool)] = []
-        for _ in 0..<startOffset {
-            result.append((result.count, nil, false))
+        let startOffset = weekday - 1
+        var result: [(Int, Int?, Bool, Bool)] = []
+        if startOffset > 0, let prevMonth = cal.date(byAdding: .month, value: -1, to: first),
+           let prevRange = cal.range(of: .day, in: .month, for: prevMonth) {
+            let prevLastDay = prevRange.count
+            for i in 0..<startOffset {
+                let d = prevLastDay - startOffset + i + 1
+                result.append((result.count, d, false, true))
+            }
+        } else {
+            for _ in 0..<startOffset {
+                result.append((result.count, nil, false, false))
+            }
         }
         for d in 1...lastDay {
-            result.append((result.count, d, daysWithActivity.contains(d)))
+            result.append((result.count, d, daysWithActivity.contains(d), false))
         }
-        return result.map { ($0.0, $0.1, $0.2) }
+        let totalCells = startOffset + lastDay
+        let remainder = totalCells % 7
+        if remainder > 0 {
+            let nextMonthCount = 7 - remainder
+            for i in 1...nextMonthCount {
+                result.append((result.count, i, false, true))
+            }
+        }
+        return result.map { ($0.0, $0.1, $0.2, $0.3) }
     }
 
     // MARK: - Bill list
@@ -207,14 +248,16 @@ struct MonthDetailView: View {
     }
 
     private func billRow(transaction: Transaction) -> some View {
-        HStack(alignment: .center, spacing: 16) {
+        let iconName = transactionIconName(transaction)
+        let (iconBg, iconFg) = transactionIconColors(transaction)
+        return HStack(alignment: .center, spacing: 16) {
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.6))
+                .fill(iconBg)
                 .frame(width: 40, height: 40)
                 .overlay(
-                    Image(systemName: transaction.isSubscription == true ? "creditcard.fill" : "dollarsign")
-                        .font(.system(size: 16))
-                        .foregroundColor(OnboardingDesign.textSecondary)
+                    Image(systemName: iconName)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(iconFg)
                 )
             VStack(alignment: .leading, spacing: 2) {
                 Text(transaction.merchant ?? "Unknown")
@@ -231,6 +274,33 @@ struct MonthDetailView: View {
                 .foregroundColor(OnboardingDesign.textPrimary)
         }
         .padding(.vertical, 16)
+    }
+
+    private func transactionIconName(_ tx: Transaction) -> String {
+        if tx.isSubscription == true { return "creditcard.fill" }
+        let c = tx.category.lowercased()
+        if c.contains("food") || c.contains("dining") { return "cup.and.saucer.fill" }
+        if c.contains("transport") || c.contains("transit") { return "car.fill" }
+        if c.contains("shopping") { return "bag.fill" }
+        if c.contains("health") { return "heart.fill" }
+        return "dollarsign"
+    }
+
+    private func transactionIconColors(_ tx: Transaction) -> (Color, Color) {
+        if tx.isSubscription == true {
+            return (OnboardingDesign.accentWarning.opacity(0.2), OnboardingDesign.accentWarning)
+        }
+        let c = tx.category.lowercased()
+        if c.contains("food") || c.contains("dining") {
+            return (OnboardingDesign.accentGreen.opacity(0.2), OnboardingDesign.accentGreen)
+        }
+        if c.contains("shopping") {
+            return (OnboardingDesign.accentBlue.opacity(0.2), OnboardingDesign.accentBlue)
+        }
+        if c.contains("transport") || c.contains("transit") {
+            return (Color(red: 0.886, green: 0.871, blue: 0.808).opacity(0.6), OnboardingDesign.textSecondary)
+        }
+        return (Color.white.opacity(0.6), OnboardingDesign.textSecondary)
     }
 
     private func subtitleForTransaction(_ tx: Transaction) -> String {

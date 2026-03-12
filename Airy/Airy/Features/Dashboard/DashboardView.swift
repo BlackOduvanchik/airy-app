@@ -7,11 +7,18 @@
 
 import SwiftUI
 
+private enum AnalyticsRoute: Hashable {
+    case categoryBreakdown
+}
+
 struct DashboardView: View {
+    var refreshId: Int = 0
+    @Binding var showAllTransactions: Bool
     @State private var viewModel = DashboardViewModel()
+    @State private var analyticsPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $analyticsPath) {
             ZStack(alignment: .top) {
                 OnboardingGradientBackground()
 
@@ -30,7 +37,13 @@ struct DashboardView: View {
                 .scrollIndicators(.hidden)
             }
             .navigationBarHidden(true)
-            .task { await viewModel.load() }
+            .navigationDestination(for: AnalyticsRoute.self) { route in
+                switch route {
+                case .categoryBreakdown:
+                    CategoryBreakdownView()
+                }
+            }
+            .task(id: refreshId) { await viewModel.load() }
         }
     }
 
@@ -85,16 +98,21 @@ struct DashboardView: View {
         .padding(.bottom, 4)
     }
 
+    private func totalSpentFormatted(_ amount: Double) -> Text {
+        let whole = Text(formatCurrencyWhole(amount))
+            .font(.system(size: 48, weight: .light))
+            .tracking(-1.5)
+            .foregroundColor(OnboardingDesign.textPrimary)
+        let cents = Text(formatCurrencyCents(amount))
+            .font(.system(size: 32, weight: .ultraLight))
+            .foregroundColor(OnboardingDesign.textTertiary)
+        return Text("\(whole)\(cents)")
+    }
+
     private var totalSpentTitle: some View {
         Group {
             if let month = viewModel.thisMonth {
-                (Text(formatCurrencyWhole(month.totalSpent))
-                    .font(.system(size: 48, weight: .light))
-                    .tracking(-1.5)
-                    .foregroundColor(OnboardingDesign.textPrimary)
-                + Text(formatCurrencyCents(month.totalSpent))
-                    .font(.system(size: 32, weight: .ultraLight))
-                    .foregroundColor(OnboardingDesign.textTertiary))
+                totalSpentFormatted(month.totalSpent)
             } else {
                 Text("$0.00")
                     .font(.system(size: 48, weight: .light))
@@ -160,16 +178,23 @@ struct DashboardView: View {
         let segments = categorySegments
         return Group {
             if !segments.isEmpty {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("CATEGORY BREAKDOWN")
-                        .font(.system(size: 12, weight: .semibold))
-                        .tracking(0.5)
-                        .foregroundColor(OnboardingDesign.textTertiary)
-                    vizBar(segments: segments)
-                    vizLegend(segments: segments)
-                }
-                .padding(20)
-                .dashboardGlassStyle()
+                Button {
+                analyticsPath.append(AnalyticsRoute.categoryBreakdown)
+            } label: {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("CATEGORY BREAKDOWN")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(0.5)
+                            .foregroundColor(OnboardingDesign.textTertiary)
+                        vizBar(segments: segments)
+                        vizLegend(segments: segments)
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .dashboardGlassStyle()
             }
         }
     }
@@ -186,14 +211,17 @@ struct DashboardView: View {
         let total = byCat.values.reduce(0, +)
         guard total > 0 else { return [] }
         let sorted = byCat.sorted { $0.value > $1.value }
-        let colors: [Color] = [
+        let fallbackColors: [Color] = [
             OnboardingDesign.accentGreen,
             OnboardingDesign.accentBlue,
             OnboardingDesign.bgBottomRight,
             Color.white.opacity(0.6)
         ]
         return Array(sorted.prefix(4).enumerated().map { i, pair in
-            (label: pair.key.capitalized, ratio: CGFloat(pair.value / total), color: colors[i % colors.count])
+            let cat = CategoryStore.byId(pair.key)
+            let label = cat?.name ?? pair.key.capitalized
+            let color = cat?.color ?? fallbackColors[i % fallbackColors.count]
+            return (label: label, ratio: CGFloat(pair.value / total), color: color)
         })
     }
 
@@ -247,8 +275,11 @@ struct DashboardView: View {
                     .foregroundColor(OnboardingDesign.textTertiary)
             }
             .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, 16)
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                showAllTransactions = true
+            }
 
             if viewModel.recentTransactions.isEmpty {
                 Text("No recent transactions")
@@ -308,18 +339,20 @@ struct DashboardView: View {
 
     private func itemIcon(category: String) -> some View {
         let iconName: String = {
-            if category.lowercased().contains("food") || category.lowercased().contains("grocer") { return "bag" }
-            if category.lowercased().contains("transport") || category.lowercased().contains("transit") { return "car" }
-            if category.lowercased().contains("subscription") { return "creditcard" }
+            if let cat = CategoryStore.byId(category), let icon = cat.iconName { return icon }
+            if category.lowercased().contains("food") || category.lowercased().contains("grocer") { return "bag.fill" }
+            if category.lowercased().contains("transport") || category.lowercased().contains("transit") { return "car.fill" }
+            if category.lowercased().contains("subscription") { return "creditcard.fill" }
             return "dollarsign"
         }()
+        let iconColor = CategoryStore.byId(category)?.color ?? OnboardingDesign.textSecondary
         return RoundedRectangle(cornerRadius: 16)
             .fill(Color.white.opacity(0.6))
             .frame(width: 44, height: 44)
             .overlay(
                 Image(systemName: iconName)
                     .font(.system(size: 20))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(iconColor)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
@@ -453,11 +486,12 @@ private extension View {
     func dashboardGlassStyle() -> some View {
         self
             .background(.ultraThinMaterial)
-            .overlay(OnboardingDesign.glassBg.opacity(0.5))
+            .overlay(OnboardingDesign.glassBg.opacity(0.5).allowsHitTesting(false))
             .clipShape(RoundedRectangle(cornerRadius: 28))
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
                     .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                    .allowsHitTesting(false)
             )
             .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
             .overlay(
@@ -465,12 +499,13 @@ private extension View {
                     .stroke(Color.white.opacity(0.2), lineWidth: 1)
                     .blur(radius: 0)
                     .offset(y: 1)
+                    .allowsHitTesting(false)
             )
     }
 }
 
 #Preview {
     NavigationStack {
-        DashboardView()
+        DashboardView(showAllTransactions: .constant(false))
     }
 }

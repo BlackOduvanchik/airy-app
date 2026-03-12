@@ -22,6 +22,8 @@ struct MainTabView: View {
     @State private var showPendingReview = false
     @State private var pasteNoImageAlert = false
     @State private var importViewModel = ImportViewModel()
+    @State private var dashboardRefreshId = 0
+    @State private var showAllTransactions = false
 
     enum Tab: Int {
         case dashboard = 0
@@ -30,23 +32,23 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Group {
-                switch selectedTab {
-                case .dashboard:
-                    DashboardView()
-                case .insights:
-                    InsightsView()
-                case .settings:
-                    NavigationStack {
-                        SettingsView()
-                            .navigationTitle("Settings")
-                    }
+        Group {
+            switch selectedTab {
+            case .dashboard:
+                DashboardView(refreshId: dashboardRefreshId, showAllTransactions: $showAllTransactions)
+            case .insights:
+                InsightsView()
+            case .settings:
+                NavigationStack {
+                    SettingsView()
+                        .navigationTitle("Settings")
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) {
             bottomNavBar
+                .frame(maxWidth: .infinity)
         }
         .ignoresSafeArea(edges: .bottom)
         .sheet(isPresented: $showAddSheet) {
@@ -92,6 +94,7 @@ struct MainTabView: View {
             AddTransactionView(initialType: addTransactionInitialType, onSuccess: {
                 showAddTransaction = false
                 addTransactionInitialType = nil
+                dashboardRefreshId += 1
             })
         }
         .fullScreenCover(isPresented: $showGalleryPicker) {
@@ -135,83 +138,46 @@ struct MainTabView: View {
         } message: {
             Text("Copy an image first, then try again.")
         }
+        .fullScreenCover(isPresented: $showAllTransactions) {
+            TransactionListView(
+                showBottomBar: true,
+                onInsights: {
+                    showAllTransactions = false
+                    selectedTab = .insights
+                },
+                onSettings: {
+                    showAllTransactions = false
+                    selectedTab = .settings
+                }
+            )
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { showAllTransactions = false }
+                }
+            }
+        }
     }
 
     private var bottomNavBar: some View {
-        HStack(spacing: 0) {
-            navButton(tab: .insights, icon: "chart.xyaxis.line")
-            Spacer()
-            fabButton
-            Spacer()
-            navButton(tab: .settings, icon: "gearshape.fill")
-        }
-        .padding(.horizontal, 32)
-        .frame(height: 72)
-        .background(
-            RoundedRectangle(cornerRadius: 36)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                RoundedRectangle(cornerRadius: 36)
-                    .fill(Color.white.opacity(0.5))
-                )
-                .overlay(
-                RoundedRectangle(cornerRadius: 36)
-                    .stroke(Color.white.opacity(0.8), lineWidth: 1)
-                )
-                .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 24, x: 0, y: 8)
-        )
-        .padding(.horizontal, 20)
-        .padding(.bottom, 30)
-    }
-
-    private func navButton(tab: Tab, icon: String) -> some View {
-        Button {
-            if selectedTab == tab {
-                selectedTab = .dashboard
-            } else {
-                selectedTab = tab
-            }
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(selectedTab == tab ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
-            }
-            .frame(width: 48, height: 48)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var fabButton: some View {
-        Button {
-            showAddSheet = true
-        } label: {
-            ZStack {
-                Color.clear
-                    .frame(width: 88, height: 88)
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white, Color.white.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .overlay(Circle().stroke(Color.white, lineWidth: 1))
-                        .shadow(color: OnboardingDesign.accentGreen.opacity(0.25), radius: 12, x: 0, y: 6)
-                        .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 3)
-                    Image(systemName: "plus")
-                        .font(.system(size: 28, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+        BottomNavBarView(
+            onInsights: {
+                if selectedTab == .insights {
+                    selectedTab = .dashboard
+                } else {
+                    selectedTab = .insights
                 }
-                .frame(width: 68, height: 68)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .offset(y: -24)
+            },
+            onFab: { showAddSheet = true },
+            onSettings: {
+                if selectedTab == .settings {
+                    selectedTab = .dashboard
+                } else {
+                    selectedTab = .settings
+                }
+            },
+            insightsActive: selectedTab == .insights,
+            settingsActive: selectedTab == .settings
+        )
     }
 }
 

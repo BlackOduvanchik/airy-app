@@ -149,6 +149,10 @@ enum CategoryStore {
         SubcategoryStore.deleteByParent(parentCategoryId: id)
     }
 
+    static func reorder(_ categories: [Category]) {
+        save(categories)
+    }
+
     static func byId(_ id: String) -> Category? {
         load().first { $0.id == id }
     }

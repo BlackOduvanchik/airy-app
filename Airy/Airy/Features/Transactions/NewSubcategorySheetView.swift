@@ -26,7 +26,6 @@ struct NewSubcategorySheetView: View {
                     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { return }
                     let sub = Subcategory(name: trimmed, parentCategoryId: parentCategoryId)
-                    SubcategoryStore.add(sub)
                     onCreate(sub)
                     dismiss()
                 } label: {

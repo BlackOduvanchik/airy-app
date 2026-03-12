@@ -167,6 +167,15 @@ final class AddTransactionViewModel {
         LastUsedCategoriesStore.forQuickPick()
     }
 
+    /// Category IDs for quick pick grid. When subcategory selected: 2 from last used (one slot for subcategory). Otherwise: 3 last used. Always 4 pills total with Others.
+    var quickPickCategoryIds: [String] {
+        let used = lastUsedCategoryIds
+        if selectedSubcategoryId != nil {
+            return Array(used.prefix(2))
+        }
+        return used
+    }
+
     var selectedCategoryDisplay: String {
         guard let catId = selectedCategoryId else { return "Select category" }
         let cat = CategoryStore.byId(catId)

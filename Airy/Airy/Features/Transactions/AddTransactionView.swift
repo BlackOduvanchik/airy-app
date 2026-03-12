@@ -7,6 +7,20 @@
 
 import SwiftUI
 
+private struct TimeButtonAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? = nil
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
+private struct DateButtonAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? = nil
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
 struct AddTransactionView: View {
     var transaction: Transaction?
     /// Initial transaction type when creating new (e.g. "income" for Add Income flow).
@@ -62,38 +76,44 @@ struct AddTransactionView: View {
 
             sheetContent
 
-            if showCustomKeyboard {
-                VStack {
-                    Spacer()
-                    AmountKeyboardView(
-                        expression: $calculatorExpression,
-                        amountText: $viewModel.amountText,
-                        transactionType: $viewModel.transactionType,
-                        selectedCurrency: $viewModel.selectedCurrency,
-                        currencies: AddTransactionViewModel.currencies,
-                        onDismiss: {
-                            if !calculatorExpression.isEmpty {
-                                viewModel.amountText = displayAmountResult
-                                calculatorExpression = ""
-                            }
-                            withAnimation(.easeInOut(duration: 0.32)) { showCustomKeyboard = false }
+            VStack {
+                Spacer()
+                AmountKeyboardView(
+                    expression: $calculatorExpression,
+                    amountText: $viewModel.amountText,
+                    transactionType: $viewModel.transactionType,
+                    selectedCurrency: $viewModel.selectedCurrency,
+                    currencies: AddTransactionViewModel.currencies,
+                    onDismiss: {
+                        if !calculatorExpression.isEmpty {
+                            viewModel.amountText = displayAmountResult
+                            calculatorExpression = ""
                         }
-                    )
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                        removal: .move(edge: .bottom).combined(with: .opacity)
-                    ))
-                }
-                .ignoresSafeArea(edges: .bottom)
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+                            showCustomKeyboard = false
+                        }
+                    }
+                )
             }
+            .ignoresSafeArea(edges: .bottom)
+            .opacity(showCustomKeyboard ? 1 : 0)
+            .scaleEffect(showCustomKeyboard ? 1 : 0.94, anchor: .bottom)
+            .allowsHitTesting(showCustomKeyboard)
+            .animation(.spring(response: 0.5, dampingFraction: 0.82), value: showCustomKeyboard)
         }
-        .animation(.easeInOut(duration: 0.32), value: showCustomKeyboard)
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
+        .presentationContentInteraction(.scrolls)
+        .interactiveDismissDisabled(showTimePicker || showDatePicker)
         .onChange(of: viewModel.didSucceed) { _, ok in
             if ok {
                 dismiss()
                 onSuccess?()
+            }
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { showCustomKeyboard = true }
             }
         }
     }
@@ -124,13 +144,51 @@ struct AddTransactionView: View {
                 )
         )
         .ignoresSafeArea(edges: .bottom)
+        .overlay {
+            if showTimePicker || showDatePicker {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showTimePicker = false
+                            showDatePicker = false
+                        }
+                    }
+            }
+        }
+        .overlayPreferenceValue(TimeButtonAnchorKey.self) { anchor in
+            if showTimePicker, let anchor {
+                GeometryReader { geo in
+                    let rect = geo[anchor]
+                    TimePickerPopoverView(dateTime: $viewModel.dateTime) {
+                        withAnimation(.easeOut(duration: 0.2)) { showTimePicker = false }
+                    }
+                    .position(x: rect.minX + 70, y: rect.minY - 90)
+                }
+                .allowsHitTesting(true)
+            }
+        }
+        .overlayPreferenceValue(DateButtonAnchorKey.self) { anchor in
+            if showDatePicker, let anchor {
+                GeometryReader { geo in
+                    let rect = geo[anchor]
+                    DatePickerPopoverView(dateTime: $viewModel.dateTime) {
+                        withAnimation(.easeOut(duration: 0.2)) { showDatePicker = false }
+                    }
+                    .position(x: rect.midX, y: rect.minY - 90)
+                }
+                .allowsHitTesting(true)
+            }
+        }
     }
 
     private var handleBar: some View {
         RoundedRectangle(cornerRadius: 3)
-            .fill(Color.black.opacity(0.1))
+            .fill(Color.black.opacity(0.08))
             .frame(width: 36, height: 5)
-            .padding(.bottom, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 20)
     }
 
     private var headerActions: some View {
@@ -178,36 +236,27 @@ struct AddTransactionView: View {
             }
             .disabled(viewModel.isEditMode)
 
-            if viewModel.isEditMode {
-                TextField("0.00", text: $viewModel.amountText)
-                    .font(.system(size: 56, weight: .light))
-                    .tracking(-2)
-                    .foregroundColor(OnboardingDesign.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .keyboardType(.decimalPad)
-            } else {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.32)) { showCustomKeyboard = true }
-                } label: {
-                    VStack(spacing: 4) {
-                        if showCustomKeyboard && !calculatorExpression.isEmpty {
-                            Text(displayAmountResult)
-                                .font(.system(size: 56, weight: .light))
-                                .tracking(-2)
-                                .foregroundColor(OnboardingDesign.textPrimary)
-                            Text(calculatorExpression)
-                                .font(.system(size: 15))
-                                .foregroundColor(OnboardingDesign.textSecondary)
-                        } else {
-                            Text(viewModel.amountText.isEmpty ? "0.00" : viewModel.amountText)
-                                .font(.system(size: 56, weight: .light))
-                                .tracking(-2)
-                                .foregroundColor(OnboardingDesign.textPrimary)
-                        }
+            Button {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { showCustomKeyboard = true }
+            } label: {
+                VStack(spacing: 4) {
+                    if showCustomKeyboard && !calculatorExpression.isEmpty {
+                        Text(displayAmountResult)
+                            .font(.system(size: 56, weight: .light))
+                            .tracking(-2)
+                            .foregroundColor(OnboardingDesign.textPrimary)
+                        Text(calculatorExpression)
+                            .font(.system(size: 15))
+                            .foregroundColor(OnboardingDesign.textSecondary)
+                    } else {
+                        Text(viewModel.amountText.isEmpty ? "0.00" : viewModel.amountText)
+                            .font(.system(size: 56, weight: .light))
+                            .tracking(-2)
+                            .foregroundColor(OnboardingDesign.textPrimary)
                     }
                 }
-                .buttonStyle(.plain)
             }
+            .buttonStyle(.plain)
         }
         .padding(.bottom, 30)
     }
@@ -222,12 +271,13 @@ struct AddTransactionView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(viewModel.transactionType == type ? OnboardingDesign.textPrimary : OnboardingDesign.textSecondary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 14)
                         .background(
                             RoundedRectangle(cornerRadius: 11)
                                 .fill(viewModel.transactionType == type ? Color.white : Color.clear)
                                 .shadow(color: viewModel.transactionType == type ? Color.black.opacity(0.05) : .clear, radius: 4, x: 0, y: 2)
                         )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -247,7 +297,11 @@ struct AddTransactionView: View {
                 .padding(.leading, 4)
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                ForEach(viewModel.lastUsedCategoryIds, id: \.self) { catId in
+                if let catId = viewModel.selectedCategoryId, let subId = viewModel.selectedSubcategoryId,
+                   let sub = SubcategoryStore.forParent(catId).first(where: { $0.id == subId }) {
+                    categoryPillForSubcategory(categoryId: catId, subcategoryName: sub.name)
+                }
+                ForEach(viewModel.quickPickCategoryIds, id: \.self) { catId in
                     categoryPill(categoryId: catId, isOther: false)
                 }
                 categoryPill(categoryId: "other", isOther: true)
@@ -265,8 +319,38 @@ struct AddTransactionView: View {
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .presentationBackground(Color(red: 0.956, green: 0.969, blue: 0.961))
         }
         .padding(.bottom, 24)
+    }
+
+    private func categoryPillForSubcategory(categoryId: String, subcategoryName: String) -> some View {
+        let cat = CategoryStore.byId(categoryId)
+        let icon = cat?.iconName ?? iconName(for: categoryId)
+        return Button {
+            showCategoriesSheet = true
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.white.opacity(0.5))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(cat?.color ?? OnboardingDesign.accentGreen)
+                }
+                Text(subcategoryName)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 4)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(OnboardingDesign.accentGreen, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private func categoryPill(categoryId: String, isOther: Bool) -> some View {
@@ -291,7 +375,7 @@ struct AddTransactionView: View {
                         .frame(width: 32, height: 32)
                     Image(systemName: iconName(for: categoryId))
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(isSelected ? (cat?.color ?? OnboardingDesign.accentGreen) : OnboardingDesign.textSecondary)
+                        .foregroundColor(cat?.color ?? OnboardingDesign.accentGreen)
                 }
                 Text(displayName)
                     .font(.system(size: 11, weight: .medium))
@@ -323,6 +407,7 @@ struct AddTransactionView: View {
     }
 
     private func iconName(for categoryId: String) -> String {
+        if let cat = CategoryStore.byId(categoryId), let icon = cat.iconName { return icon }
         switch categoryId {
         case "food": return "cart.fill"
         case "transport": return "car.fill"
@@ -342,29 +427,33 @@ struct AddTransactionView: View {
             }
             HStack(spacing: 12) {
                 Button {
-                    showDatePicker = true
+                    withAnimation(.easeOut(duration: 0.2)) { showDatePicker = true }
                 } label: {
                     inputRowDisplay(icon: "calendar", text: dateFormatted)
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(showDatePicker ? OnboardingDesign.accentGreen : Color.clear, lineWidth: 1)
+                )
+                .anchorPreference(key: DateButtonAnchorKey.self, value: .bounds) { $0 }
 
                 Button {
-                    showTimePicker = true
+                    withAnimation(.easeOut(duration: 0.2)) { showTimePicker = true }
                 } label: {
                     inputRowDisplay(icon: "clock", text: timeFormatted)
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(showTimePicker ? OnboardingDesign.accentGreen : Color.clear, lineWidth: 1)
+                )
+                .anchorPreference(key: TimeButtonAnchorKey.self, value: .bounds) { $0 }
             }
 
             inputRow(icon: "pencil", placeholder: "Add a note...", text: $viewModel.note)
-        }
-        .sheet(isPresented: $showDatePicker) {
-            DateTimePickerSheetView(dateTime: $viewModel.dateTime, components: .date)
-        }
-        .sheet(isPresented: $showTimePicker) {
-            DateTimePickerSheetView(dateTime: $viewModel.dateTime, components: .hourAndMinute)
         }
         .padding(.bottom, 24)
     }

@@ -14,12 +14,16 @@ struct MonthDetailDestination: Hashable {
 }
 
 struct TransactionListView: View {
+    var showBottomBar: Bool = false
+    var onInsights: (() -> Void)? = nil
+    var onSettings: (() -> Void)? = nil
     @State private var viewModel = TransactionListViewModel()
     @State private var showAddTransaction = false
+    @State private var monthPath: [MonthDetailDestination] = []
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $monthPath) {
             ZStack(alignment: .top) {
                 OnboardingGradientBackground()
 
@@ -36,18 +40,27 @@ struct TransactionListView: View {
                 }
                 .scrollIndicators(.hidden)
             }
-            .navigationTitle("Transactions")
+            .overlay(alignment: .bottom) {
+                if showBottomBar {
+                    transactionsBottomBar
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .ignoresSafeArea(edges: showBottomBar ? .bottom : [])
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Transaction.self) { tx in
                 TransactionDetailView(transaction: tx)
             }
             .navigationDestination(for: MonthDetailDestination.self) { dest in
-                MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel)
+                MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel, monthPath: $monthPath)
             }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: { showAddTransaction = true }) {
-                        Image(systemName: "plus")
+                if !showBottomBar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: { showAddTransaction = true }) {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
             }
@@ -56,6 +69,18 @@ struct TransactionListView: View {
             }
             .task { await viewModel.load() }
         }
+    }
+
+    // MARK: - Bottom bar (when presented as modal) — same as Dashboard
+
+    private var transactionsBottomBar: some View {
+        BottomNavBarView(
+            onInsights: { onInsights?() },
+            onFab: { showAddTransaction = true },
+            onSettings: { onSettings?() },
+            insightsActive: false,
+            settingsActive: false
+        )
     }
 
     // MARK: - Header
@@ -195,6 +220,12 @@ struct TransactionListView: View {
                         .foregroundColor(OnboardingDesign.textPrimary)
                         .lineLimit(1)
                     categoryBadge(tx.category, isSubscription: tx.isSubscription == true)
+                    if tx.isSubscription == true {
+                        Image(systemName: "bubble.left")
+                            .font(.system(size: 14))
+                            .foregroundColor(OnboardingDesign.accentBlue.opacity(0.8))
+                    }
+                    Spacer(minLength: 0)
                 }
                 Text(subtitleForTransaction(tx))
                     .font(.system(size: 12, weight: .regular))
@@ -206,7 +237,7 @@ struct TransactionListView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(OnboardingDesign.accentAmber)
+                        .background(OnboardingDesign.accentWarning)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                         .padding(.top, 4)
                 }
@@ -217,7 +248,7 @@ struct TransactionListView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(OnboardingDesign.textPrimary)
                 Image(systemName: "pencil")
-                    .font(.system(size: 14))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OnboardingDesign.textTertiary.opacity(0.6))
             }
         }
@@ -226,13 +257,13 @@ struct TransactionListView: View {
         .background {
             if isWarning {
                 RoundedRectangle(cornerRadius: 28)
-                    .fill(OnboardingDesign.accentAmber.opacity(0.08))
+                    .fill(OnboardingDesign.accentWarning.opacity(0.08))
             }
         }
         .overlay {
             if isWarning {
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(OnboardingDesign.accentAmber.opacity(0.3), lineWidth: 1)
+                    .stroke(OnboardingDesign.accentWarning.opacity(0.3), lineWidth: 1)
             }
         }
     }
@@ -268,7 +299,7 @@ struct TransactionListView: View {
             return (OnboardingDesign.accentBlue.opacity(0.2), OnboardingDesign.accentBlue)
         }
         if isSubscription || c.contains("subscription") {
-            return (OnboardingDesign.accentAmber.opacity(0.2), OnboardingDesign.accentAmber)
+            return (OnboardingDesign.accentWarning.opacity(0.2), OnboardingDesign.accentWarning)
         }
         if c.contains("transport") || c.contains("transit") {
             return (Color(red: 0.886, green: 0.871, blue: 0.808).opacity(0.6), OnboardingDesign.textSecondary)
@@ -352,8 +383,16 @@ private struct TransactionsGlassModifier: ViewModifier {
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
                     .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                    .allowsHitTesting(false)
             )
             .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 28)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    .blur(radius: 0)
+                    .offset(y: 1)
+                    .allowsHitTesting(false)
+            )
     }
 }
 
