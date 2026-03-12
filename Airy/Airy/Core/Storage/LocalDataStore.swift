@@ -113,13 +113,13 @@ final class LocalDataStore {
         UserDefaults.standard.set(Array(ids), forKey: pinnedIdsKey)
     }
 
-    /// Reassigns all transactions from a category to "other" (used when deleting a category).
-    func reassignTransactionsToOther(fromCategory categoryId: String) {
+    /// Reassigns all transactions from a category to a target category (used when deleting a category).
+    func reassignTransactions(fromCategory categoryId: String, toCategory targetId: String) {
         guard let ctx = context else { return }
         let descriptor = FetchDescriptor<LocalTransaction>(predicate: #Predicate<LocalTransaction> { $0.category == categoryId })
         guard let list = try? ctx.fetch(descriptor) else { return }
         for tx in list {
-            tx.category = "other"
+            tx.category = targetId
             tx.subcategory = nil
         }
         try? ctx.save()

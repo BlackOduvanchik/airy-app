@@ -22,6 +22,7 @@ struct CategoriesSheetView: View {
     @State private var showNewCategory = false
     @State private var showNewSubcategory = false
     @State private var showEditMode = false
+    @State private var categoryToEdit: Category?
     @State private var selectedParentForSubcategory: Category?
     @State private var selectedCategoryId: String?
     @State private var selectedSubcategoryId: String?
@@ -88,6 +89,16 @@ struct CategoriesSheetView: View {
             selectedCategoryId = initialCategoryId
             selectedSubcategoryId = initialSubcategoryId
             expandedCategoryIds = []
+        }
+        .sheet(item: $categoryToEdit) { cat in
+            NewCategorySheetView(
+                existing: cat,
+                onCreate: { _ in },
+                onUpdate: { updated in
+                    CategoryStore.update(updated)
+                    categories = CategoryStore.load()
+                }
+            )
         }
         .sheet(isPresented: $showNewCategory) {
             NewCategorySheetView(
@@ -194,7 +205,7 @@ struct CategoriesSheetView: View {
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                if cat.id != "other" {
+                                if categories.count > 1 {
                                     Button(role: .destructive) {
                                         deleteCategory(cat)
                                     } label: {
@@ -227,35 +238,47 @@ struct CategoriesSheetView: View {
 
     private func editModeCategoryRow(_ cat: Category) -> some View {
         let isAccentBlueCategory = cat.colorHex == CategoryStore.defaultColorBlue
-        return HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isAccentBlueCategory ? OnboardingDesign.accentBlue.opacity(0.08) : Self.iconBoxBg)
-                    .frame(width: 40, height: 40)
-                Image(systemName: iconName(for: cat))
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(cat.color)
+        return Button {
+            categoryToEdit = cat
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(isAccentBlueCategory ? OnboardingDesign.accentBlue.opacity(0.08) : Self.iconBoxBg)
+                        .frame(width: 40, height: 40)
+                    Image(systemName: iconName(for: cat))
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(cat.color)
+                }
+                Text(cat.name)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(OnboardingDesign.textPrimary)
+                Spacer()
+                Image(systemName: "pencil")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(OnboardingDesign.textTertiary)
             }
-            Text(cat.name)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(OnboardingDesign.textPrimary)
-            Spacer()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.white.opacity(0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+            )
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.white.opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.white.opacity(0.6), lineWidth: 1)
-        )
+        .buttonStyle(.plain)
     }
 
     private func deleteCategory(_ cat: Category) {
-        guard cat.id != "other" else { return }
-        LocalDataStore.shared.reassignTransactionsToOther(fromCategory: cat.id)
+        guard categories.count > 1 else { return }
+        let targetId: String? = cat.id == "other"
+            ? categories.first { $0.id != "other" }?.id
+            : (categories.first { $0.id == "other" }?.id ?? categories.first { $0.id != cat.id }?.id)
+        guard let target = targetId else { return }
+        LocalDataStore.shared.reassignTransactions(fromCategory: cat.id, toCategory: target)
         CategoryStore.delete(id: cat.id)
         categories = CategoryStore.load()
     }

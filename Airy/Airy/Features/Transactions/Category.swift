@@ -73,8 +73,7 @@ enum CategoryStore {
 
     static func load() -> [Category] {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([Category].self, from: data),
-              !decoded.isEmpty else {
+              let decoded = try? JSONDecoder().decode([Category].self, from: data) else {
             return defaultCategories()
         }
         return decoded
@@ -97,12 +96,18 @@ enum CategoryStore {
         ]
     }
 
+    private static let initializedKey = "airy.categoriesInitialized"
+
     static func ensureDefaults() {
-        var current = load()
+        let current = load()
         if current.isEmpty {
-            current = defaultCategories()
-            save(current)
+            if !UserDefaults.standard.bool(forKey: initializedKey) {
+                save(defaultCategories())
+                UserDefaults.standard.set(true, forKey: initializedKey)
+            }
+            return
         }
+        UserDefaults.standard.set(true, forKey: initializedKey)
         seedDefaultSubcategoriesIfNeeded()
     }
 
@@ -129,7 +134,6 @@ enum CategoryStore {
 
     static func add(_ category: Category) {
         var list = load()
-        if list.isEmpty { list = defaultCategories() }
         list.append(category)
         save(list)
     }

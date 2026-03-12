@@ -44,6 +44,7 @@ struct AddTransactionView: View {
     @State private var rememberRule: Bool = true
     @State private var isDeleting = false
     @State private var frozenQuickPickOrder: [String] = []
+    @State private var pickedFromOthersThisSession: String? = nil
 
     init(transaction: Transaction? = nil, initialType: String? = nil, initialQuickPickOrder: [String]? = nil, onSuccess: (() -> Void)? = nil) {
         self.transaction = transaction
@@ -315,6 +316,9 @@ struct AddTransactionView: View {
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
                 let displayedIds: [String] = {
+                    if let picked = pickedFromOthersThisSession {
+                        return [picked] + Array(frozenQuickPickOrder.filter { $0 != picked }.prefix(2))
+                    }
                     if let sel = viewModel.selectedCategoryId, !frozenQuickPickOrder.contains(sel), sel != "other" {
                         return [sel] + Array(frozenQuickPickOrder.suffix(2))
                     }
@@ -338,6 +342,9 @@ struct AddTransactionView: View {
             CategoriesSheetView(
                 onSelect: { catId, subId in
                     viewModel.selectCategory(categoryId: catId, subcategoryId: subId)
+                    if !frozenQuickPickOrder.contains(catId) && catId != "other" {
+                        pickedFromOthersThisSession = catId
+                    }
                     showCategoriesSheet = false
                 },
                 initialCategoryId: viewModel.selectedCategoryId,
@@ -455,13 +462,7 @@ struct AddTransactionView: View {
     }
 
     private func quickPickLabel(for categoryId: String) -> String {
-        switch categoryId {
-        case "food": return "Food"
-        case "transport": return "Travel"
-        case "housing": return "Home"
-        case "other": return "Other"
-        default: return CategoryStore.byId(categoryId)?.name ?? categoryId.capitalized
-        }
+        CategoryStore.byId(categoryId)?.name ?? CategoryIconHelper.displayName(categoryId: categoryId)
     }
 
     private var formFields: some View {

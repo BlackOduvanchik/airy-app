@@ -15,6 +15,7 @@ private let designIconOptions: [String] = [
     "star.fill", "flag.fill", "book.fill", "gamecontroller.fill",
     "tv.fill", "phone.fill", "envelope.fill", "airplane",
     "cup.and.saucer.fill", "fork.knife", "leaf.fill", "flame.fill",
+    "tag.fill",
 ]
 
 private let designColors: [String] = [
@@ -25,8 +26,10 @@ private let designColors: [String] = [
 ]
 
 struct NewCategorySheetView: View {
+    var existing: Category? = nil
     var onCreate: (Category) -> Void
     var onCreateSubcategory: ((Subcategory) -> Void)?
+    var onUpdate: ((Category) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var shortDescription = ""
@@ -44,6 +47,7 @@ struct NewCategorySheetView: View {
     }
 
     private var isSubcategoryMode: Bool { parentCategoryId != nil }
+    private var isEditMode: Bool { existing != nil }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -60,8 +64,10 @@ struct NewCategorySheetView: View {
                     sectionLabel("Icon")
                     iconGrid
 
-                    sectionLabel("Parent category")
-                    parentSelectButton
+                    if !isEditMode {
+                        sectionLabel("Parent category")
+                        parentSelectButton
+                    }
 
                     sectionLabel("Icon color")
                     colorRow
@@ -89,6 +95,14 @@ struct NewCategorySheetView: View {
         .sheet(isPresented: $showParentPicker) {
             parentPickerSheet
         }
+        .onAppear {
+            if let e = existing {
+                name = e.name
+                let icon = e.iconName ?? defaultIconForCategoryId(e.id)
+                selectedIcon = designIconOptions.contains(icon) ? icon : "tag.fill"
+                selectedColorHex = e.colorHex
+            }
+        }
     }
 
     private var handleBar: some View {
@@ -101,7 +115,7 @@ struct NewCategorySheetView: View {
 
     private var header: some View {
         HStack {
-            Text("New Category")
+            Text(isEditMode ? "Edit Category" : "New Category")
                 .font(.system(size: 19, weight: .bold))
                 .foregroundColor(OnboardingDesign.textPrimary)
             Spacer()
@@ -294,7 +308,7 @@ struct NewCategorySheetView: View {
         Button {
             submit()
         } label: {
-            Text("Create Category")
+            Text(isEditMode ? "Save Changes" : "Create Category")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
@@ -311,7 +325,10 @@ struct NewCategorySheetView: View {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        if let parentId = parentCategoryId, let _ = CategoryStore.byId(parentId) {
+        if let existing = existing {
+            let updated = Category(id: existing.id, name: trimmed, colorHex: selectedColorHex, iconName: selectedIcon)
+            onUpdate?(updated)
+        } else if let parentId = parentCategoryId, let _ = CategoryStore.byId(parentId) {
             let sub = Subcategory(name: trimmed, parentCategoryId: parentId)
             onCreateSubcategory?(sub)
         } else {
