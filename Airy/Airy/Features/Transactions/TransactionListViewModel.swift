@@ -25,6 +25,7 @@ struct TransactionMonthGroup: Identifiable {
     let transactions: [Transaction]
 }
 
+@MainActor
 @Observable
 final class TransactionListViewModel {
     var transactions: [Transaction] = []
@@ -35,6 +36,7 @@ final class TransactionListViewModel {
 
     var searchText = ""
     var selectedFilter: TransactionCategoryFilter = .all
+    var refreshTrigger = 0
 
     private let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -78,10 +80,19 @@ final class TransactionListViewModel {
         }
     }
 
-    /// Groups filtered transactions by month, newest first; each group has total (expenses only).
+    /// Pinned transactions only (for Pinned Items section).
+    var pinnedTransactions: [Transaction] {
+        let pinned = LocalDataStore.shared.pinnedTransactionIds()
+        return filteredTransactions.filter { pinned.contains($0.id) }
+            .sorted { (a, b) in (a.transactionDate, a.transactionTime ?? "") > (b.transactionDate, b.transactionTime ?? "") }
+    }
+
+    /// Groups filtered transactions by month, excluding pinned; each group has total (expenses only).
     var groupedByMonth: [TransactionMonthGroup] {
+        let pinned = LocalDataStore.shared.pinnedTransactionIds()
+        let nonPinned = filteredTransactions.filter { !pinned.contains($0.id) }
         var groupDict: [String: (monthLabel: String, total: Double, list: [Transaction])] = [:]
-        for tx in filteredTransactions {
+        for tx in nonPinned {
             let dateStr = String(tx.transactionDate.prefix(10))
             guard let date = dateFormatter.date(from: dateStr) else {
                 var other = groupDict["other"] ?? ("Other", 0, [])
@@ -101,6 +112,10 @@ final class TransactionListViewModel {
         return groupDict.sorted { $0.key > $1.key }.map { key, value in
             TransactionMonthGroup(id: key, monthLabel: value.monthLabel, total: value.total, transactions: value.list)
         }
+    }
+
+    func isPinned(_ tx: Transaction) -> Bool {
+        LocalDataStore.shared.pinnedTransactionIds().contains(tx.id)
     }
 
     /// Heuristic: same month has another tx with same merchant and subscription → possible duplicate.

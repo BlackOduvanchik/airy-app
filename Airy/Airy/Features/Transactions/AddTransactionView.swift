@@ -25,6 +25,8 @@ struct AddTransactionView: View {
     var transaction: Transaction?
     /// Initial transaction type when creating new (e.g. "income" for Add Income flow).
     var initialType: String?
+    /// Frozen quick pick order captured when sheet opened. If nil, uses LastUsedCategoriesStore at init.
+    var initialQuickPickOrder: [String]? = nil
     /// Called after a successful save (e.g. to pop parent when editing).
     var onSuccess: (() -> Void)?
     /// Pending transaction from Review screen; when set, uses same UI but confirms with overrides.
@@ -40,21 +42,26 @@ struct AddTransactionView: View {
     @State private var calculatorExpression = ""
     @State private var showCategoriesSheet = false
     @State private var rememberRule: Bool = true
+    @State private var isDeleting = false
+    @State private var frozenQuickPickOrder: [String] = []
 
-    init(transaction: Transaction? = nil, initialType: String? = nil, onSuccess: (() -> Void)? = nil) {
+    init(transaction: Transaction? = nil, initialType: String? = nil, initialQuickPickOrder: [String]? = nil, onSuccess: (() -> Void)? = nil) {
         self.transaction = transaction
         self.initialType = initialType
+        self.initialQuickPickOrder = initialQuickPickOrder
         self.onSuccess = onSuccess
         self.pendingTransaction = nil
         self.pendingRememberMerchant = true
         self.onConfirmPending = nil
         self.onCancelPending = nil
         _viewModel = State(initialValue: AddTransactionViewModel(existing: transaction, initialType: initialType))
+        _frozenQuickPickOrder = State(initialValue: (initialQuickPickOrder?.isEmpty == false) ? initialQuickPickOrder! : LastUsedCategoriesStore.forQuickPick())
     }
 
-    init(pendingTransaction: PendingTransaction, rememberMerchant: Bool, onConfirm: @escaping (ConfirmPendingOverrides, Bool) -> Void, onCancel: @escaping () -> Void) {
+    init(pendingTransaction: PendingTransaction, rememberMerchant: Bool, onConfirm: @escaping (ConfirmPendingOverrides, Bool) -> Void, onCancel: @escaping () -> Void, initialQuickPickOrder: [String]? = nil) {
         self.transaction = nil
         self.initialType = nil
+        self.initialQuickPickOrder = initialQuickPickOrder
         self.onSuccess = nil
         self.pendingTransaction = pendingTransaction
         self.pendingRememberMerchant = rememberMerchant
@@ -63,6 +70,7 @@ struct AddTransactionView: View {
         let payload = pendingTransaction.decodedPayload
         _viewModel = State(initialValue: AddTransactionViewModel(existing: nil, initialType: nil, fromPayload: payload))
         _rememberRule = State(initialValue: rememberMerchant)
+        _frozenQuickPickOrder = State(initialValue: (initialQuickPickOrder?.isEmpty == false) ? initialQuickPickOrder! : LastUsedCategoriesStore.forQuickPick())
     }
 
     private var displayAmountResult: String {
@@ -112,6 +120,7 @@ struct AddTransactionView: View {
             }
         }
         .onAppear {
+            guard !viewModel.isEditMode, !viewModel.isPendingEditMode else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { showCustomKeyboard = true }
             }
@@ -120,16 +129,24 @@ struct AddTransactionView: View {
 
     private var sheetContent: some View {
         VStack(spacing: 0) {
-            handleBar
-            headerActions
-            amountSection
-            typeToggle
-            categorySection
-            formFields
-            if pendingTransaction != nil {
-                rememberRuleRow
+            VStack(spacing: 0) {
+                handleBar
+                headerActions
             }
-            Spacer(minLength: 16)
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            ScrollView {
+                VStack(spacing: 0) {
+                    amountSection
+                    typeToggle
+                    categorySection
+                    formFields
+                    if pendingTransaction != nil {
+                        rememberRuleRow
+                    }
+                    Spacer(minLength: 24)
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
             actionBar
         }
         .padding(.horizontal, 20)
@@ -297,12 +314,22 @@ struct AddTransactionView: View {
                 .padding(.leading, 4)
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                if let catId = viewModel.selectedCategoryId, let subId = viewModel.selectedSubcategoryId,
-                   let sub = SubcategoryStore.forParent(catId).first(where: { $0.id == subId }) {
-                    categoryPillForSubcategory(categoryId: catId, subcategoryName: sub.name)
-                }
-                ForEach(viewModel.quickPickCategoryIds, id: \.self) { catId in
-                    categoryPill(categoryId: catId, isOther: false)
+                let displayedIds: [String] = {
+                    if let sel = viewModel.selectedCategoryId, !frozenQuickPickOrder.contains(sel), sel != "other" {
+                        return [sel] + Array(frozenQuickPickOrder.suffix(2))
+                    }
+                    return Array(frozenQuickPickOrder)
+                }()
+                ForEach(displayedIds, id: \.self) { catId in
+                    if let sel = viewModel.selectedCategoryId, sel == catId,
+                       let subId = viewModel.selectedSubcategoryId,
+                       let sub = SubcategoryStore.forParent(catId).first(where: { $0.id == subId }) {
+                        categoryPillForSubcategory(categoryId: catId, subcategoryName: sub.name)
+                    } else if viewModel.selectedCategoryId == catId && viewModel.selectedSubcategoryId == nil {
+                        categoryPillForCategory(categoryId: catId)
+                    } else {
+                        categoryPill(categoryId: catId, isOther: false)
+                    }
                 }
                 categoryPill(categoryId: "other", isOther: true)
             }
@@ -324,9 +351,10 @@ struct AddTransactionView: View {
         .padding(.bottom, 24)
     }
 
-    private func categoryPillForSubcategory(categoryId: String, subcategoryName: String) -> some View {
-        let cat = CategoryStore.byId(categoryId)
-        let icon = cat?.iconName ?? iconName(for: categoryId)
+    private func categoryPillForCategory(categoryId: String) -> some View {
+        let displayName = CategoryStore.byId(categoryId)?.name ?? quickPickLabel(for: categoryId)
+        let icon = CategoryIconHelper.iconName(categoryId: categoryId)
+        let color = CategoryIconHelper.color(categoryId: categoryId)
         return Button {
             showCategoriesSheet = true
         } label: {
@@ -337,7 +365,36 @@ struct AddTransactionView: View {
                         .frame(width: 32, height: 32)
                     Image(systemName: icon)
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(cat?.color ?? OnboardingDesign.accentGreen)
+                        .foregroundColor(color)
+                }
+                Text(displayName)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 4)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(OnboardingDesign.accentGreen, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func categoryPillForSubcategory(categoryId: String, subcategoryName: String) -> some View {
+        let icon = CategoryIconHelper.iconName(categoryId: categoryId)
+        let color = CategoryIconHelper.color(categoryId: categoryId)
+        return Button {
+            showCategoriesSheet = true
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.white.opacity(0.5))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(color)
                 }
                 Text(subcategoryName)
                     .font(.system(size: 11, weight: .medium))
@@ -354,8 +411,9 @@ struct AddTransactionView: View {
     }
 
     private func categoryPill(categoryId: String, isOther: Bool) -> some View {
-        let cat = CategoryStore.byId(categoryId)
         let displayName = quickPickLabel(for: categoryId)
+        let icon = CategoryIconHelper.iconName(categoryId: categoryId)
+        let color = CategoryIconHelper.color(categoryId: categoryId)
         let isSelected: Bool = {
             if isOther { return viewModel.selectedCategoryId == "other" && viewModel.selectedSubcategoryId == nil }
             return viewModel.selectedCategoryId == categoryId && viewModel.selectedSubcategoryId == nil
@@ -373,9 +431,9 @@ struct AddTransactionView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color.white.opacity(0.5))
                         .frame(width: 32, height: 32)
-                    Image(systemName: iconName(for: categoryId))
+                    Image(systemName: icon)
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(cat?.color ?? OnboardingDesign.accentGreen)
+                        .foregroundColor(color)
                 }
                 Text(displayName)
                     .font(.system(size: 11, weight: .medium))
@@ -403,17 +461,6 @@ struct AddTransactionView: View {
         case "housing": return "Home"
         case "other": return "Other"
         default: return CategoryStore.byId(categoryId)?.name ?? categoryId.capitalized
-        }
-    }
-
-    private func iconName(for categoryId: String) -> String {
-        if let cat = CategoryStore.byId(categoryId), let icon = cat.iconName { return icon }
-        switch categoryId {
-        case "food": return "cart.fill"
-        case "transport": return "car.fill"
-        case "housing": return "house.fill"
-        case "other": return "plus.circle.fill"
-        default: return "tag.fill"
         }
     }
 
@@ -522,6 +569,9 @@ struct AddTransactionView: View {
                     .font(.system(size: 13))
                     .foregroundColor(.red)
             }
+            if viewModel.isEditMode, let tx = viewModel.existingTransaction {
+                deleteButton(transactionId: tx.id)
+            }
             Button {
                 if viewModel.isPendingEditMode, let onConfirm = onConfirmPending {
                     guard let amt = viewModel.amount, amt > 0 else {
@@ -548,7 +598,51 @@ struct AddTransactionView: View {
             .disabled(viewModel.isSubmitting || viewModel.amountText.isEmpty)
             .opacity(viewModel.isSubmitting ? 0.7 : 1)
         }
-        .padding(.top, 20)
+        .padding(.top, 24)
+        .padding(.bottom, 8)
+    }
+
+    private func deleteButton(transactionId: String) -> some View {
+        Button {
+            Task { await performDelete(id: transactionId) }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "trash")
+                    .font(.system(size: 16, weight: .medium))
+                Text("Delete Transaction")
+                    .font(.system(size: 15, weight: .medium))
+            }
+            .foregroundColor(OnboardingDesign.textDanger)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(OnboardingDesign.textDanger.opacity(0.07))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(OnboardingDesign.textDanger.opacity(0.15), lineWidth: 1)
+                    )
+            )
+        }
+        .disabled(isDeleting)
+        .opacity(isDeleting ? 0.6 : 1)
+        .buttonStyle(.plain)
+    }
+
+    private func performDelete(id: String) async {
+        isDeleting = true
+        defer { Task { @MainActor in isDeleting = false } }
+        do {
+            try LocalDataStore.shared.deleteTransaction(id: id)
+            await MainActor.run {
+                dismiss()
+                onSuccess?()
+            }
+        } catch {
+            await MainActor.run {
+                viewModel.errorMessage = error.localizedDescription
+            }
+        }
     }
 }
 

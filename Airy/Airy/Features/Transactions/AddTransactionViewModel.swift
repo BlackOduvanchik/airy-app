@@ -53,7 +53,7 @@ final class AddTransactionViewModel {
     var isEditMode: Bool { existingTransaction != nil }
 
     var primaryButtonTitle: String {
-        if isPendingEditMode || isEditMode { return "Save" }
+        if isPendingEditMode || isEditMode { return "Save Changes" }
         return "Add Transaction"
     }
 
@@ -130,8 +130,7 @@ final class AddTransactionViewModel {
                 dateTime = d
             }
         } else {
-            let cats = CategoryStore.load()
-            selectedCategoryId = cats.first?.id ?? "other"
+            selectedCategoryId = LastUsedCategoriesStore.forQuickPick().first ?? CategoryStore.load().first?.id ?? "other"
         }
     }
 
@@ -218,12 +217,19 @@ final class AddTransactionViewModel {
         let isSubscription = subcategoryStr?.lowercased().contains("subscription") == true
 
         if let existing = existingTransaction {
+            let merchantValue: String? = {
+                if let sub = subcategoryStr, !sub.isEmpty,
+                   merchant.isEmpty || merchant.trimmingCharacters(in: .whitespaces).lowercased() == "unknown" {
+                    return ""
+                }
+                return merchant.isEmpty ? nil : merchant
+            }()
             let body = UpdateTransactionBody(
                 amountOriginal: amt,
                 amountBase: amt,
-                merchant: merchant.isEmpty ? nil : merchant,
+                merchant: merchantValue,
                 category: categoryStr,
-                subcategory: subcategoryStr,
+                subcategory: subcategoryStr ?? "",
                 transactionDate: dateStr,
                 comment: note.isEmpty ? nil : note
             )

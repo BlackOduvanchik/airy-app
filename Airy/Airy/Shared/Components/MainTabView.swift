@@ -17,6 +17,7 @@ struct MainTabView: View {
     @State private var showAddSheet = false
     @State private var showAddTransaction = false
     @State private var addTransactionInitialType: String? = nil
+    @State private var addSheetQuickPickOrder: [String] = []
     @State private var showGalleryPicker = false
     @State private var imagesToAnalyze: ImagesToAnalyze? = nil
     @State private var showPendingReview = false
@@ -57,6 +58,7 @@ struct MainTabView: View {
                     showAddSheet = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         addTransactionInitialType = nil
+                        addSheetQuickPickOrder = LastUsedCategoriesStore.forQuickPick()
                         showAddTransaction = true
                     }
                 },
@@ -64,6 +66,7 @@ struct MainTabView: View {
                     showAddSheet = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         addTransactionInitialType = "income"
+                        addSheetQuickPickOrder = LastUsedCategoriesStore.forQuickPick()
                         showAddTransaction = true
                     }
                 },
@@ -91,7 +94,7 @@ struct MainTabView: View {
             .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showAddTransaction) {
-            AddTransactionView(initialType: addTransactionInitialType, onSuccess: {
+            AddTransactionView(initialType: addTransactionInitialType, initialQuickPickOrder: addSheetQuickPickOrder, onSuccess: {
                 showAddTransaction = false
                 addTransactionInitialType = nil
                 dashboardRefreshId += 1
@@ -141,6 +144,7 @@ struct MainTabView: View {
         .fullScreenCover(isPresented: $showAllTransactions) {
             TransactionListView(
                 showBottomBar: true,
+                onDismiss: { showAllTransactions = false },
                 onInsights: {
                     showAllTransactions = false
                     selectedTab = .insights
@@ -150,11 +154,6 @@ struct MainTabView: View {
                     selectedTab = .settings
                 }
             )
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { showAllTransactions = false }
-                }
-            }
         }
     }
 

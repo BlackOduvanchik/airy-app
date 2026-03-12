@@ -413,14 +413,6 @@ struct CategoriesSheetView: View {
     }
 
     private func iconName(for cat: Category) -> String {
-        if let icon = cat.iconName { return icon }
-        switch cat.id {
-        case "food": return "cart.fill"
-        case "transport": return "car.fill"
-        case "housing", "bills": return "house.fill"
-        case "health": return "heart.fill"
-        case "shopping": return "bag.fill"
-        default: return "tag.fill"
-        }
+        CategoryIconHelper.iconName(categoryId: cat.id)
     }
 }

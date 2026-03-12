@@ -158,6 +158,85 @@ enum CategoryStore {
     }
 }
 
+// MARK: - Shared category icon & color (Dashboard, Transaction list, New Entry, etc.)
+
+enum CategoryIconHelper {
+    /// Resolves effective category ID for icon/color. If categoryId is a subcategory id, returns parent.
+    static func effectiveCategoryId(categoryId: String, subcategoryId: String? = nil) -> String {
+        if let cat = CategoryStore.byId(categoryId) { return cat.id }
+        let sub = SubcategoryStore.load().first { $0.id == categoryId }
+        return sub?.parentCategoryId ?? categoryId
+    }
+
+    /// Icon name for category. For subcategory, uses parent category's icon.
+    static func iconName(categoryId: String, subcategoryId: String? = nil) -> String {
+        let effectiveId = effectiveCategoryId(categoryId: categoryId, subcategoryId: subcategoryId)
+        if let cat = CategoryStore.byId(effectiveId), let icon = cat.iconName { return icon }
+        let c = effectiveId.lowercased()
+        if c.contains("food") || c.contains("dining") || c.contains("grocer") { return "cup.and.saucer.fill" }
+        if c.contains("transport") || c.contains("transit") { return "car.fill" }
+        if c.contains("housing") || c.contains("rent") { return "house.fill" }
+        if c.contains("shopping") { return "bag.fill" }
+        if c.contains("health") { return "heart.fill" }
+        if c.contains("bills") { return "doc.text.fill" }
+        return "dollarsign"
+    }
+
+    /// Icon for subscription transactions.
+    static func subscriptionIconName() -> String { "creditcard.fill" }
+
+    /// Color for category. For subcategory, uses parent category's color.
+    static func color(categoryId: String, subcategoryId: String? = nil) -> Color {
+        let effectiveId = effectiveCategoryId(categoryId: categoryId, subcategoryId: subcategoryId)
+        return CategoryStore.byId(effectiveId)?.color ?? fallbackColor(effectiveId)
+    }
+
+    private static func fallbackColor(_ categoryId: String) -> Color {
+        let c = categoryId.lowercased()
+        if c.contains("food") || c.contains("dining") || c.contains("grocer") { return Color(hex: CategoryStore.defaultColorGreen) ?? OnboardingDesign.accentGreen }
+        if c.contains("transport") || c.contains("transit") { return Color(hex: CategoryStore.defaultColorBlue) ?? OnboardingDesign.accentBlue }
+        if c.contains("housing") || c.contains("rent") { return Color(hex: CategoryStore.defaultColorAmber) ?? OnboardingDesign.accentWarning }
+        if c.contains("shopping") { return Color(hex: CategoryStore.defaultColorPurple) ?? OnboardingDesign.accentBlue }
+        if c.contains("health") { return Color(hex: CategoryStore.defaultColorRed) ?? OnboardingDesign.textDanger }
+        if c.contains("bills") { return Color(hex: CategoryStore.defaultColorAmber) ?? OnboardingDesign.accentWarning }
+        return Color(hex: CategoryStore.defaultColorGray) ?? OnboardingDesign.textSecondary
+    }
+
+    /// Display name for transaction (merchant, subcategory, or category). Never returns empty.
+    static func transactionDisplayName(merchant: String?, subcategory: String?, categoryId: String) -> String {
+        let m = merchant?.trimmingCharacters(in: .whitespaces)
+        if let x = m, !x.isEmpty, x.lowercased() != "unknown" { return x }
+        let s = subcategory?.trimmingCharacters(in: .whitespaces)
+        if let x = s, !x.isEmpty { return x }
+        let cat = displayName(categoryId: categoryId)
+        if !cat.isEmpty { return cat }
+        return "Unknown"
+    }
+
+    /// Display name for category badge/list. Uses CategoryStore name for custom categories (e.g. Russian names), fallback for legacy ids.
+    static func displayName(categoryId: String) -> String {
+        if categoryId.isEmpty { return "Unknown" }
+        if let cat = CategoryStore.byId(categoryId) { return cat.name }
+        let c = categoryId.lowercased()
+        if c.contains("food") || c.contains("dining") { return "Dining" }
+        if c.contains("transport") || c.contains("transit") { return "Transit" }
+        if c.contains("shopping") { return "Shopping" }
+        if c.contains("health") { return "Health" }
+        if c.contains("housing") { return "Housing" }
+        if c.contains("bills") { return "Bills" }
+        return categoryId.prefix(1).uppercased() + categoryId.dropFirst().lowercased()
+    }
+
+    /// Background and foreground colors for icon circle. Use for subscription = true for subscription styling.
+    static func iconColors(categoryId: String, subcategoryId: String? = nil, isSubscription: Bool = false) -> (Color, Color) {
+        if isSubscription {
+            return (OnboardingDesign.accentWarning.opacity(0.2), OnboardingDesign.accentWarning)
+        }
+        let color = self.color(categoryId: categoryId, subcategoryId: subcategoryId)
+        return (color.opacity(0.2), color)
+    }
+}
+
 // MARK: - Last used categories (for Add Transaction quick pick)
 
 enum LastUsedCategoriesStore {
@@ -176,10 +255,11 @@ enum LastUsedCategoriesStore {
         UserDefaults.standard.stringArray(forKey: key) ?? []
     }
 
-    /// Returns up to 3 category IDs for quick pick (excluding "other"). Fills with defaults if needed.
+    /// Returns up to 3 category IDs for quick pick (excluding "other"). Fills with CategoryStore categories if needed.
     static func forQuickPick() -> [String] {
         let used = load().filter { $0 != "other" }
-        let defaults = ["food", "transport", "housing"]
+        let availableFromStore = CategoryStore.load().map(\.id).filter { $0 != "other" }
+        let defaults = availableFromStore.isEmpty ? ["food", "transport", "housing"] : availableFromStore
         var result = used
         for d in defaults where result.count < maxCount && !result.contains(d) {
             result.append(d)

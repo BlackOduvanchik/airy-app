@@ -307,12 +307,12 @@ struct DashboardView: View {
     private func recentItem(transaction: Transaction) -> some View {
         let total = viewModel.thisMonth?.totalSpent ?? 1
         let pct = total > 0 ? CGFloat(transaction.amountOriginal / total) : 0.2
-        let barColor = categoryColor(transaction.category)
+        let barColor = transaction.isSubscription == true ? OnboardingDesign.accentWarning : CategoryIconHelper.color(categoryId: transaction.category)
         return HStack(alignment: .center, spacing: 16) {
-            itemIcon(category: transaction.category)
+            itemIcon(category: transaction.category, isSubscription: transaction.isSubscription == true)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(transaction.merchant ?? transaction.category.capitalized)
+                    Text(CategoryIconHelper.transactionDisplayName(merchant: transaction.merchant, subcategory: transaction.subcategory, categoryId: transaction.category))
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(OnboardingDesign.textPrimary)
                     Spacer()
@@ -337,15 +337,9 @@ struct DashboardView: View {
         .padding(.vertical, 14)
     }
 
-    private func itemIcon(category: String) -> some View {
-        let iconName: String = {
-            if let cat = CategoryStore.byId(category), let icon = cat.iconName { return icon }
-            if category.lowercased().contains("food") || category.lowercased().contains("grocer") { return "bag.fill" }
-            if category.lowercased().contains("transport") || category.lowercased().contains("transit") { return "car.fill" }
-            if category.lowercased().contains("subscription") { return "creditcard.fill" }
-            return "dollarsign"
-        }()
-        let iconColor = CategoryStore.byId(category)?.color ?? OnboardingDesign.textSecondary
+    private func itemIcon(category: String, isSubscription: Bool = false) -> some View {
+        let iconName = isSubscription ? CategoryIconHelper.subscriptionIconName() : CategoryIconHelper.iconName(categoryId: category)
+        let iconColor = isSubscription ? OnboardingDesign.accentWarning : CategoryIconHelper.color(categoryId: category)
         return RoundedRectangle(cornerRadius: 16)
             .fill(Color.white.opacity(0.6))
             .frame(width: 44, height: 44)
@@ -361,13 +355,6 @@ struct DashboardView: View {
             .shadow(color: .black.opacity(0.02), radius: 5, x: 0, y: 4)
     }
 
-    private func categoryColor(_ category: String) -> Color {
-        let c = category.lowercased()
-        if c.contains("food") || c.contains("grocer") { return OnboardingDesign.accentGreen }
-        if c.contains("transport") || c.contains("transit") { return OnboardingDesign.accentBlue }
-        if c.contains("subscription") { return OnboardingDesign.bgBottomRight }
-        return OnboardingDesign.textTertiary
-    }
 
     // MARK: - Upcoming Bills
 

@@ -260,7 +260,7 @@ struct MonthDetailView: View {
                         .foregroundColor(iconFg)
                 )
             VStack(alignment: .leading, spacing: 2) {
-                Text(transaction.merchant ?? "Unknown")
+                Text(CategoryIconHelper.transactionDisplayName(merchant: transaction.merchant, subcategory: transaction.subcategory, categoryId: transaction.category))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(OnboardingDesign.textPrimary)
                 Text(subtitleForTransaction(transaction))
@@ -277,30 +277,11 @@ struct MonthDetailView: View {
     }
 
     private func transactionIconName(_ tx: Transaction) -> String {
-        if tx.isSubscription == true { return "creditcard.fill" }
-        let c = tx.category.lowercased()
-        if c.contains("food") || c.contains("dining") { return "cup.and.saucer.fill" }
-        if c.contains("transport") || c.contains("transit") { return "car.fill" }
-        if c.contains("shopping") { return "bag.fill" }
-        if c.contains("health") { return "heart.fill" }
-        return "dollarsign"
+        tx.isSubscription == true ? CategoryIconHelper.subscriptionIconName() : CategoryIconHelper.iconName(categoryId: tx.category, subcategoryId: tx.subcategory)
     }
 
     private func transactionIconColors(_ tx: Transaction) -> (Color, Color) {
-        if tx.isSubscription == true {
-            return (OnboardingDesign.accentWarning.opacity(0.2), OnboardingDesign.accentWarning)
-        }
-        let c = tx.category.lowercased()
-        if c.contains("food") || c.contains("dining") {
-            return (OnboardingDesign.accentGreen.opacity(0.2), OnboardingDesign.accentGreen)
-        }
-        if c.contains("shopping") {
-            return (OnboardingDesign.accentBlue.opacity(0.2), OnboardingDesign.accentBlue)
-        }
-        if c.contains("transport") || c.contains("transit") {
-            return (Color(red: 0.886, green: 0.871, blue: 0.808).opacity(0.6), OnboardingDesign.textSecondary)
-        }
-        return (Color.white.opacity(0.6), OnboardingDesign.textSecondary)
+        CategoryIconHelper.iconColors(categoryId: tx.category, subcategoryId: tx.subcategory, isSubscription: tx.isSubscription == true)
     }
 
     private func subtitleForTransaction(_ tx: Transaction) -> String {

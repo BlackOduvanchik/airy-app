@@ -52,7 +52,12 @@ struct CategoryDetailView: View {
                 transaction: tx,
                 onSuccess: {
                     selectedTransactionForEdit = nil
-                    Task { await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey) }
+                    Task { @MainActor in
+                        await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey)
+                        if viewModel.groupedByDay.isEmpty {
+                            dismiss()
+                        }
+                    }
                 }
             )
         }
@@ -96,7 +101,7 @@ struct CategoryDetailView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .tracking(0.5)
                 .foregroundColor(OnboardingDesign.textTertiary)
-            Text(formatAmount(destination.amount, "USD"))
+            Text(formatAmount(viewModel.totalAmount > 0 ? viewModel.totalAmount : destination.amount, "USD"))
                 .font(.system(size: 32, weight: .light))
                 .tracking(-1)
                 .foregroundColor(OnboardingDesign.textPrimary)
@@ -180,7 +185,7 @@ struct CategoryDetailView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(tx.merchant ?? tx.category.capitalized)
+                    Text(CategoryIconHelper.transactionDisplayName(merchant: tx.merchant, subcategory: tx.subcategory, categoryId: tx.category))
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(OnboardingDesign.textPrimary)
                     Spacer()
@@ -213,23 +218,11 @@ struct CategoryDetailView: View {
     }
 
     private func transactionIconName(_ tx: Transaction) -> String {
-        if let cat = CategoryStore.byId(tx.category), let icon = cat.iconName { return icon }
-        let c = tx.category.lowercased()
-        if c.contains("food") || c.contains("dining") || c.contains("grocer") { return "cup.and.saucer.fill" }
-        if c.contains("transport") || c.contains("transit") { return "car.fill" }
-        if c.contains("housing") || c.contains("rent") { return "house.fill" }
-        if c.contains("shopping") { return "bag.fill" }
-        if c.contains("health") { return "heart.fill" }
-        if c.contains("bills") { return "doc.text.fill" }
-        return "dollarsign"
+        tx.isSubscription == true ? CategoryIconHelper.subscriptionIconName() : CategoryIconHelper.iconName(categoryId: tx.category, subcategoryId: tx.subcategory)
     }
 
     private func transactionIconColors(_ tx: Transaction) -> (Color, Color) {
-        if tx.isSubscription == true {
-            return (OnboardingDesign.accentWarning.opacity(0.2), OnboardingDesign.accentWarning)
-        }
-        let color = CategoryStore.byId(tx.category)?.color ?? destination.color
-        return (color.opacity(0.18), color)
+        CategoryIconHelper.iconColors(categoryId: tx.category, subcategoryId: tx.subcategory, isSubscription: tx.isSubscription == true)
     }
 
     // MARK: - Helpers
@@ -255,6 +248,7 @@ struct DayGroup: Identifiable {
 @Observable
 final class CategoryDetailViewModel {
     var groupedByDay: [DayGroup] = []
+    var totalAmount: Double = 0
     var isLoading = true
 
     func load(categoryId: String, monthKey: String) async {
@@ -289,6 +283,7 @@ final class CategoryDetailViewModel {
                 let label = outFormatter.string(from: date)
                 return DayGroup(id: dateKey, dateKey: dateKey, dateLabel: label, transactions: txs)
             }
+            totalAmount = groupedByDay.flatMap { $0.transactions }.reduce(0) { $0 + $1.amountOriginal }
         }
     }
 }

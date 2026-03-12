@@ -87,8 +87,10 @@ struct AmountKeyboardView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    amountText = displayResult
-                    expression = ""
+                    if !expression.isEmpty {
+                        amountText = displayResult
+                        expression = ""
+                    }
                     onDismiss()
                 } label: {
                     Image(systemName: "chevron.down")
@@ -159,8 +161,10 @@ struct AmountKeyboardView: View {
         let isOperator = isOp || ["+", "−", "×", "÷"].contains(key)
         Button {
             if isConfirm {
-                amountText = displayResult
-                expression = ""
+                if !expression.isEmpty {
+                    amountText = displayResult
+                    expression = ""
+                }
                 onDismiss()
             } else if key == "⌫" || isDelete {
                 if !expression.isEmpty { expression = String(expression.dropLast()) }

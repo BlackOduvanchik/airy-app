@@ -93,6 +93,24 @@ final class LocalDataStore {
         guard let tx = try ctx.fetch(descriptor).first else { throw LocalStoreError.notFound }
         ctx.delete(tx)
         try ctx.save()
+        setPinned(id: id, pinned: false)
+    }
+
+    private let pinnedIdsKey = "pinnedTransactionIds"
+
+    func pinnedTransactionIds() -> Set<String> {
+        guard let arr = UserDefaults.standard.array(forKey: pinnedIdsKey) as? [String] else { return [] }
+        return Set(arr)
+    }
+
+    func setPinned(id: String, pinned: Bool) {
+        var ids = pinnedTransactionIds()
+        if pinned {
+            ids.insert(id)
+        } else {
+            ids.remove(id)
+        }
+        UserDefaults.standard.set(Array(ids), forKey: pinnedIdsKey)
     }
 
     /// Reassigns all transactions from a category to "other" (used when deleting a category).

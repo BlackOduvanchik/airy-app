@@ -15,12 +15,17 @@ struct MonthDetailDestination: Hashable {
 
 struct TransactionListView: View {
     var showBottomBar: Bool = false
+    var onDismiss: (() -> Void)? = nil
     var onInsights: (() -> Void)? = nil
     var onSettings: (() -> Void)? = nil
     @State private var viewModel = TransactionListViewModel()
     @State private var showAddTransaction = false
+    @State private var addSheetQuickPickOrder: [String] = []
+    @State private var selectedTransactionForEdit: Transaction? = nil
     @State private var monthPath: [MonthDetailDestination] = []
+    @Namespace private var pinNamespace
     @FocusState private var isSearchFocused: Bool
+    @State private var deletingTransactionIds: Set<String> = []
 
     var body: some View {
         NavigationStack(path: $monthPath) {
@@ -30,10 +35,22 @@ struct TransactionListView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         headerSection
+                        if !viewModel.pinnedTransactions.isEmpty {
+                            pinnedSection
+                                .transition(.asymmetric(
+                                    insertion: .opacity
+                                        .combined(with: .scale(scale: 0.88, anchor: .top))
+                                        .combined(with: .offset(y: -36)),
+                                    removal: .opacity
+                                        .combined(with: .scale(scale: 0.92, anchor: .top))
+                                        .combined(with: .offset(y: -16))
+                                ))
+                        }
                         searchSection
                         filterPillsSection
                         transactionsContent
                     }
+                    .animation(.spring(response: 0.52, dampingFraction: 0.78), value: viewModel.pinnedTransactions.count)
                     .padding(.horizontal, 20)
                     .padding(.top, 24)
                     .padding(.bottom, 120)
@@ -49,23 +66,31 @@ struct TransactionListView: View {
             .ignoresSafeArea(edges: showBottomBar ? .bottom : [])
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: Transaction.self) { tx in
-                TransactionDetailView(transaction: tx)
-            }
             .navigationDestination(for: MonthDetailDestination.self) { dest in
                 MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel, monthPath: $monthPath)
             }
             .toolbar {
                 if !showBottomBar {
                     ToolbarItem(placement: .primaryAction) {
-                        Button(action: { showAddTransaction = true }) {
+                        Button(action: {
+                            addSheetQuickPickOrder = LastUsedCategoriesStore.forQuickPick()
+                            showAddTransaction = true
+                        }) {
                             Image(systemName: "plus")
                         }
                     }
                 }
             }
-            .sheet(isPresented: $showAddTransaction) {
-                AddTransactionView()
+            .sheet(isPresented: $showAddTransaction, onDismiss: {
+                Task { await viewModel.load() }
+            }) {
+                AddTransactionView(initialQuickPickOrder: addSheetQuickPickOrder)
+            }
+            .sheet(item: $selectedTransactionForEdit) { tx in
+                AddTransactionView(transaction: tx, onSuccess: {
+                    selectedTransactionForEdit = nil
+                    Task { await viewModel.load() }
+                })
             }
             .task { await viewModel.load() }
         }
@@ -76,7 +101,10 @@ struct TransactionListView: View {
     private var transactionsBottomBar: some View {
         BottomNavBarView(
             onInsights: { onInsights?() },
-            onFab: { showAddTransaction = true },
+            onFab: {
+                addSheetQuickPickOrder = LastUsedCategoriesStore.forQuickPick()
+                showAddTransaction = true
+            },
             onSettings: { onSettings?() },
             insightsActive: false,
             settingsActive: false
@@ -87,10 +115,28 @@ struct TransactionListView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("TRANSACTIONS")
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(0.5)
-                .foregroundColor(OnboardingDesign.textTertiary)
+            HStack(alignment: .center, spacing: 10) {
+                if showBottomBar, let onDismiss {
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(OnboardingDesign.textSecondary)
+                            .frame(width: 32, height: 32)
+                            .background(Color.white.opacity(0.5))
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.65), lineWidth: 1))
+                            .shadow(color: OnboardingDesign.textPrimary.opacity(0.07), radius: 8, x: 0, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text("TRANSACTIONS")
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(OnboardingDesign.textTertiary)
+            }
+            .padding(.bottom, 2)
             Text("All Spending")
                 .font(.system(size: 34, weight: .light))
                 .tracking(-0.5)
@@ -164,7 +210,7 @@ struct TransactionListView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
-            } else if viewModel.groupedByMonth.isEmpty {
+            } else if viewModel.groupedByMonth.isEmpty && viewModel.pinnedTransactions.isEmpty {
                 Text("No transactions yet")
                     .font(.system(size: 14))
                     .foregroundColor(OnboardingDesign.textSecondary)
@@ -178,6 +224,88 @@ struct TransactionListView: View {
         }
     }
 
+    // MARK: - Pinned section
+
+    private var pinnedSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("PINNED ITEMS")
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.5)
+                .foregroundColor(OnboardingDesign.textPrimary)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 4)
+            ForEach(viewModel.pinnedTransactions.filter { !deletingTransactionIds.contains($0.id) }) { tx in
+                pinnedTransactionCard(tx: tx)
+                    .matchedGeometryEffect(id: tx.id, in: pinNamespace)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .center))
+                    ))
+                    .onTapGesture {
+                        selectedTransactionForEdit = tx
+                    }
+                    .contextMenu {
+                        contextMenuActions(tx: tx)
+                    }
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.86), value: deletingTransactionIds)
+        }
+        .padding(16)
+        .padding(.horizontal, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 32)
+                .fill(Color.white.opacity(0.15))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 32)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                        .foregroundColor(OnboardingDesign.glassBorder)
+                )
+        )
+    }
+
+    private func pinnedTransactionCard(tx: Transaction) -> some View {
+        let pinBadge = Image(systemName: "pin.fill")
+            .font(.system(size: 10))
+            .foregroundColor(.white)
+            .frame(width: 20, height: 20)
+            .background(OnboardingDesign.textPrimary)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+            .offset(x: 4, y: -4)
+        return ZStack(alignment: .topTrailing) {
+            HStack(alignment: .center, spacing: 12) {
+                iconCircle(category: tx.category, isSubscription: tx.isSubscription == true)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .center, spacing: 6) {
+                        Text(transactionDisplayName(tx))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(OnboardingDesign.textPrimary)
+                            .lineLimit(1)
+                        categoryBadge(tx.category, isSubscription: tx.isSubscription == true)
+                        Spacer(minLength: 0)
+                    }
+                    Text(subtitleForTransaction(tx))
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(amountString(tx))
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(OnboardingDesign.textPrimary)
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.6))
+            .clipShape(RoundedRectangle(cornerRadius: 28))
+            .shadow(color: OnboardingDesign.textPrimary.opacity(0.04), radius: 20, x: 0, y: 10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 28)
+                    .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+            )
+            pinBadge
+        }
+    }
+
     private func monthSection(group: TransactionMonthGroup) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             NavigationLink(value: MonthDetailDestination(monthKey: group.id, monthLabel: group.monthLabel)) {
@@ -185,12 +313,21 @@ struct TransactionListView: View {
             }
             .buttonStyle(.plain)
             VStack(spacing: 12) {
-                ForEach(group.transactions) { tx in
-                    NavigationLink(value: tx) {
-                        transactionCard(tx: tx, monthTransactions: group.transactions)
-                    }
-                    .buttonStyle(.plain)
+                ForEach(group.transactions.filter { !deletingTransactionIds.contains($0.id) }) { tx in
+                    transactionCard(tx: tx, monthTransactions: group.transactions)
+                        .matchedGeometryEffect(id: tx.id, in: pinNamespace)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                            removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .center))
+                        ))
+                        .onTapGesture {
+                            selectedTransactionForEdit = tx
+                        }
+                        .contextMenu {
+                            contextMenuActions(tx: tx)
+                        }
                 }
+                .animation(.spring(response: 0.35, dampingFraction: 0.86), value: deletingTransactionIds)
             }
         }
     }
@@ -211,11 +348,12 @@ struct TransactionListView: View {
 
     private func transactionCard(tx: Transaction, monthTransactions: [Transaction]) -> some View {
         let isWarning = viewModel.isPossibleDuplicate(tx, inMonthTransactions: monthTransactions)
-        return HStack(alignment: .center, spacing: 12) {
+        return ZStack(alignment: .topTrailing) {
+            HStack(alignment: .center, spacing: 12) {
             iconCircle(category: tx.category, isSubscription: tx.isSubscription == true)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .center, spacing: 6) {
-                    Text(tx.merchant ?? "Unknown")
+                    Text(transactionDisplayName(tx))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(OnboardingDesign.textPrimary)
                         .lineLimit(1)
@@ -266,45 +404,47 @@ struct TransactionListView: View {
                     .stroke(OnboardingDesign.accentWarning.opacity(0.3), lineWidth: 1)
             }
         }
+        }
+    }
+
+    @ViewBuilder
+    private func contextMenuActions(tx: Transaction) -> some View {
+        Button {
+            let willPin = !viewModel.isPinned(tx)
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                LocalDataStore.shared.setPinned(id: tx.id, pinned: willPin)
+                viewModel.refreshTrigger += 1
+            }
+            Task { await viewModel.load() }
+        } label: {
+            Label(viewModel.isPinned(tx) ? "Unpin" : "Pin to Top", systemImage: "bookmark")
+        }
+        Button(role: .destructive) {
+            let id = tx.id
+            _ = withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                deletingTransactionIds.insert(id)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                try? LocalDataStore.shared.deleteTransaction(id: id)
+                deletingTransactionIds.remove(id)
+                Task { @MainActor in await viewModel.load() }
+            }
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
     }
 
     private func iconCircle(category: String, isSubscription: Bool) -> some View {
-        let (bg, fg) = iconColors(category: category, isSubscription: isSubscription)
+        let iconName = isSubscription ? CategoryIconHelper.subscriptionIconName() : CategoryIconHelper.iconName(categoryId: category)
+        let (bg, fg) = CategoryIconHelper.iconColors(categoryId: category, isSubscription: isSubscription)
         return ZStack {
             Circle()
                 .fill(bg)
                 .frame(width: 40, height: 40)
-            Image(systemName: iconName(category: category, isSubscription: isSubscription))
+            Image(systemName: iconName)
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(fg)
         }
-    }
-
-    private func iconName(category: String, isSubscription: Bool) -> String {
-        if isSubscription { return "creditcard.fill" }
-        let c = category.lowercased()
-        if c.contains("food") || c.contains("dining") { return "cup.and.saucer.fill" }
-        if c.contains("transport") || c.contains("transit") { return "car.fill" }
-        if c.contains("shopping") { return "bag.fill" }
-        if c.contains("health") { return "heart.fill" }
-        return "dollarsign"
-    }
-
-    private func iconColors(category: String, isSubscription: Bool) -> (Color, Color) {
-        let c = category.lowercased()
-        if c.contains("food") || c.contains("dining") {
-            return (OnboardingDesign.accentGreen.opacity(0.2), OnboardingDesign.accentGreen)
-        }
-        if c.contains("shopping") {
-            return (OnboardingDesign.accentBlue.opacity(0.2), OnboardingDesign.accentBlue)
-        }
-        if isSubscription || c.contains("subscription") {
-            return (OnboardingDesign.accentWarning.opacity(0.2), OnboardingDesign.accentWarning)
-        }
-        if c.contains("transport") || c.contains("transit") {
-            return (Color(red: 0.886, green: 0.871, blue: 0.808).opacity(0.6), OnboardingDesign.textSecondary)
-        }
-        return (Color.white.opacity(0.6), OnboardingDesign.textSecondary)
     }
 
     private func categoryBadge(_ category: String, isSubscription: Bool) -> some View {
@@ -320,26 +460,19 @@ struct TransactionListView: View {
     }
 
     private func categoryDisplayName(_ category: String) -> String {
-        let c = category.lowercased()
-        if c.contains("food") || c.contains("dining") { return "Dining" }
-        if c.contains("transport") || c.contains("transit") { return "Transit" }
-        if c.contains("shopping") { return "Shopping" }
-        if c.contains("health") { return "Health" }
-        return category.prefix(1).uppercased() + category.dropFirst().lowercased()
+        CategoryIconHelper.displayName(categoryId: category)
     }
 
     private func badgeColors(category: String, isSubscription: Bool) -> (Color, Color) {
         if isSubscription {
-            return (Color(red: 0.886, green: 0.871, blue: 0.808).opacity(0.5), OnboardingDesign.textSecondary)
+            return (OnboardingDesign.accentWarning.opacity(0.15), OnboardingDesign.accentWarning)
         }
-        let c = category.lowercased()
-        if c.contains("food") || c.contains("dining") {
-            return (OnboardingDesign.accentGreen.opacity(0.15), OnboardingDesign.accentGreen)
-        }
-        if c.contains("shopping") {
-            return (OnboardingDesign.accentBlue.opacity(0.15), OnboardingDesign.accentBlue)
-        }
-        return (Color(red: 0.886, green: 0.871, blue: 0.808).opacity(0.5), OnboardingDesign.textSecondary)
+        let color = CategoryIconHelper.color(categoryId: category)
+        return (color.opacity(0.15), color)
+    }
+
+    private func transactionDisplayName(_ tx: Transaction) -> String {
+        CategoryIconHelper.transactionDisplayName(merchant: tx.merchant, subcategory: tx.subcategory, categoryId: tx.category)
     }
 
     private func subtitleForTransaction(_ tx: Transaction) -> String {

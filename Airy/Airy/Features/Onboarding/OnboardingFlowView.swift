@@ -24,6 +24,7 @@ enum OnboardingDesign {
     static let accentBlue = Color(red: 0.482, green: 0.616, blue: 0.671)
     static let accentAmber = Color(red: 0.851, green: 0.627, blue: 0.357) // #D9A05B
     static let accentWarning = Color(red: 0.831, green: 0.639, blue: 0.451) // #D4A373
+    static let textDanger = Color(red: 0.839, green: 0.478, blue: 0.478)   // #D67A7A
 
     static let glassBg = Color.white.opacity(0.45)
     static let glassBorder = Color.white.opacity(0.6)

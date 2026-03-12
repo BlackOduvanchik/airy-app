@@ -34,7 +34,9 @@ struct CategoryBreakdownView: View {
             .scrollIndicators(.hidden)
         }
         .navigationBarHidden(true)
-        .fullScreenCover(item: $selectedCategoryDetail) { dest in
+        .fullScreenCover(item: $selectedCategoryDetail, onDismiss: {
+            Task { await viewModel.load() }
+        }) { dest in
             CategoryDetailView(destination: dest)
         }
         .task { await viewModel.load() }
@@ -416,15 +418,7 @@ final class CategoryBreakdownViewModel {
     }
 
     private func categoryIconName(_ categoryId: String) -> String {
-        if let cat = CategoryStore.byId(categoryId), let icon = cat.iconName { return icon }
-        let c = categoryId.lowercased()
-        if c.contains("food") || c.contains("dining") || c.contains("grocer") { return "cup.and.saucer.fill" }
-        if c.contains("transport") || c.contains("transit") { return "car.fill" }
-        if c.contains("housing") || c.contains("rent") { return "house.fill" }
-        if c.contains("shopping") { return "bag.fill" }
-        if c.contains("health") { return "heart.fill" }
-        if c.contains("bills") { return "doc.text.fill" }
-        return "dollarsign"
+        CategoryIconHelper.iconName(categoryId: categoryId)
     }
 }
 
