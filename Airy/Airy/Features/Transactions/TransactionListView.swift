@@ -106,6 +106,8 @@ struct TransactionListView: View {
                 showAddTransaction = true
             },
             onSettings: { onSettings?() },
+            useDashboardButton: true,
+            onDashboard: { onDismiss?() },
             insightsActive: false,
             settingsActive: false
         )

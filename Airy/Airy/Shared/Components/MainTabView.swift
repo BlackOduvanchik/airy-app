@@ -145,13 +145,41 @@ struct MainTabView: View {
         } message: {
             Text("Copy an image first, then try again.")
         }
-        .sheet(isPresented: $showSubscriptions) {
-            SubscriptionsView()
+        .fullScreenCover(isPresented: $showSubscriptions) {
+            SubscriptionsView(onDismiss: { showSubscriptions = false })
         }
         .fullScreenCover(isPresented: $showAllTransactions) {
             TransactionListView(
                 showBottomBar: true,
-                onDismiss: { showAllTransactions = false },
+                onDismiss: {
+                    // #region agent log
+                    do {
+                        let payload: [String: Any] = [
+                            "sessionId": "ad783c",
+                            "location": "MainTabView.fullScreenCover.onDismiss",
+                            "message": "All transactions list dismissed",
+                            "data": ["dashboardRefreshId": dashboardRefreshId],
+                            "timestamp": Int(Date().timeIntervalSince1970 * 1000),
+                            "hypothesisId": "H2"
+                        ]
+                        if let json = try? JSONSerialization.data(withJSONObject: payload),
+                           let line = String(data: json, encoding: .utf8) {
+                            let path = "/Users/oduvanchik/Desktop/Airy/.cursor/debug-ad783c.log"
+                            let lineData = (line + "\n").data(using: .utf8)!
+                            if FileManager.default.fileExists(atPath: path) {
+                                if let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) {
+                                    defer { try? h.close() }
+                                    h.seekToEndOfFile()
+                                    h.write(lineData)
+                                }
+                            } else {
+                                FileManager.default.createFile(atPath: path, contents: lineData, attributes: nil)
+                            }
+                        }
+                    }
+                    // #endregion
+                    showAllTransactions = false
+                },
                 onInsights: {
                     showAllTransactions = false
                     selectedTab = .insights
@@ -181,6 +209,8 @@ struct MainTabView: View {
                     selectedTab = .settings
                 }
             },
+            useDashboardButton: selectedTab != .dashboard,
+            onDashboard: { selectedTab = .dashboard },
             insightsActive: selectedTab == .insights,
             settingsActive: selectedTab == .settings
         )

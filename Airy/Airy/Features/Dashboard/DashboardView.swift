@@ -41,7 +41,7 @@ struct DashboardView: View {
             .navigationDestination(for: AnalyticsRoute.self) { route in
                 switch route {
                 case .categoryBreakdown:
-                    CategoryBreakdownView()
+                    CategoryBreakdownView(refreshId: refreshId)
                 }
             }
             .task(id: refreshId) { await viewModel.load() }
@@ -368,17 +368,18 @@ struct DashboardView: View {
                     .tracking(0.5)
                     .foregroundColor(OnboardingDesign.textTertiary)
                 Spacer()
-                if let onOpenSubscriptions {
-                    Button(action: onOpenSubscriptions) {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 16))
-                            .foregroundColor(OnboardingDesign.textTertiary)
-                    }
-                    .buttonStyle(.plain)
+                if onOpenSubscriptions != nil {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 16))
+                        .foregroundColor(OnboardingDesign.textTertiary)
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 16)
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onOpenSubscriptions?()
+            }
 
             if viewModel.upcomingSubscriptions.isEmpty {
                 Text("No upcoming bills")

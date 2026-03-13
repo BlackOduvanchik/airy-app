@@ -11,6 +11,8 @@ struct BottomNavBarView: View {
     var onInsights: () -> Void
     var onFab: () -> Void
     var onSettings: () -> Void
+    var useDashboardButton: Bool = false
+    var onDashboard: (() -> Void)? = nil
     var insightsActive: Bool = false
     var settingsActive: Bool = false
 
@@ -20,7 +22,13 @@ struct BottomNavBarView: View {
             Spacer()
             fabButton(action: onFab)
             Spacer()
-            navButton(icon: "gearshape.fill", isActive: settingsActive, action: onSettings)
+            Group {
+                if useDashboardButton, let onDashboard = onDashboard {
+                    navButton(icon: "house.fill", isActive: false, action: onDashboard)
+                } else {
+                    navButton(icon: "gearshape.fill", isActive: settingsActive, action: onSettings)
+                }
+            }
         }
         .padding(.horizontal, 32)
         .frame(height: 72)

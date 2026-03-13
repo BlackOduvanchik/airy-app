@@ -95,6 +95,13 @@ struct PendingReviewView: View {
     private func cardFor(_ item: PendingTransaction) -> some View {
         guard let p = item.decodedPayload else { return AnyView(EmptyView()) }
         let merchant = p.merchant ?? "Transaction"
+        let effectiveCategoryId = MerchantCategoryRuleStore.shared.categoryId(for: merchant) ?? p.category
+        let effectiveIcon: String = {
+            if let cid = effectiveCategoryId, !cid.isEmpty, cid != "other" {
+                return CategoryIconHelper.iconName(categoryId: cid)
+            }
+            return categoryIcon(for: merchant)
+        }()
         let isLowConfidence = isLowConfidenceMerchant(merchant) || (item.confidence ?? 1) < 0.6
         let dupText = viewModel.duplicateSeenText(for: p, excludePendingId: item.id)
         let binding = Binding(
@@ -110,8 +117,8 @@ struct PendingReviewView: View {
                 date: p.transactionDate ?? "",
                 time: p.transactionTime,
                 isIncome: isIncome,
-                categoryLabel: categoryLabel(for: merchant, categoryId: p.category),
-                categoryIcon: categoryIcon(for: merchant),
+                categoryLabel: categoryLabel(for: merchant, categoryId: effectiveCategoryId),
+                categoryIcon: effectiveIcon,
                 isLowConfidence: isLowConfidence,
                 confidencePercent: isLowConfidence ? (item.confidence ?? 0.45) * 100 : nil,
                 isDuplicate: dupText != nil,

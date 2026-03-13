@@ -251,6 +251,8 @@ final class GPTRulesService {
 
         1) Extract all transactions. For each give: date (YYYY-MM-DD), merchant (string or null), amount (number), currency (ISO code or null, default \(baseCurrency)), isCredit (boolean), isSubscription (boolean, true if recurring/subscription), categoryId (MUST be one of the category ids from the list below), subcategoryId (optional, one of subcategory ids for that category), time (HH:mm or null).
 
+        MERCHANT rules: Use the store, brand, or establishment name (e.g. TOPS, Starbucks, McDonald's) — usually the first or most prominent name on the line with the amount. Do NOT use generic labels like "покупка", "purchase", "payment", "transaction", "оплата", "withdrawal". If you only see a generic word next to the amount, look for the store/company name on the same line or above (often left of the amount). If no specific merchant is found, use "Other".
+
         2) Return parsing rules so the app can parse the same format locally next time. Rules structure: extraJunkPatterns (array of regex strings), datePatterns (array of regex for dates in this format), currencySymbols (object symbol to ISO code), defaultCurrency (string), amountPattern (null or regex).
 
         Categories (use only these ids for categoryId): [\(categoriesJson)]
@@ -359,6 +361,8 @@ final class GPTRulesService {
         - INCLUDE gifts, incoming transfers, and credits (e.g. "КОТ" with green amount, "received", "подарунок") as income (isCredit: true).
 
         1) Extract only real completed transactions. For each: date (YYYY-MM-DD), merchant (string or null), amount (number, use sign or context: positive for income/gifts, negative for expenses), currency (ISO code or null, default \(baseCurrency)), isCredit (true for income/gifts/refunds), isSubscription (true if recurring), categoryId (one of the category ids below), subcategoryId (optional), time (HH:mm or null).
+
+        MERCHANT rules: Use the store, brand, or establishment name (e.g. TOPS, Starbucks, McDonald's) — usually the first or most prominent name on the line with the amount. Do NOT use generic labels like "покупка", "purchase", "payment", "transaction", "оплата", "withdrawal". If you only see a generic word next to the amount, look for the store/company name on the same line or above (often left of the amount). If no specific merchant is found, use "Other".
 
         2) Return parsing rules for the app: extraJunkPatterns, datePatterns, currencySymbols, defaultCurrency, amountPattern.
 

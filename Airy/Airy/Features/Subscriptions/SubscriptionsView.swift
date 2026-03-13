@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct SubscriptionsView: View {
+    var onDismiss: (() -> Void)? = nil
     @State private var viewModel = SubscriptionsViewModel()
 
     var body: some View {
@@ -30,8 +31,7 @@ struct SubscriptionsView: View {
                 }
                 .scrollIndicators(.hidden)
             }
-            .navigationTitle("Subscriptions")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
             .sheet(isPresented: $viewModel.showPaywall) {
                 PaywallView()
             }
@@ -43,10 +43,26 @@ struct SubscriptionsView: View {
 
     private var headerSection: some View {
         VStack(spacing: 8) {
-            Text("SUBSCRIPTIONS")
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(1)
-                .foregroundColor(OnboardingDesign.textTertiary)
+            if onDismiss != nil {
+                HStack {
+                    Button {
+                        onDismiss?()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(OnboardingDesign.textPrimary)
+                            .frame(width: 40, height: 40)
+                            .background(Color.white.opacity(0.4))
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(OnboardingDesign.glassHighlight, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                    Color.clear.frame(width: 40, height: 40)
+                }
+                .padding(.horizontal, 4)
+                .padding(.bottom, 12)
+            }
             ZStack {
                 Circle()
                     .fill(
@@ -290,17 +306,89 @@ struct SubscriptionsView: View {
         .modifier(SubsGlassModifier())
     }
 
-    // MARK: - Donut chart
+    // MARK: - Donut chart (real data from subscriptions by category)
+
+    private struct SubsChartSegment: Identifiable {
+        let id: String
+        let start: CGFloat
+        let end: CGFloat
+        let color: Color
+        let label: String
+    }
+
+    private var subscriptionChartSegments: [SubsChartSegment] {
+        let base = BaseCurrencyStore.baseCurrency
+        var byCat: [String: Double] = [:]
+        for sub in viewModel.subscriptions {
+            let monthly: Double
+            let interval = sub.interval.lowercased()
+            if interval.hasPrefix("year") || interval.hasPrefix("annual") {
+                monthly = sub.amount / 12
+            } else if interval.hasPrefix("week") {
+                monthly = sub.amount * (52.0 / 12.0)
+            } else {
+                monthly = sub.amount
+            }
+            let inBase = CurrencyService.convert(amount: monthly, from: sub.currency, to: base)
+            let catId = sub.categoryId ?? "other"
+            byCat[catId, default: 0] += inBase
+        }
+        let total = byCat.values.reduce(0, +)
+        guard total > 0 else { return [] }
+        let sorted = byCat.sorted { $0.value > $1.value }
+        let n = sorted.count
+        let fillRatio: Double = {
+            switch n {
+            case 1: return 1.0
+            case 2: return 0.90
+            case 3: return 0.88
+            case 4: return 0.78
+            case 5: return 0.70
+            default: return 0.60
+            }
+        }()
+        let usableAngle = 360 * fillRatio
+        let gapAngle = n > 1 ? (360 - usableAngle) / Double(n - 1) : 0
+        let fallbackColors: [Color] = [
+            OnboardingDesign.accentGreen,
+            OnboardingDesign.accentBlue,
+            OnboardingDesign.accentAmber,
+            OnboardingDesign.bgTop,
+            Color.white.opacity(0.6)
+        ]
+        var current: Double = 0
+        return sorted.enumerated().map { i, pair in
+            let norm = pair.value / total
+            let segmentAngle = usableAngle * norm
+            let start = current
+            let end = start + segmentAngle
+            current = end + gapAngle
+            let cat = CategoryStore.byId(pair.key)
+            let label = cat?.name ?? pair.key.capitalized
+            let color = cat?.color ?? fallbackColors[i % fallbackColors.count]
+            return SubsChartSegment(
+                id: pair.key,
+                start: CGFloat(start / 360),
+                end: CGFloat(end / 360),
+                color: color,
+                label: label
+            )
+        }
+    }
 
     private var donutChartSection: some View {
         HStack(alignment: .center, spacing: 24) {
             donutChartView
                 .frame(width: 80, height: 80)
             VStack(alignment: .leading, spacing: 4) {
-                legendRow(color: OnboardingDesign.accentBlue, label: "Entertainment")
-                legendRow(color: OnboardingDesign.accentGreen, label: "Productivity")
-                legendRow(color: OnboardingDesign.accentAmber, label: "Health")
-                legendRow(color: OnboardingDesign.bgTop, label: "News")
+                ForEach(subscriptionChartSegments) { seg in
+                    legendRow(color: seg.color, label: seg.label)
+                }
+                if subscriptionChartSegments.isEmpty {
+                    Text("No subscriptions")
+                        .font(.system(size: 12))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -310,7 +398,7 @@ struct SubscriptionsView: View {
 
     private var donutChartView: some View {
         ZStack {
-            ForEach(Array(donutSegments.enumerated()), id: \.offset) { index, seg in
+            ForEach(subscriptionChartSegments) { seg in
                 Circle()
                     .trim(from: seg.start, to: seg.end)
                     .stroke(seg.color, style: StrokeStyle(lineWidth: 3, lineCap: .butt))
@@ -318,19 +406,6 @@ struct SubscriptionsView: View {
             }
         }
         .padding(2)
-    }
-
-    private var donutSegments: [(start: CGFloat, end: CGFloat, color: Color)] {
-        let total: CGFloat = 100
-        let a: CGFloat = 40 / total
-        let b: CGFloat = 30 / total
-        let c: CGFloat = 20 / total
-        return [
-            (0, a, OnboardingDesign.accentBlue),
-            (a, a + b, OnboardingDesign.accentGreen),
-            (a + b, a + b + c, OnboardingDesign.accentAmber),
-            (a + b + c, 1, OnboardingDesign.bgTop)
-        ]
     }
 
     private func legendRow(color: Color, label: String) -> some View {

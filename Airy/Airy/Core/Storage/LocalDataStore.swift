@@ -179,7 +179,22 @@ final class LocalDataStore {
                 MerchantCategoryRuleStore.shared.save(merchant: merchant, categoryId: catId, subcategoryId: o.subcategoryId)
             }
         }
-        let merged = mergePayloadWithOverrides(payload, overrides)
+        var merged = mergePayloadWithOverrides(payload, overrides)
+        if let ruleCat = MerchantCategoryRuleStore.shared.categoryId(for: payload.merchant) {
+            merged = PendingTransactionPayload(
+                type: merged.type,
+                amountOriginal: merged.amountOriginal,
+                currencyOriginal: merged.currencyOriginal,
+                amountBase: merged.amountBase,
+                baseCurrency: merged.baseCurrency,
+                merchant: merged.merchant,
+                title: merged.title,
+                transactionDate: merged.transactionDate,
+                transactionTime: merged.transactionTime,
+                category: ruleCat,
+                subcategory: MerchantCategoryRuleStore.shared.subcategoryId(for: payload.merchant) ?? merged.subcategory
+            )
+        }
         let userBase = BaseCurrencyStore.baseCurrency
         let orig = merged.amountOriginal ?? 0
         let curr = merged.currencyOriginal ?? "USD"

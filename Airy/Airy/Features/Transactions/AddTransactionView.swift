@@ -46,6 +46,7 @@ struct AddTransactionView: View {
     @State private var isDeleting = false
     @State private var frozenQuickPickOrder: [String] = []
     @State private var pickedFromOthersThisSession: String? = nil
+    @FocusState private var isNoteFocused: Bool
 
     init(transaction: Transaction? = nil, initialType: String? = nil, initialQuickPickOrder: [String]? = nil, onSuccess: (() -> Void)? = nil) {
         self.transaction = transaction
@@ -138,8 +139,12 @@ struct AddTransactionView: View {
             .ignoresSafeArea(.keyboard, edges: .bottom)
             ScrollView {
                 VStack(spacing: 0) {
-                    amountSection
-                    typeToggle
+                    VStack(spacing: 0) {
+                        amountSection
+                        typeToggle
+                    }
+                    .offset(y: viewModel.isSubscription && isNoteFocused ? -56 : 0)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.82), value: viewModel.isSubscription && isNoteFocused)
                     subscriptionSection
                     categorySection
                     formFields
@@ -589,9 +594,25 @@ struct AddTransactionView: View {
                 .anchorPreference(key: TimeButtonAnchorKey.self, value: .bounds) { $0 }
             }
 
-            inputRow(icon: "pencil", placeholder: "Add a note...", text: $viewModel.note)
+            noteInputRow
         }
         .padding(.bottom, 24)
+    }
+
+    private var noteInputRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "pencil")
+                .font(.system(size: 18))
+                .foregroundColor(OnboardingDesign.textTertiary)
+            TextField("Add a note...", text: $viewModel.note)
+                .font(.system(size: 15))
+                .foregroundColor(OnboardingDesign.textPrimary)
+                .focused($isNoteFocused)
+        }
+        .padding(16)
+        .background(Color.white.opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.4), lineWidth: 1))
     }
 
     private var dateFormatted: String {

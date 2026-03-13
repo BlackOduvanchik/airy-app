@@ -25,6 +25,20 @@ final class ImportViewModel {
     private let parser = LocalOCRParser()
     private let gptService = GPTRulesService()
 
+    /// Generic labels that must not be used as merchant; replaced with "Other".
+    private static let genericMerchantValues: Set<String> = [
+        "покупка", "purchase", "payment", "transaction", "оплата", "withdrawal",
+        "payout", "transfer", "purchase", "sale", "expense", "withdrawal", "payment"
+    ]
+
+    /// Returns "Other" if merchant is nil, empty, or a generic label; otherwise returns trimmed merchant.
+    private static func normalizeMerchant(_ raw: String?) -> String? {
+        let s = (raw ?? "").trimmingCharacters(in: .whitespaces)
+        if s.isEmpty { return "Other" }
+        if genericMerchantValues.contains(s.lowercased()) { return "Other" }
+        return s
+    }
+
     /// Apply saved category rule for this merchant (from "Remember rule" in Review); otherwise use item's category.
     private static func effectiveCategory(for item: ParsedTransactionItem) -> (category: String, subcategory: String?) {
         let cat = MerchantCategoryRuleStore.shared.categoryId(for: item.merchant) ?? item.categoryId ?? "other"
@@ -363,7 +377,7 @@ final class ImportViewModel {
                 currency: tx.currency ?? "USD",
                 date: tx.date,
                 time: tx.time,
-                merchant: tx.merchant,
+                merchant: Self.normalizeMerchant(tx.merchant),
                 categoryId: tx.categoryId,
                 subcategoryId: tx.subcategoryId,
                 isSubscription: tx.isSubscription

@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct CategoryBreakdownView: View {
+    var refreshId: Int = 0
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel = CategoryBreakdownViewModel()
     @State private var selectedSegmentIndex: Int? = nil
@@ -39,7 +40,7 @@ struct CategoryBreakdownView: View {
         }) { dest in
             CategoryDetailView(destination: dest)
         }
-        .task { await viewModel.load() }
+        .task(id: refreshId) { await viewModel.load() }
     }
 
     // MARK: - Header
@@ -363,7 +364,7 @@ final class CategoryBreakdownViewModel {
             monthLabel = (Calendar.current.date(from: comp).map { formatter.string(from: $0) }) ?? "\(month)/\(year)"
 
             let transactions = LocalDataStore.shared.fetchTransactions(limit: 500, month: monthStr, year: yearStr)
-            let expenseOnly = transactions.filter { $0.type.lowercased() != "income" }
+            let expenseOnly = transactions.filter { $0.type.lowercased() != "income" && $0.isSubscription != true }
             totalSpent = expenseOnly.reduce(0) { acc, tx in
                 acc + CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
             }
@@ -387,11 +388,21 @@ final class CategoryBreakdownViewModel {
             }
 
             let n = sorted.count
-            let gapAngle: Double = n > 1 ? 126 / Double(n) : 0  // 35% of circle for gaps when n > 1
-            let usableAngle: Double = n > 1 ? 234 : 360      // 65% for segments, or full circle if single
+            let fillRatio: Double = {
+                switch n {
+                case 1: return 1.0
+                case 2: return 0.90
+                case 3: return 0.88
+                case 4: return 0.78
+                case 5: return 0.70
+                default: return 0.60
+                }
+            }()
+            let usableAngle: Double = 360 * fillRatio
+            let gapAngle: Double = n > 1 ? (360 - usableAngle) / Double(n) : 0
 
             var currentAngle: Double = 0
-            segments = Array(sorted.enumerated().map { i, pair in
+            let newSegments = Array(sorted.enumerated().map { i, pair in
                 let normalizedValue = pair.value / totalSpent
                 let segmentAngle = usableAngle * normalizedValue
                 let start = currentAngle
@@ -416,7 +427,10 @@ final class CategoryBreakdownViewModel {
                     endAngle: .degrees(end)
                 )
             })
-            transactionsByCategory = byCatTx
+            withAnimation(.easeInOut(duration: 0.35)) {
+                segments = newSegments
+                transactionsByCategory = byCatTx
+            }
         }
     }
 
