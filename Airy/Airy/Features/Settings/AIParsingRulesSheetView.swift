@@ -95,25 +95,30 @@ struct AIParsingRulesSheetView: View {
     }
 
     private var generateButton: some View {
-        Button {
-            Task { await generateRules() }
-        } label: {
-            HStack {
-                if isGenerating {
-                    ProgressView()
-                        .tint(.white)
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                Task { await generateRules() }
+            } label: {
+                HStack {
+                    if isGenerating {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                    Text(isGenerating ? "Generating..." : "Generate rules")
+                        .font(.system(size: 16, weight: .semibold))
                 }
-                Text(isGenerating ? "Generating..." : "Generate rules")
-                    .font(.system(size: 16, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(OnboardingDesign.accentGreen)
+                .foregroundColor(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(OnboardingDesign.accentGreen)
-            .foregroundColor(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .disabled(isGenerating || ocrTextToUse.isEmpty)
+            .buttonStyle(.plain)
+            Text("Saves rules for this screenshot format. Next time you import a similar image, the app will parse it locally without calling GPT.")
+                .font(.system(size: 12))
+                .foregroundColor(OnboardingDesign.textTertiary)
         }
-        .disabled(isGenerating || ocrTextToUse.isEmpty)
-        .buttonStyle(.plain)
     }
 
     private var ocrTextToUse: String {

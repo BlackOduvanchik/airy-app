@@ -35,6 +35,8 @@ final class AddTransactionViewModel {
     var selectedCategoryId: String?
     var selectedSubcategoryId: String?
     var transactionType: String = "expense"
+    var isSubscription = false
+    var subscriptionInterval = "monthly"
     var dateTime = Date()
     var note = ""
     var isSubmitting = false
@@ -44,7 +46,7 @@ final class AddTransactionViewModel {
     var existingTransaction: Transaction?
     var isPendingEditMode: Bool = false
 
-    static let currencies = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "UAH", "RUB"]
+    static let currencies = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "UAH", "RUB", "THB"]
 
     var amount: Double? {
         Double(amountText.replacingOccurrences(of: ",", with: "."))
@@ -80,7 +82,8 @@ final class AddTransactionViewModel {
             transactionDate: dateStr,
             transactionTime: timeStr,
             category: categoryStr,
-            subcategory: subcategoryStr
+            subcategory: subcategoryStr,
+            subcategoryId: selectedSubcategoryId
         )
     }
 
@@ -96,8 +99,9 @@ final class AddTransactionViewModel {
             selectedCurrency = p.currencyOriginal ?? "USD"
             merchant = p.merchant ?? ""
             selectedCategoryId = mapLegacyCategoryToId(p.category ?? "other")
-            if let subName = p.subcategory, let catId = selectedCategoryId {
-                selectedSubcategoryId = SubcategoryStore.forParent(catId).first { $0.name == subName }?.id
+            if let subVal = p.subcategory, let catId = selectedCategoryId {
+                let subs = SubcategoryStore.forParent(catId)
+                selectedSubcategoryId = subs.first { $0.id == subVal }?.id ?? subs.first { $0.name == subVal }?.id
             }
             transactionType = (p.type ?? "expense").lowercased()
             note = p.title ?? ""
@@ -116,10 +120,13 @@ final class AddTransactionViewModel {
             selectedCurrency = tx.currencyOriginal
             merchant = tx.merchant ?? ""
             selectedCategoryId = mapLegacyCategoryToId(tx.category)
-            if let subName = tx.subcategory, let catId = selectedCategoryId {
-                selectedSubcategoryId = SubcategoryStore.forParent(catId).first { $0.name == subName }?.id
+            if let subVal = tx.subcategory, let catId = selectedCategoryId {
+                let subs = SubcategoryStore.forParent(catId)
+                selectedSubcategoryId = subs.first { $0.id == subVal }?.id ?? subs.first { $0.name == subVal }?.id
             }
             transactionType = tx.type.lowercased()
+            isSubscription = tx.isSubscription == true
+            subscriptionInterval = tx.subscriptionInterval ?? "monthly"
             note = tx.title ?? ""
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd"
@@ -214,7 +221,6 @@ final class AddTransactionViewModel {
         let timeStr = timeFormatter.string(from: dateTime)
 
         let (categoryStr, subcategoryStr) = apiCategoryAndSubcategory
-        let isSubscription = subcategoryStr?.lowercased().contains("subscription") == true
 
         if let existing = existingTransaction {
             let merchantValue: String? = {
@@ -231,6 +237,8 @@ final class AddTransactionViewModel {
                 category: categoryStr,
                 subcategory: subcategoryStr ?? "",
                 transactionDate: dateStr,
+                isSubscription: isSubscription,
+                subscriptionInterval: isSubscription ? subscriptionInterval : nil,
                 comment: note.isEmpty ? nil : note
             )
             do {
@@ -256,6 +264,7 @@ final class AddTransactionViewModel {
                 category: categoryStr,
                 subcategory: subcategoryStr,
                 isSubscription: isSubscription,
+                subscriptionInterval: isSubscription ? subscriptionInterval : nil,
                 comment: note.isEmpty ? nil : note,
                 sourceType: "manual"
             )

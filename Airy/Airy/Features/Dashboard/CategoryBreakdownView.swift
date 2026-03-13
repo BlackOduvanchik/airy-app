@@ -273,10 +273,10 @@ struct CategoryBreakdownView: View {
     private func formatCurrencyWhole(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
+        formatter.currencyCode = BaseCurrencyStore.baseCurrency
         formatter.maximumFractionDigits = 0
         formatter.minimumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+        return formatter.string(from: NSNumber(value: value)) ?? "0"
     }
 
     private func formatAmount(_ amount: Double, _ currency: String) -> String {
@@ -364,12 +364,15 @@ final class CategoryBreakdownViewModel {
 
             let transactions = LocalDataStore.shared.fetchTransactions(limit: 500, month: monthStr, year: yearStr)
             let expenseOnly = transactions.filter { $0.type.lowercased() != "income" }
-            totalSpent = expenseOnly.reduce(0) { $0 + $1.amountOriginal }
+            totalSpent = expenseOnly.reduce(0) { acc, tx in
+                acc + CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
+            }
 
             var byCat: [String: Double] = [:]
             var byCatTx: [String: [Transaction]] = [:]
             for tx in expenseOnly {
-                byCat[tx.category, default: 0] += tx.amountOriginal
+                let inBase = CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
+                byCat[tx.category, default: 0] += inBase
                 byCatTx[tx.category, default: []].append(tx)
             }
             for (cat, list) in byCatTx {

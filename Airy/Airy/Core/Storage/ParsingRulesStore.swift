@@ -2,7 +2,8 @@
 //  ParsingRulesStore.swift
 //  Airy
 //
-//  Stores GPT-generated parsing rules locally. Parser uses them without any API calls.
+//  Stores GPT-generated parsing rule sets locally. Each set is separate (no mixing).
+//  Parser tries each set in order; first non-empty valid result = 100% match, no GPT call.
 //
 
 import Foundation
@@ -21,70 +22,133 @@ struct ParsingRules: Codable, Equatable {
     var amountPattern: String?
 }
 
+/// One rule set from one GPT response. Stored in order; tried in order.
+struct RuleSetEntry: Codable, Equatable {
+    let id: String
+    let signature: String
+    let rules: ParsingRules
+}
+
 final class ParsingRulesStore {
     static let shared = ParsingRulesStore()
-    private let key = "parsingRules"
+    private let key = "parsingRuleSets"
     private let lastOcrKey = "parsingRules_lastOcr"
-    private let maxRulesets = 10
-    /// Key: fingerprint of OCR format (first 300 chars hash). Value: rules.
-    private var cache: [String: ParsingRules] = [:]
+    private let imageCacheKey = "parsingRules_imageHashCache"
+    private let maxRuleSets = 50
+    private let maxImageCacheEntries = 100
+    private var ruleSets: [RuleSetEntry] = []
+    private var imageHashToItems: [String: [ParsedTransactionItem]] = [:]
     private let queue = DispatchQueue(label: "parsingRulesStore")
 
     private init() {
         loadFromUserDefaults()
+        loadImageCache()
     }
 
-    /// Save rules for OCR text. Computes fingerprint and also saves as global fallback.
-    func saveForOcr(rules: ParsingRules, ocrText: String) {
-        save(rules: rules, forFingerprint: fingerprint(ocrText))
-        saveGlobal(rules: rules)
+    /// Return cached extraction for this image hash (same image → no GPT call).
+    func cachedResult(forImageHash hash: String) -> [ParsedTransactionItem]? {
+        queue.sync { imageHashToItems[hash] }
     }
 
-    /// Save rules for a format. Fingerprint = hash of OCR prefix to detect same bank next time.
-    func save(rules: ParsingRules, forFingerprint fingerprint: String) {
+    /// Store GPT extraction by image hash so the same image is not sent to GPT again.
+    func cacheResult(_ items: [ParsedTransactionItem], forImageHash hash: String) {
         queue.sync {
-            cache[fingerprint] = rules
+            imageHashToItems[hash] = items
+            if imageHashToItems.count > maxImageCacheEntries {
+                let keysToRemove = Array(imageHashToItems.keys.prefix(imageHashToItems.count - maxImageCacheEntries))
+                keysToRemove.forEach { imageHashToItems.removeValue(forKey: $0) }
+            }
+            persistImageCache()
+        }
+    }
+
+    /// Append a new rule set (from a new GPT response or manual "Generate rules"). Does not merge with existing.
+    func appendRuleSet(rules: ParsingRules, forOcrText ocrText: String) {
+        saveForOcr(rules: rules, ocrText: ocrText)
+    }
+
+    /// Save rules for this OCR (appends a new rule set). Used by Settings "Generate rules" and by import GPT flow.
+    func saveForOcr(rules: ParsingRules, ocrText: String) {
+        queue.sync {
+            let sig = fingerprint(ocrText)
+            let entry = RuleSetEntry(id: UUID().uuidString, signature: sig, rules: rules)
+            ruleSets.append(entry)
+            if ruleSets.count > maxRuleSets {
+                ruleSets.removeFirst(ruleSets.count - maxRuleSets)
+            }
             persist()
         }
     }
 
-    /// Save as "global" rules (single set, used when fingerprint unknown)
-    func saveGlobal(rules: ParsingRules) {
-        save(rules: rules, forFingerprint: "_global")
-    }
-
-    /// Lookup rules for this OCR. Returns best match or global rules.
-    func rules(forOcrText ocrText: String) -> ParsingRules? {
-        let fp = fingerprint(ocrText)
-        return queue.sync {
-            cache[fp] ?? cache["_global"]
+    /// Try each rule set in order. Returns first non-empty valid parse result that also matches OCR content, or nil if none match.
+    /// Rejects local results when amounts/dates don't appear in the text (e.g. same app, different page → wrong extraction).
+    func tryMatch(ocrText: String, parser: LocalOCRParser, baseCurrency: String) -> [ParsedTransactionItem]? {
+        queue.sync {
+            for entry in ruleSets {
+                let items = parser.parse(ocrText: ocrText, baseCurrency: baseCurrency, customRules: entry.rules)
+                if isValidParseResult(items), parsedResultMatchesOcrText(items, ocrText: ocrText) {
+                    return items
+                }
+            }
+            return nil
         }
     }
 
-    /// Merge GPT rules with built-in defaults. Returns merged rules to use.
-    func mergedRules(forOcrText ocrText: String, builtIn: ParsingRules) -> ParsingRules {
-        guard let custom = rules(forOcrText: ocrText) else { return builtIn }
-        return ParsingRules(
-            extraJunkPatterns: (builtIn.extraJunkPatterns ?? []) + (custom.extraJunkPatterns ?? []),
-            datePatterns: (custom.datePatterns ?? []) + (builtIn.datePatterns ?? []),
-            currencySymbols: (builtIn.currencySymbols ?? [:]).merging(custom.currencySymbols ?? [:]) { _, new in new },
-            defaultCurrency: custom.defaultCurrency ?? builtIn.defaultCurrency,
-            amountPattern: custom.amountPattern ?? builtIn.amountPattern
-        )
+    /// Last OCR from import. Used for "Generate rules from last import" in Settings.
+    var lastOcrSample: String? {
+        get { UserDefaults.standard.string(forKey: lastOcrKey) }
+        set { UserDefaults.standard.set(newValue, forKey: lastOcrKey) }
     }
 
     func clearAll() {
         queue.sync {
-            cache.removeAll()
+            ruleSets.removeAll()
+            imageHashToItems.removeAll()
             UserDefaults.standard.removeObject(forKey: key)
             UserDefaults.standard.removeObject(forKey: lastOcrKey)
+            UserDefaults.standard.removeObject(forKey: imageCacheKey)
         }
     }
 
-    /// Last OCR from import. Used for "Generate rules from last import".
-    var lastOcrSample: String? {
-        get { UserDefaults.standard.string(forKey: lastOcrKey) }
-        set { UserDefaults.standard.set(newValue, forKey: lastOcrKey) }
+    private func isValidParseResult(_ items: [ParsedTransactionItem]) -> Bool {
+        guard !items.isEmpty else { return false }
+        for item in items {
+            if item.amount < 0.01 || item.amount > 50_000 { return false }
+            guard let y = Int(String(item.date.prefix(4))), (2020...2030).contains(y) else { return false }
+            if (item.merchant?.count ?? 0) < 2 { return false }
+        }
+        return true
+    }
+
+    /// Only accept local parse if extracted amounts and dates appear in the OCR text (avoids wrong data when same layout, different content).
+    private func parsedResultMatchesOcrText(_ items: [ParsedTransactionItem], ocrText: String) -> Bool {
+        let normalized = ocrText.replacingOccurrences(of: ",", with: ".")
+        for item in items {
+            let amountStr = formatAmountForMatch(item.amount)
+            if !amountAppearsInText(amountStr, ocrText: normalized) { return false }
+            let year = String(item.date.prefix(4))
+            if !normalized.contains(year) { return false }
+            if item.date.count >= 10 {
+                let day = String(item.date.suffix(2))
+                if !normalized.contains(day) { return false }
+            }
+        }
+        return true
+    }
+
+    private func formatAmountForMatch(_ amount: Double) -> (intPart: String, fracPart: String) {
+        let intPart = Int(amount)
+        let frac = Int(round((amount - Double(intPart)) * 100))
+        return (String(intPart), frac > 0 ? String(frac) : "")
+    }
+
+    private func amountAppearsInText(_ amount: (intPart: String, fracPart: String), ocrText: String) -> Bool {
+        guard ocrText.contains(amount.intPart) else { return false }
+        if !amount.fracPart.isEmpty {
+            if amount.fracPart.count == 1, !ocrText.contains(amount.fracPart) { return false }
+            if amount.fracPart.count == 2, !ocrText.contains(amount.fracPart) { return false }
+        }
+        return true
     }
 
     private func fingerprint(_ ocrText: String) -> String {
@@ -97,15 +161,26 @@ final class ParsingRulesStore {
     }
 
     private func persist() {
-        let toSave = cache.mapValues { $0 }
-        if let data = try? JSONEncoder().encode(toSave) {
+        if let data = try? JSONEncoder().encode(ruleSets) {
             UserDefaults.standard.set(data, forKey: key)
         }
     }
 
+    private func persistImageCache() {
+        if let data = try? JSONEncoder().encode(imageHashToItems) {
+            UserDefaults.standard.set(data, forKey: imageCacheKey)
+        }
+    }
+
+    private func loadImageCache() {
+        guard let data = UserDefaults.standard.data(forKey: imageCacheKey),
+              let decoded = try? JSONDecoder().decode([String: [ParsedTransactionItem]].self, from: data) else { return }
+        imageHashToItems = decoded
+    }
+
     private func loadFromUserDefaults() {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([String: ParsingRules].self, from: data) else { return }
-        cache = decoded
+              let decoded = try? JSONDecoder().decode([RuleSetEntry].self, from: data) else { return }
+        ruleSets = decoded
     }
 }

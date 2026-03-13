@@ -150,8 +150,9 @@ struct PendingReviewView: View {
             }
             .disabled(viewModel.pending.isEmpty || isSkipping)
         }
-        .padding(20)
-        .padding(.bottom, 40)
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 16)
         .frame(maxWidth: .infinity)
         .background(
             LinearGradient(

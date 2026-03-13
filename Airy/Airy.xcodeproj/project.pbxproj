@@ -50,6 +50,8 @@
 		B0010000000000000000002B /* LocalOCRParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002B /* LocalOCRParser.swift */; };
 		B0010000000000000000002C /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002C /* Category.swift */; };
 		B0010000000000000000002D /* NewCategorySheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002D /* NewCategorySheetView.swift */; };
+		B00100000000000000000043 /* SFSymbolsCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000043 /* SFSymbolsCatalog.swift */; };
+		B00100000000000000000044 /* IconLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000044 /* IconLibraryView.swift */; };
 		B0010000000000000000002E /* GalleryPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002E /* GalleryPickerView.swift */; };
 		B0010000000000000000002F /* AnalyzingTransactionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002F /* AnalyzingTransactionsView.swift */; };
 		B00100000000000000000031 /* MerchantCorrectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000031 /* MerchantCorrectionStore.swift */; };
@@ -70,6 +72,9 @@
 		B00100000000000000000040 /* TimePickerPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000040 /* TimePickerPopoverView.swift */; };
 		B00100000000000000000041 /* DatePickerPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000041 /* DatePickerPopoverView.swift */; };
 		B00100000000000000000042 /* ScrollViewNoBounce.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000042 /* ScrollViewNoBounce.swift */; };
+		B00100000000000000000045 /* AppSecrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000045 /* AppSecrets.swift */; };
+		B0010000000000000000004C /* CurrencyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000004C /* CurrencyService.swift */; };
+		B0010000000000000000004D /* MerchantCategoryRuleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000004D /* MerchantCategoryRuleStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -118,6 +123,11 @@
 		F0010000000000000000002B /* LocalOCRParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalOCRParser.swift; sourceTree = "<group>"; };
 		F0010000000000000000002C /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
 		F0010000000000000000002D /* NewCategorySheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewCategorySheetView.swift; sourceTree = "<group>"; };
+		F00100000000000000000043 /* SFSymbolsCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFSymbolsCatalog.swift; sourceTree = "<group>"; };
+		F00100000000000000000044 /* IconLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconLibraryView.swift; sourceTree = "<group>"; };
+		F00100000000000000000045 /* AppSecrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSecrets.swift; sourceTree = "<group>"; };
+		F0010000000000000000004C /* CurrencyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyService.swift; sourceTree = "<group>"; };
+		F0010000000000000000004D /* MerchantCategoryRuleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantCategoryRuleStore.swift; sourceTree = "<group>"; };
 		F0010000000000000000002E /* GalleryPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryPickerView.swift; sourceTree = "<group>"; };
 		F0010000000000000000002F /* AnalyzingTransactionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyzingTransactionsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000031 /* MerchantCorrectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantCorrectionStore.swift; sourceTree = "<group>"; };
@@ -256,6 +266,7 @@
 		GRP0000000000000000000B /* Auth */ = {
 			isa = PBXGroup;
 			children = (
+				F00100000000000000000045 /* AppSecrets.swift */,
 				F0010000000000000000001F /* AppleSignInService.swift */,
 				F00100000000000000000005 /* AuthStore.swift */,
 				F00100000000000000000028 /* KeychainHelper.swift */,
@@ -354,6 +365,8 @@
 				F00100000000000000000027 /* CategoriesSheetView.swift */,
 				F0010000000000000000002C /* Category.swift */,
 				F0010000000000000000002D /* NewCategorySheetView.swift */,
+				F00100000000000000000043 /* SFSymbolsCatalog.swift */,
+				F00100000000000000000044 /* IconLibraryView.swift */,
 			);
 			path = Transactions;
 			sourceTree = "<group>";
@@ -372,9 +385,11 @@
 			isa = PBXGroup;
 			children = (
 				F00100000000000000000029 /* LocalModels.swift */,
+				F0010000000000000000004D /* MerchantCategoryRuleStore.swift */,
 				F00100000000000000000031 /* MerchantCorrectionStore.swift */,
 				F00100000000000000000032 /* ParsingRulesStore.swift */,
 				F0010000000000000000002A /* LocalDataStore.swift */,
+				F0010000000000000000004C /* CurrencyService.swift */,
 			);
 			path = Storage;
 			sourceTree = "<group>";
@@ -497,15 +512,20 @@
 				B00100000000000000000027 /* CategoriesSheetView.swift in Sources */,
 				B0010000000000000000002C /* Category.swift in Sources */,
 				B0010000000000000000002D /* NewCategorySheetView.swift in Sources */,
+				B00100000000000000000043 /* SFSymbolsCatalog.swift in Sources */,
+				B00100000000000000000044 /* IconLibraryView.swift in Sources */,
 				B0010000000000000000001B /* OCRService.swift in Sources */,
 				B0010000000000000000001E /* AppleSignInService.swift in Sources */,
 				B00100000000000000000020 /* OnboardingFlowView.swift in Sources */,
 				B00100000000000000000028 /* KeychainHelper.swift in Sources */,
+				B00100000000000000000045 /* AppSecrets.swift in Sources */,
 				B00100000000000000000029 /* LocalModels.swift in Sources */,
 				B0010000000000000000002A /* LocalDataStore.swift in Sources */,
+				B0010000000000000000004C /* CurrencyService.swift in Sources */,
 				B0010000000000000000002B /* LocalOCRParser.swift in Sources */,
 				B0010000000000000000002E /* GalleryPickerView.swift in Sources */,
 				B0010000000000000000002F /* AnalyzingTransactionsView.swift in Sources */,
+				B0010000000000000000004D /* MerchantCategoryRuleStore.swift in Sources */,
 				B00100000000000000000031 /* MerchantCorrectionStore.swift in Sources */,
 				B00100000000000000000032 /* ParsingRulesStore.swift in Sources */,
 				B00100000000000000000033 /* GPTRulesService.swift in Sources */,

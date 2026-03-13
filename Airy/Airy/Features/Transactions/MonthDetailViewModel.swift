@@ -61,7 +61,9 @@ final class MonthDetailViewModel {
                 }
             totalSpent = transactions
                 .filter { $0.type.lowercased() != "income" }
-                .reduce(0) { $0 + $1.amountOriginal }
+                .reduce(0) { acc, tx in
+                    acc + CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
+                }
         }
     }
 }

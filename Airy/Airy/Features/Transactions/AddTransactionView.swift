@@ -35,6 +35,7 @@ struct AddTransactionView: View {
     var onConfirmPending: ((ConfirmPendingOverrides, Bool) -> Void)?
     var onCancelPending: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: AddTransactionViewModel
     @State private var showDatePicker = false
     @State private var showTimePicker = false
@@ -139,6 +140,7 @@ struct AddTransactionView: View {
                 VStack(spacing: 0) {
                     amountSection
                     typeToggle
+                    subscriptionSection
                     categorySection
                     formFields
                     if pendingTransaction != nil {
@@ -151,7 +153,7 @@ struct AddTransactionView: View {
             actionBar
         }
         .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .padding(.top, 4)
         .padding(.bottom, 40)
         .background(
             RoundedRectangle(cornerRadius: 40)
@@ -205,12 +207,12 @@ struct AddTransactionView: View {
         RoundedRectangle(cornerRadius: 3)
             .fill(Color.black.opacity(0.08))
             .frame(width: 36, height: 5)
-            .padding(.top, 16)
-            .padding(.bottom, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
     }
 
     private var headerActions: some View {
-        HStack {
+        HStack(alignment: .center) {
             Button {
                 if pendingTransaction != nil {
                     onCancelPending?()
@@ -225,35 +227,36 @@ struct AddTransactionView: View {
                     .frame(width: 40, height: 40)
             }
             Spacer()
-            Text(viewModel.sheetTitle)
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(0.5)
-                .foregroundColor(OnboardingDesign.textPrimary)
+            if viewModel.sheetTitle != "New Entry" {
+                Text(viewModel.sheetTitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(OnboardingDesign.textPrimary)
+            } else {
+                Menu {
+                    ForEach(AddTransactionViewModel.currencies, id: \.self) { code in
+                        Button("\(code) ($)") { viewModel.selectedCurrency = code }
+                    }
+                } label: {
+                    Text("\(viewModel.selectedCurrency) ($)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.5))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white, lineWidth: 1))
+                }
+                .disabled(viewModel.isEditMode)
+            }
             Spacer()
-            Color.clear
-                .frame(width: 40, height: 40)
+            Color.clear.frame(width: 40, height: 40)
         }
-        .padding(.bottom, 20)
+        .padding(.bottom, 12)
     }
 
     private var amountSection: some View {
-        VStack(spacing: 8) {
-            Menu {
-                ForEach(AddTransactionViewModel.currencies, id: \.self) { code in
-                    Button("\(code) ($)") { viewModel.selectedCurrency = code }
-                }
-            } label: {
-                Text("\(viewModel.selectedCurrency) ($)")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textSecondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.5))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white, lineWidth: 1))
-            }
-            .disabled(viewModel.isEditMode)
-
+        VStack(spacing: 4) {
             Button {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { showCustomKeyboard = true }
             } label: {
@@ -276,7 +279,7 @@ struct AddTransactionView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.bottom, 30)
+        .padding(.bottom, 20)
     }
 
     private var typeToggle: some View {
@@ -303,6 +306,91 @@ struct AddTransactionView: View {
         .padding(3)
         .background(Color.black.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.bottom, 16)
+    }
+
+    private var subscriptionToggleAnimation: Animation {
+        reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.8)
+    }
+
+    private var subscriptionSection: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(viewModel.isSubscription ? OnboardingDesign.accentGreen.opacity(0.15) : Color.white.opacity(0.5))
+                    .frame(width: 34, height: 34)
+                    .overlay(
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(OnboardingDesign.textSecondary)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Monthly Subscription")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(OnboardingDesign.textPrimary)
+                    Text("Track as recurring payment")
+                        .font(.system(size: 12))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { viewModel.isSubscription },
+                    set: { newValue in
+                        withAnimation(subscriptionToggleAnimation) {
+                            viewModel.isSubscription = newValue
+                        }
+                    }
+                ))
+                    .labelsHidden()
+                    .tint(OnboardingDesign.accentGreen)
+            }
+            .padding(14)
+            .background(viewModel.isSubscription ? Color.white.opacity(0.55) : Color.white.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(viewModel.isSubscription ? OnboardingDesign.accentGreen.opacity(0.35) : Color.white.opacity(0.4), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(subscriptionToggleAnimation) {
+                    viewModel.isSubscription.toggle()
+                }
+            }
+
+            if viewModel.isSubscription {
+                HStack(spacing: 6) {
+                    ForEach(["weekly", "monthly", "yearly"], id: \.self) { interval in
+                        Button {
+                            viewModel.subscriptionInterval = interval
+                        } label: {
+                            Text(interval.capitalized)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(viewModel.subscriptionInterval == interval ? OnboardingDesign.textPrimary : OnboardingDesign.textSecondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(viewModel.subscriptionInterval == interval ? Color.white : Color.white.opacity(0.3))
+                                        .shadow(color: viewModel.subscriptionInterval == interval ? Color.black.opacity(0.05) : .clear, radius: 4, x: 0, y: 2)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(viewModel.subscriptionInterval == interval ? OnboardingDesign.accentGreen.opacity(0.3) : Color.white.opacity(0.4), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity.combined(with: .move(edge: .top))
+                ))
+            }
+        }
+        .animation(subscriptionToggleAnimation, value: viewModel.isSubscription)
         .padding(.bottom, 24)
     }
 
@@ -681,6 +769,6 @@ private struct DateTimePickerSheetView: View {
         id: "1", type: "expense", amountOriginal: 12.99, currencyOriginal: "USD",
         amountBase: 12.99, baseCurrency: "USD", merchant: "Coffee", title: "Morning coffee",
         transactionDate: "2025-03-10", transactionTime: "09:30", category: "food", subcategory: nil,
-        isSubscription: false, sourceType: "manual", createdAt: nil, updatedAt: nil
+        isSubscription: false, subscriptionInterval: nil, sourceType: "manual", createdAt: nil, updatedAt: nil
     ))
 }

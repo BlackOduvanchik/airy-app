@@ -60,7 +60,7 @@ struct TransactionDetailView: View {
             id: "1", type: "expense", amountOriginal: 12.99, currencyOriginal: "USD",
             amountBase: 12.99, baseCurrency: "USD", merchant: "Coffee Shop", title: nil,
             transactionDate: "2025-03-10", transactionTime: nil, category: "food", subcategory: nil,
-            isSubscription: false, sourceType: "manual", createdAt: nil, updatedAt: nil
+            isSubscription: false, subscriptionInterval: nil, sourceType: "manual", createdAt: nil, updatedAt: nil
         ))
     }
 }

@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var faceIdLockOn = true
     @State private var showDeleteConfirmation = false
     @State private var showAIParsingRules = false
+    @State private var baseCurrency: String = BaseCurrencyStore.baseCurrency
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -58,6 +59,8 @@ struct SettingsView: View {
         .sheet(isPresented: $showAIParsingRules) {
             AIParsingRulesSheetView()
         }
+        .onAppear { baseCurrency = BaseCurrencyStore.baseCurrency }
+        .onChange(of: baseCurrency) { _, v in BaseCurrencyStore.baseCurrency = v }
     }
 
     // MARK: - Header
@@ -130,15 +133,32 @@ struct SettingsView: View {
 
     // MARK: - Preferences
 
+    private static let baseCurrencyOptions = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "UAH", "RUB", "THB"]
+    private static let baseCurrencyLabels: [String: String] = [
+        "USD": "US Dollar", "EUR": "Euro", "GBP": "British Pound", "JPY": "Japanese Yen",
+        "CHF": "Swiss Franc", "CAD": "Canadian Dollar", "AUD": "Australian Dollar",
+        "UAH": "Ukrainian Hryvnia", "RUB": "Russian Ruble", "THB": "Thai Baht"
+    ]
+
     private var preferencesSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionCaption("Preferences")
             settingsGroup {
                 settingsRow(
-                    icon: { Text("🇺🇸").font(.system(size: 18)) },
-                    title: "Base Currency",
+                    icon: { Text("💱").font(.system(size: 18)) },
+                    title: "Display Currency",
                     showBottomBorder: true,
-                    trailing: { rowControl("USD · US Dollar") }
+                    trailing: {
+                        Menu {
+                            ForEach(Self.baseCurrencyOptions, id: \.self) { code in
+                                Button(Self.baseCurrencyLabels[code] ?? code) {
+                                    baseCurrency = code
+                                }
+                            }
+                        } label: {
+                            rowControl("\(baseCurrency) · \(Self.baseCurrencyLabels[baseCurrency] ?? baseCurrency)")
+                        }
+                    }
                 )
                 settingsRow(
                     icon: { themeDotsIcon },

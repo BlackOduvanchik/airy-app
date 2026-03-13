@@ -105,7 +105,7 @@ final class TransactionListViewModel {
             var existing = groupDict[key] ?? (monthLabel, 0, [Transaction]())
             existing.list.append(tx)
             if tx.type.lowercased() != "income" {
-                existing.total += tx.amountOriginal
+                existing.total += CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
             }
             groupDict[key] = existing
         }

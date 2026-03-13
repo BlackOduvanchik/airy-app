@@ -26,9 +26,19 @@ private extension CGImagePropertyOrientation {
     }
 }
 
-enum OCRServiceError: Error {
+enum OCRServiceError: Error, LocalizedError {
     case noResults
     case visionError(Error)
+    /// OCR returned text but it contains no decimal digits (wrong image).
+    case noNumbersInImage
+
+    var errorDescription: String? {
+        switch self {
+        case .noResults: return "No text recognized"
+        case .visionError(let e): return e.localizedDescription
+        case .noNumbersInImage: return "No numbers found in image. Please use a receipt or statement screenshot."
+        }
+    }
 }
 
 final class OCRService {
@@ -61,6 +71,11 @@ final class OCRService {
                 }
             }
         }
+    }
+
+    /// Returns true if the string contains at least one decimal digit. Use to reject non-receipt images.
+    static func containsDecimalDigits(_ text: String) -> Bool {
+        text.unicodeScalars.contains { CharacterSet.decimalDigits.contains($0) }
     }
 
     /// Stable hash for duplicate detection (e.g. same screenshot).

@@ -7,13 +7,16 @@
 
 import Foundation
 
-struct ParsedTransactionItem {
+struct ParsedTransactionItem: Equatable, Codable {
     var amount: Double
     var isCredit: Bool
     var currency: String
     var date: String
     var time: String?
     var merchant: String?
+    var categoryId: String?
+    var subcategoryId: String?
+    var isSubscription: Bool?
 }
 
 struct LocalParseResult {
@@ -45,10 +48,9 @@ final class LocalOCRParser {
     ]
     private static let currencySymbolChars = "$€£¥₽₴"
 
-    /// Parses OCR text. Uses GPT-generated rules from ParsingRulesStore when available.
+    /// Parses OCR text with optional custom rules. For import, use ParsingRulesStore.tryMatch first.
     func parse(ocrText: String, baseCurrency: String = "USD") -> [ParsedTransactionItem] {
-        let customRules = ParsingRulesStore.shared.rules(forOcrText: ocrText)
-        return parse(ocrText: ocrText, baseCurrency: baseCurrency, customRules: customRules)
+        parse(ocrText: ocrText, baseCurrency: baseCurrency, customRules: nil)
     }
 
     func parse(ocrText: String, baseCurrency: String, customRules: ParsingRules?) -> [ParsedTransactionItem] {
@@ -157,7 +159,10 @@ final class LocalOCRParser {
                 currency: amountInfo.currency,
                 date: dateResolved,
                 time: time,
-                merchant: merchantFinal
+                merchant: merchantFinal,
+                categoryId: nil,
+                subcategoryId: nil,
+                isSubscription: nil
             ))
         }
         return deduplicateParsed(results)

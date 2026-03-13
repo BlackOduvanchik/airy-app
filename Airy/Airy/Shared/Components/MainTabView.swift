@@ -25,6 +25,7 @@ struct MainTabView: View {
     @State private var importViewModel = ImportViewModel()
     @State private var dashboardRefreshId = 0
     @State private var showAllTransactions = false
+    @State private var showSubscriptions = false
 
     enum Tab: Int {
         case dashboard = 0
@@ -36,7 +37,7 @@ struct MainTabView: View {
         Group {
             switch selectedTab {
             case .dashboard:
-                DashboardView(refreshId: dashboardRefreshId, showAllTransactions: $showAllTransactions)
+                DashboardView(refreshId: dashboardRefreshId, showAllTransactions: $showAllTransactions, onOpenSubscriptions: { showSubscriptions = true })
             case .insights:
                 InsightsView()
             case .settings:
@@ -136,10 +137,16 @@ struct MainTabView: View {
                     }
             }
         }
+        .onChange(of: showPendingReview) { _, showing in
+            if !showing { dashboardRefreshId += 1 }
+        }
         .alert("No image in clipboard", isPresented: $pasteNoImageAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Copy an image first, then try again.")
+        }
+        .sheet(isPresented: $showSubscriptions) {
+            SubscriptionsView()
         }
         .fullScreenCover(isPresented: $showAllTransactions) {
             TransactionListView(

@@ -26,8 +26,11 @@ final class SubscriptionsViewModel {
     var totalMonthly: Double {
         subscriptions.reduce(0) { sum, sub in
             let monthly: Double
-            if sub.interval.lowercased().hasPrefix("year") || sub.interval.lowercased().hasPrefix("annual") {
+            let interval = sub.interval.lowercased()
+            if interval.hasPrefix("year") || interval.hasPrefix("annual") {
                 monthly = sub.amount / 12
+            } else if interval.hasPrefix("week") {
+                monthly = sub.amount * (52.0 / 12.0)
             } else {
                 monthly = sub.amount
             }

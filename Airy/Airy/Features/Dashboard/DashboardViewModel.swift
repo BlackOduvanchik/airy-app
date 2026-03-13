@@ -23,6 +23,7 @@ final class DashboardViewModel {
         isLoading = true
         defer { Task { @MainActor in isLoading = false } }
         await MainActor.run {
+            LocalDataStore.shared.processDueSubscriptions()
             let (this, prev, delta) = LocalDataStore.shared.dashboardSummary()
             thisMonth = this
             previousMonthSpent = prev

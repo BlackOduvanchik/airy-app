@@ -7,17 +7,6 @@
 
 import SwiftUI
 
-private let designIconOptions: [String] = [
-    "creditcard.fill", "dollarsign", "face.smiling", "briefcase.fill",
-    "shield.fill", "square.grid.3x3", "heart.fill", "bolt.fill",
-    "clock.fill", "archivebox.fill", "cloud.fill", "gift.fill",
-    "cart.fill", "car.fill", "house.fill", "bag.fill",
-    "star.fill", "flag.fill", "book.fill", "gamecontroller.fill",
-    "tv.fill", "phone.fill", "envelope.fill", "airplane",
-    "cup.and.saucer.fill", "fork.knife", "leaf.fill", "flame.fill",
-    "tag.fill",
-]
-
 private let designColors: [String] = [
     "#67A082", "#7B9DAB", "#C4956A", "#E07A7A",
     "#9B7EC8", "#E8A838", "#5E7A6B", "#4A90A4",
@@ -37,6 +26,8 @@ struct NewCategorySheetView: View {
     @State private var selectedColorHex = "#67A082"
     @State private var parentCategoryId: String? = nil
     @State private var showParentPicker = false
+    @State private var showIconLibrary = false
+    @State private var quickPickIcons: [String] = []
     @FocusState private var focusedField: Field?
 
     enum Field { case name, description }
@@ -95,11 +86,19 @@ struct NewCategorySheetView: View {
         .sheet(isPresented: $showParentPicker) {
             parentPickerSheet
         }
+        .sheet(isPresented: $showIconLibrary) {
+            IconLibraryView(selectedIcon: $selectedIcon) {
+                showIconLibrary = false
+            }
+        }
         .onAppear {
+            if quickPickIcons.isEmpty {
+                quickPickIcons = Array(SFSymbolsCatalog.allSymbols.shuffled().prefix(5))
+            }
             if let e = existing {
                 name = e.name
                 let icon = e.iconName ?? defaultIconForCategoryId(e.id)
-                selectedIcon = designIconOptions.contains(icon) ? icon : "tag.fill"
+                selectedIcon = SFSymbolsCatalog.allSymbols.contains(icon) ? icon : "tag.fill"
                 selectedColorHex = e.colorHex
             }
         }
@@ -169,7 +168,7 @@ struct NewCategorySheetView: View {
 
     private var iconGrid: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 10) {
-            ForEach(designIconOptions, id: \.self) { iconId in
+            ForEach(quickPickIcons, id: \.self) { iconId in
                 let isSelected = selectedIcon == iconId
                 Button {
                     selectedIcon = iconId
@@ -188,6 +187,22 @@ struct NewCategorySheetView: View {
                 }
                 .buttonStyle(.plain)
             }
+            Button {
+                showIconLibrary = true
+            } label: {
+                Image(systemName: "square.grid.2x2")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                    .background(Color.white.opacity(0.4))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
         }
         .padding(.bottom, 22)
     }

@@ -14,6 +14,7 @@ private enum AnalyticsRoute: Hashable {
 struct DashboardView: View {
     var refreshId: Int = 0
     @Binding var showAllTransactions: Bool
+    var onOpenSubscriptions: (() -> Void)? = nil
     @State private var viewModel = DashboardViewModel()
     @State private var analyticsPath = NavigationPath()
 
@@ -114,7 +115,7 @@ struct DashboardView: View {
             if let month = viewModel.thisMonth {
                 totalSpentFormatted(month.totalSpent)
             } else {
-                Text("$0.00")
+                Text(formatCurrencyWithBase(0))
                     .font(.system(size: 48, weight: .light))
                     .foregroundColor(OnboardingDesign.textPrimary)
             }
@@ -176,40 +177,38 @@ struct DashboardView: View {
 
     private var vizSection: some View {
         let segments = categorySegments
-        return Group {
-            if !segments.isEmpty {
-                Button {
-                analyticsPath.append(AnalyticsRoute.categoryBreakdown)
-            } label: {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("CATEGORY BREAKDOWN")
-                            .font(.system(size: 12, weight: .semibold))
-                            .tracking(0.5)
-                            .foregroundColor(OnboardingDesign.textTertiary)
-                        vizBar(segments: segments)
-                        vizLegend(segments: segments)
-                    }
-                    .padding(20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
+        return Button {
+            analyticsPath.append(AnalyticsRoute.categoryBreakdown)
+        } label: {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("CATEGORY BREAKDOWN")
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(OnboardingDesign.textTertiary)
+                vizBar(segments: segments)
+                vizLegend(segments: segments)
             }
-            .buttonStyle(.plain)
-            .dashboardGlassStyle()
-            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .dashboardGlassStyle()
     }
+
+    private static let fallbackSegments: [(label: String, ratio: CGFloat, color: Color)] = [
+        ("Housing", 0.45, OnboardingDesign.accentGreen),
+        ("Food", 0.30, OnboardingDesign.accentBlue),
+        ("Transit", 0.15, OnboardingDesign.bgBottomRight),
+        ("Other", 0.10, Color.white.opacity(0.6))
+    ]
 
     private var categorySegments: [(label: String, ratio: CGFloat, color: Color)] {
         guard let byCat = viewModel.thisMonth?.byCategory, !byCat.isEmpty else {
-            return [
-                ("Housing", 0.45, OnboardingDesign.accentGreen),
-                ("Food", 0.30, OnboardingDesign.accentBlue),
-                ("Transit", 0.15, OnboardingDesign.bgBottomRight),
-                ("Other", 0.10, Color.white.opacity(0.6))
-            ]
+            return Self.fallbackSegments
         }
         let total = byCat.values.reduce(0, +)
-        guard total > 0 else { return [] }
+        guard total > 0 else { return Self.fallbackSegments }
         let sorted = byCat.sorted { $0.value > $1.value }
         let fallbackColors: [Color] = [
             OnboardingDesign.accentGreen,
@@ -306,7 +305,9 @@ struct DashboardView: View {
 
     private func recentItem(transaction: Transaction) -> some View {
         let total = viewModel.thisMonth?.totalSpent ?? 1
-        let pct = total > 0 ? CGFloat(transaction.amountOriginal / total) : 0.2
+        let txInBase = CurrencyService.amountInBase(amountOriginal: abs(transaction.amountOriginal), currencyOriginal: transaction.currencyOriginal, amountBase: transaction.amountBase, baseCurrency: transaction.baseCurrency)
+        let pct = total > 0 ? CGFloat(txInBase / total) : 0.2
+        let barRatio = (pct.isFinite && pct >= 0) ? min(1, pct * 3) : 0.2
         let barColor = transaction.isSubscription == true ? OnboardingDesign.accentWarning : CategoryIconHelper.color(categoryId: transaction.category)
         return HStack(alignment: .center, spacing: 16) {
             itemIcon(category: transaction.category, isSubscription: transaction.isSubscription == true)
@@ -321,13 +322,14 @@ struct DashboardView: View {
                         .foregroundColor(OnboardingDesign.textPrimary)
                 }
                 GeometryReader { g in
+                    let w = g.size.width.isFinite && g.size.width >= 0 ? g.size.width * max(0, barRatio) : 0
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Color.white.opacity(0.3))
                             .frame(height: 4)
                         RoundedRectangle(cornerRadius: 2)
                             .fill(barColor.opacity(0.8))
-                            .frame(width: g.size.width * min(1, pct * 3), height: 4)
+                            .frame(width: max(0, w), height: 4)
                     }
                 }
                 .frame(height: 4)
@@ -360,12 +362,23 @@ struct DashboardView: View {
 
     private var subsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("UPCOMING BILLS")
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(0.5)
-                .foregroundColor(OnboardingDesign.textTertiary)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+            HStack {
+                Text("UPCOMING BILLS")
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(OnboardingDesign.textTertiary)
+                Spacer()
+                if let onOpenSubscriptions {
+                    Button(action: onOpenSubscriptions) {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 16))
+                            .foregroundColor(OnboardingDesign.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
 
             if viewModel.upcomingSubscriptions.isEmpty {
                 Text("No upcoming bills")
@@ -391,35 +404,77 @@ struct DashboardView: View {
     }
 
     private func subCard(subscription: Subscription) -> some View {
-        let when = subscription.nextBillingDate.flatMap { formatNextBilling($0) } ?? "Soon"
+        let monthDay = subscription.nextBillingDate.flatMap { formatMonthDay($0) } ?? "—"
+        let catId = subscription.categoryId ?? ""
+        let subId = subscription.subcategoryId
+        let iconName = CategoryIconHelper.iconName(categoryId: catId, subcategoryId: subId)
+        let iconColors = CategoryIconHelper.iconColors(categoryId: catId, subcategoryId: subId, isSubscription: true)
+        let displayTitle = subscriptionDisplayTitle(subscription: subscription)
+        let description = (subscription.title ?? "").trimmingCharacters(in: .whitespaces)
         return VStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 10)
-                .fill(OnboardingDesign.glassHighlight)
+                .fill(iconColors.0)
                 .frame(width: 36, height: 36)
                 .overlay(
-                    Image(systemName: "play.rectangle.fill")
+                    Image(systemName: iconName)
                         .font(.system(size: 18))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(iconColors.1)
                 )
                 .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
             VStack(spacing: 2) {
-                Text(subscription.merchant)
+                Text(displayTitle)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(OnboardingDesign.textPrimary)
                     .lineLimit(1)
-                Text(when)
+                Text(monthDay)
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(0.5)
                     .foregroundColor(OnboardingDesign.textTertiary)
             }
-            Text(formatAmount(subscription.amount, subscription.currency))
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(OnboardingDesign.textPrimary)
+            VStack(spacing: 4) {
+                Text(formatAmount(subscription.amount, subscription.currency))
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(OnboardingDesign.textPrimary)
+                if !description.isEmpty {
+                    Text(description)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+            }
         }
         .padding(16)
         .frame(width: 110)
         .background(Color.white.opacity(0.35))
         .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+
+    /// Formats nextBillingDate as month and day only (e.g. "Mar 13").
+    private func formatMonthDay(_ dateStr: String) -> String? {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        guard let d = f.date(from: String(dateStr.prefix(10))) else { return nil }
+        let out = DateFormatter()
+        out.dateFormat = "MMM d"
+        out.timeZone = TimeZone.current
+        return out.string(from: d)
+    }
+
+    /// Display name for subscription card: merchant if set, else subcategory name, else category name.
+    private func subscriptionDisplayTitle(subscription: Subscription) -> String {
+        let m = subscription.merchant.trimmingCharacters(in: .whitespaces)
+        if !m.isEmpty, m.lowercased() != "unknown" { return m }
+        if let subId = subscription.subcategoryId,
+           let name = SubcategoryStore.load().first(where: { $0.id == subId })?.name,
+           !name.isEmpty {
+            return name
+        }
+        let catId = subscription.categoryId ?? ""
+        let catName = CategoryIconHelper.displayName(categoryId: catId)
+        if !catName.isEmpty, catName != "Unknown" { return catName }
+        return "Unknown"
     }
 
     private func formatNextBilling(_ dateStr: String) -> String? {
@@ -428,18 +483,26 @@ struct DashboardView: View {
         f.timeZone = TimeZone(identifier: "UTC")
         guard let d = f.date(from: String(dateStr.prefix(10))) else { return nil }
         let cal = Calendar.current
+        if cal.isDateInToday(d) { return "Today" }
         if cal.isDateInTomorrow(d) { return "Tomorrow" }
         let days = cal.dateComponents([.day], from: Date(), to: d).day ?? 0
         if days > 0 && days <= 7 { return "In \(days) days" }
-        return dateStr
+        let out = DateFormatter()
+        out.dateFormat = "MMM d, yyyy"
+        out.timeZone = TimeZone.current
+        return out.string(from: d)
     }
 
     // MARK: - Helpers
 
     private func formatCurrency(_ value: Double) -> String {
+        formatCurrencyWithBase(value)
+    }
+
+    private func formatCurrencyWithBase(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
+        formatter.currencyCode = BaseCurrencyStore.baseCurrency
         formatter.maximumFractionDigits = 0
         formatter.minimumFractionDigits = 0
         return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value))"
@@ -448,10 +511,10 @@ struct DashboardView: View {
     private func formatCurrencyWhole(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
+        formatter.currencyCode = BaseCurrencyStore.baseCurrency
         formatter.maximumFractionDigits = 0
         formatter.minimumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+        return formatter.string(from: NSNumber(value: value)) ?? "0"
     }
 
     private func formatCurrencyCents(_ value: Double) -> String {

@@ -23,6 +23,7 @@ final class LocalTransaction {
     var category: String
     var subcategory: String?
     var isSubscription: Bool?
+    var subscriptionInterval: String?
     var sourceType: String?
     var sourceImageHash: String?
     var createdAt: Date
@@ -42,6 +43,7 @@ final class LocalTransaction {
         category: String,
         subcategory: String? = nil,
         isSubscription: Bool? = nil,
+        subscriptionInterval: String? = nil,
         sourceType: String? = nil,
         sourceImageHash: String? = nil,
         createdAt: Date = Date(),
@@ -60,6 +62,7 @@ final class LocalTransaction {
         self.category = category
         self.subcategory = subcategory
         self.isSubscription = isSubscription
+        self.subscriptionInterval = subscriptionInterval
         self.sourceType = sourceType
         self.sourceImageHash = sourceImageHash
         self.createdAt = createdAt
@@ -83,6 +86,7 @@ final class LocalTransaction {
             category: category,
             subcategory: subcategory,
             isSubscription: isSubscription,
+            subscriptionInterval: subscriptionInterval,
             sourceType: sourceType,
             createdAt: df.string(from: createdAt),
             updatedAt: updatedAt.map { df.string(from: $0) }

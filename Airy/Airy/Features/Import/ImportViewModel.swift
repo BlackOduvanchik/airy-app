@@ -17,8 +17,41 @@ final class ImportViewModel {
     var showPaywall = false
     var errorMessage: String?
 
+    /// Set when analyzing screen runs in a detached task; not cancelled when view disappears.
+    var analyzingItems: [ParsedTransactionItem]? = nil
+    var isAnalyzing: Bool = false
+
     private let ocrService = OCRService()
     private let parser = LocalOCRParser()
+    private let gptService = GPTRulesService()
+
+    /// Apply saved category rule for this merchant (from "Remember rule" in Review); otherwise use item's category.
+    private static func effectiveCategory(for item: ParsedTransactionItem) -> (category: String, subcategory: String?) {
+        let cat = MerchantCategoryRuleStore.shared.categoryId(for: item.merchant) ?? item.categoryId ?? "other"
+        let sub = MerchantCategoryRuleStore.shared.subcategoryId(for: item.merchant) ?? item.subcategoryId
+        return (cat, sub)
+    }
+
+    /// Store expense as positive magnitude; income as-is. Dashboard expects positive amounts for spending.
+    private static func storedAmount(amount: Double, isCredit: Bool) -> Double {
+        let result = isCredit ? amount : abs(amount)
+        // #region agent log
+        if !isCredit && amount < 0 {
+            let payload: [String: Any] = [
+                "sessionId": "ad783c", "location": "ImportViewModel.storedAmount", "message": "expense normalized",
+                "data": ["raw": amount, "stored": result], "timestamp": Int(Date().timeIntervalSince1970 * 1000), "hypothesisId": "H2"
+            ]
+            if let json = try? JSONSerialization.data(withJSONObject: payload), let line = String(data: json, encoding: .utf8) {
+                let path = "/Users/oduvanchik/Desktop/Airy/.cursor/debug-ad783c.log"
+                let lineData = (line + "\n").data(using: .utf8)!
+                if FileManager.default.fileExists(atPath: path), let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) {
+                    defer { try? h.close() }; h.seekToEndOfFile(); h.write(lineData)
+                } else { FileManager.default.createFile(atPath: path, contents: lineData, attributes: nil) }
+            }
+        }
+        // #endregion
+        return result
+    }
 
     func processImage(_ item: PhotosPickerItem) async {
         guard let data = try? await item.loadTransferable(type: Data.self),
@@ -52,33 +85,31 @@ final class ImportViewModel {
         var totalAdded = 0
         for image in images {
             do {
-                let ocrText = try await ocrService.recognizeText(from: image)
-                let hash = ocrService.imageHash(for: image)
-                let parsed = parser.parse(ocrText: ocrText, baseCurrency: "USD")
-                if parsed.isEmpty && !ocrText.trimmingCharacters(in: .whitespaces).isEmpty {
-                    continue
-                }
+                let (parsed, ocrText, hash) = try await recognizeAndParseOneImage(image)
+                if parsed.isEmpty { continue }
                 for item in parsed {
+                    let amt = Self.storedAmount(amount: item.amount, isCredit: item.isCredit)
                     let isDup = await MainActor.run {
                         LocalDataStore.shared.isExactDuplicateTransaction(
                             merchant: item.merchant,
                             date: item.date,
-                            amount: item.amount
+                            amount: amt
                         )
                     }
                     if isDup { continue }
+                    let (cat, sub) = Self.effectiveCategory(for: item)
                     let payload = PendingTransactionPayload(
                         type: item.isCredit ? "income" : "expense",
-                        amountOriginal: item.amount,
+                        amountOriginal: amt,
                         currencyOriginal: item.currency,
-                        amountBase: item.amount,
+                        amountBase: amt,
                         baseCurrency: item.currency,
                         merchant: item.merchant,
                         title: nil,
                         transactionDate: item.date,
                         transactionTime: item.time,
-                        category: "other",
-                        subcategory: nil
+                        category: cat,
+                        subcategory: sub
                     )
                     await MainActor.run {
                         LocalDataStore.shared.addPendingTransaction(
@@ -111,41 +142,37 @@ final class ImportViewModel {
         pendingCount = 0
         defer { Task { @MainActor in isProcessing = false } }
         do {
-            let ocrText = try await ocrService.recognizeText(from: image)
-            let hash = ocrService.imageHash(for: image)
+            let (parsed, ocrText, hash) = try await recognizeAndParseOneImage(image)
 
-            let parsed = parser.parse(ocrText: ocrText, baseCurrency: "USD")
-
-            if parsed.isEmpty && !ocrText.trimmingCharacters(in: .whitespaces).isEmpty {
-                await MainActor.run {
-                    resultMessage = "No transactions found in image"
-                }
+            if parsed.isEmpty {
+                await MainActor.run { resultMessage = "No transactions found in image" }
                 return
             }
 
             var addedCount = 0
             for item in parsed {
+                let amt = Self.storedAmount(amount: item.amount, isCredit: item.isCredit)
                 let isDup = await MainActor.run {
                     LocalDataStore.shared.isExactDuplicateTransaction(
                         merchant: item.merchant,
                         date: item.date,
-                        amount: item.amount
+                        amount: amt
                     )
                 }
                 if isDup { continue }
-
+                let (cat, sub) = Self.effectiveCategory(for: item)
                 let payload = PendingTransactionPayload(
                     type: item.isCredit ? "income" : "expense",
-                    amountOriginal: item.amount,
+                    amountOriginal: amt,
                     currencyOriginal: item.currency,
-                    amountBase: item.amount,
+                    amountBase: amt,
                     baseCurrency: item.currency,
                     merchant: item.merchant,
                     title: nil,
                     transactionDate: item.date,
                     transactionTime: item.time,
-                    category: "other",
-                    subcategory: nil
+                    category: cat,
+                    subcategory: sub
                 )
                 await MainActor.run {
                     LocalDataStore.shared.addPendingTransaction(
@@ -194,6 +221,7 @@ final class ImportViewModel {
 
     /// Processes multiple images, returns combined items. Does NOT add to pending until addProcessedToPending.
     func processImagesReturningItems(_ images: [UIImage]) async -> [ParsedTransactionItem] {
+        await MainActor.run { errorMessage = nil; resultMessage = nil }
         isProcessing = true
         defer { Task { @MainActor in isProcessing = false } }
         var allItems: [ParsedTransactionItem] = []
@@ -215,37 +243,53 @@ final class ImportViewModel {
         return allItems
     }
 
+    /// Call from analyzing screen. Runs processing in a detached task so view lifecycle does not cancel the request.
+    func startAnalyzing(images: [UIImage]) {
+        Task { @MainActor in
+            isAnalyzing = true
+            analyzingItems = nil
+            errorMessage = nil
+            resultMessage = nil
+        }
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let items = await self.processImagesReturningItems(images)
+            await MainActor.run {
+                self.analyzingItems = items
+                self.isAnalyzing = false
+            }
+        }
+    }
+
     private func processImageReturningItemsInternal(_ image: UIImage) async -> [ParsedTransactionItem] {
         resultMessage = nil
         errorMessage = nil
         pendingCount = 0
         pendingToAdd = nil
         do {
-            let ocrText = try await ocrService.recognizeText(from: image)
-            let hash = await Task.detached(priority: .userInitiated) { [ocrService = self.ocrService] in
-                ocrService.imageHash(for: image)
-            }.value
-            var parsed = parser.parse(ocrText: ocrText, baseCurrency: "USD")
-            for i in parsed.indices {
-                if let corrected = MerchantCorrectionStore.shared.lookup(
-                    amount: parsed[i].amount,
-                    date: parsed[i].date,
-                    originalMerchant: parsed[i].merchant
-                ) {
-                    parsed[i].merchant = corrected
-                }
-            }
-            if parsed.isEmpty && !ocrText.trimmingCharacters(in: .whitespaces).isEmpty {
+            let (parsed, ocrText, hash) = try await recognizeAndParseOneImage(image)
+            guard !parsed.isEmpty else {
                 await MainActor.run { resultMessage = "No transactions found in image" }
                 return []
             }
-            let parsedCopy = parsed
+            var items = parsed
+            for i in items.indices {
+                if let corrected = MerchantCorrectionStore.shared.lookup(
+                    amount: items[i].amount,
+                    date: items[i].date,
+                    originalMerchant: items[i].merchant
+                ) {
+                    items[i].merchant = corrected
+                }
+            }
+            let itemsCopy = items
             let itemsToAdd = await MainActor.run {
-                parsedCopy.filter { item in
-                    !LocalDataStore.shared.isExactDuplicateTransaction(
+                itemsCopy.filter { item in
+                    let amt = Self.storedAmount(amount: item.amount, isCredit: item.isCredit)
+                    return !LocalDataStore.shared.isExactDuplicateTransaction(
                         merchant: item.merchant,
                         date: item.date,
-                        amount: item.amount
+                        amount: amt
                     )
                 }
             }
@@ -265,29 +309,97 @@ final class ImportViewModel {
         }
     }
 
+    /// One image: OCR → check digits → cache by hash → try local rules, else GPT → return (items, ocrText, hash). Throws on no numbers or GPT failure.
+    private func recognizeAndParseOneImage(_ image: UIImage) async throws -> (items: [ParsedTransactionItem], ocrText: String, hash: String) {
+        let hash = ocrService.imageHash(for: image)
+        if let cached = ParsingRulesStore.shared.cachedResult(forImageHash: hash), !cached.isEmpty {
+            let ocrText = try await ocrService.recognizeText(from: image)
+            let fromLocal = ParsingRulesStore.shared.tryMatch(ocrText: ocrText, parser: parser, baseCurrency: "USD") ?? []
+            let merged = mergeParsedItems(base: cached, additional: fromLocal)
+            if merged.count > cached.count {
+                ParsingRulesStore.shared.cacheResult(merged, forImageHash: hash)
+            }
+            return (merged, ocrText, hash)
+        }
+        let ocrText = try await ocrService.recognizeText(from: image)
+        if !OCRService.containsDecimalDigits(ocrText) {
+            throw OCRServiceError.noNumbersInImage
+        }
+        if let local = ParsingRulesStore.shared.tryMatch(ocrText: ocrText, parser: parser, baseCurrency: "USD"), !local.isEmpty {
+            return (local, ocrText, hash)
+        }
+        let categories = CategoryStore.load().map { (id: $0.id, name: $0.name) }
+        let subcategories = SubcategoryStore.load().map { (id: $0.id, name: $0.name, parentCategoryId: $0.parentCategoryId) }
+        let imageBase64 = image.jpegData(compressionQuality: 0.7).map { $0.base64EncodedString() } ?? ""
+        let response: GPTExtractionResponse
+        if !imageBase64.isEmpty {
+            response = try await gptService.extractAndGetRulesFromImage(
+                imageBase64: imageBase64,
+                categories: categories,
+                subcategories: subcategories,
+                baseCurrency: "USD"
+            )
+        } else {
+            response = try await gptService.extractAndGetRules(
+                ocrText: ocrText,
+                categories: categories,
+                subcategories: subcategories,
+                baseCurrency: "USD"
+            )
+        }
+        if let rules = response.rules {
+            ParsingRulesStore.shared.appendRuleSet(rules: rules, forOcrText: ocrText)
+        } else {
+            do {
+                let rules = try await gptService.generateRules(ocrText: ocrText)
+                ParsingRulesStore.shared.appendRuleSet(rules: rules, forOcrText: ocrText)
+            } catch { /* keep transactions; rules not saved this time */ }
+        }
+        let deduped = deduplicateGPTTransactions(response.transactions)
+        var items = deduped.map { tx in
+            ParsedTransactionItem(
+                amount: tx.amount,
+                isCredit: tx.isCredit ?? false,
+                currency: tx.currency ?? "USD",
+                date: tx.date,
+                time: tx.time,
+                merchant: tx.merchant,
+                categoryId: tx.categoryId,
+                subcategoryId: tx.subcategoryId,
+                isSubscription: tx.isSubscription
+            )
+        }
+        let fromLocal = ParsingRulesStore.shared.tryMatch(ocrText: ocrText, parser: parser, baseCurrency: "USD") ?? []
+        items = mergeParsedItems(base: items, additional: fromLocal)
+        ParsingRulesStore.shared.cacheResult(items, forImageHash: hash)
+        return (items, ocrText, hash)
+    }
+
     /// Adds the last processed items to pending. Call when user taps Confirm.
     @MainActor
     func addProcessedToPending() {
         if let batches = pendingToAddBatches {
             for p in batches {
                 for item in p.items {
+                    let amt = Self.storedAmount(amount: item.amount, isCredit: item.isCredit)
                     if LocalDataStore.shared.isExactDuplicateTransaction(
                         merchant: item.merchant,
                         date: item.date,
-                        amount: item.amount
+                        amount: amt
                     ) { continue }
+                    let (cat, sub) = Self.effectiveCategory(for: item)
                     let payload = PendingTransactionPayload(
                         type: item.isCredit ? "income" : "expense",
-                        amountOriginal: item.amount,
+                        amountOriginal: amt,
                         currencyOriginal: item.currency,
-                        amountBase: item.amount,
+                        amountBase: amt,
                         baseCurrency: item.currency,
                         merchant: item.merchant,
                         title: nil,
                         transactionDate: item.date,
                         transactionTime: item.time,
-                        category: "other",
-                        subcategory: nil
+                        category: cat,
+                        subcategory: sub
                     )
                     LocalDataStore.shared.addPendingTransaction(
                         payload: payload,
@@ -301,24 +413,26 @@ final class ImportViewModel {
         }
         guard let p = pendingToAdd else { return }
         for item in p.items {
+            let amt = Self.storedAmount(amount: item.amount, isCredit: item.isCredit)
             if LocalDataStore.shared.isExactDuplicateTransaction(
                 merchant: item.merchant,
                 date: item.date,
-                amount: item.amount
+                amount: amt
             ) { continue }
 
+            let (cat, sub) = Self.effectiveCategory(for: item)
             let payload = PendingTransactionPayload(
                 type: item.isCredit ? "income" : "expense",
-                amountOriginal: item.amount,
+                amountOriginal: amt,
                 currencyOriginal: item.currency,
-                amountBase: item.amount,
+                amountBase: amt,
                 baseCurrency: item.currency,
                 merchant: item.merchant,
                 title: nil,
                 transactionDate: item.date,
                 transactionTime: item.time,
-                category: "other",
-                subcategory: nil
+                category: cat,
+                subcategory: sub
             )
             LocalDataStore.shared.addPendingTransaction(
                 payload: payload,
@@ -327,5 +441,29 @@ final class ImportViewModel {
             )
         }
         pendingToAdd = nil
+    }
+
+    /// Merge parsed lists: base + any item from additional that is not in base (by date, amount, merchant). Keeps order: base first, then new from additional.
+    private func mergeParsedItems(base: [ParsedTransactionItem], additional: [ParsedTransactionItem]) -> [ParsedTransactionItem] {
+        let baseKeys = Set(base.map { "\($0.date)|\(abs($0.amount))|\($0.merchant ?? "")" })
+        var out = base
+        for item in additional {
+            let key = "\(item.date)|\(abs(item.amount))|\(item.merchant ?? "")"
+            if !baseKeys.contains(key) {
+                out.append(item)
+            }
+        }
+        return out
+    }
+
+    /// Removes duplicates by (date, amount, merchant) so the same transaction does not appear twice in Live Extraction.
+    private func deduplicateGPTTransactions(_ transactions: [GPTExtractionTransaction]) -> [GPTExtractionTransaction] {
+        var seen = Set<String>()
+        return transactions.filter { tx in
+            let key = "\(tx.date)|\(tx.amount)|\(tx.merchant ?? "")"
+            guard !seen.contains(key) else { return false }
+            seen.insert(key)
+            return true
+        }
     }
 }

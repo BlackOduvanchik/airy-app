@@ -15,18 +15,19 @@ struct AnalyzingTransactionsView: View {
     let onCancel: () -> Void
 
     @State private var extractedItems: [ParsedTransactionItem] = []
-    @State private var isProcessing = true
     @State private var statusPhraseIndex = 0
     @State private var visibleItemCount = 0
     @State private var thumbOrder: [Int] = [0, 1, 2]
     @State private var thumbSwapPairIndex = 0
 
+    /// Order and 2s each; last stays until result. Smooth transition per design.
     private let statusPhrases = [
         "Reading amounts...",
         "Checking dates...",
-        "Matching categories...",
         "Looking for duplicates...",
-        "Almost done"
+        "Matching categories...",
+        "Saving new rules...",
+        "Almost done..."
     ]
 
     var body: some View {
@@ -58,20 +59,17 @@ struct AnalyzingTransactionsView: View {
             .padding(.top, 24)
             .padding(.bottom, 40)
         }
-        .task {
-            let allItems = await importViewModel.processImagesReturningItems(images)
-            await MainActor.run {
-                isProcessing = false
-                extractedItems = allItems
+        .onAppear {
+            importViewModel.startAnalyzing(images: images)
+            startStatusPhraseCycling()
+            startThumbShuffle()
+        }
+        .onChange(of: importViewModel.analyzingItems) { _, new in
+            if new != nil {
+                extractedItems = new ?? []
                 visibleItemCount = 0
                 revealItemsStaggered()
             }
-        }
-        .onReceive(Timer.publish(every: 2.5, on: .main, in: .common).autoconnect()) { _ in
-            statusPhraseIndex = (statusPhraseIndex + 1) % statusPhrases.count
-        }
-        .onReceive(Timer.publish(every: 2.4, on: .main, in: .common).autoconnect()) { _ in
-            performThumbSwap()
         }
     }
 
@@ -80,23 +78,64 @@ struct AnalyzingTransactionsView: View {
     private static let thumbGap: CGFloat = 12
     private static let thumbSwapPairs: [(Int, Int)] = [(0, 1), (1, 2), (0, 2), (2, 1), (0, 2), (1, 0)]
 
+    /// Three thumbnails in a row; middle (2nd) card centered. Clear fixed-size base so HStack centers 204pt block; ZStack overlay for shuffle.
     private var uploadPreviews: some View {
-        HStack(spacing: 0) {
+        let totalWidth = Self.thumbWidth * 3 + Self.thumbGap * 2
+        return HStack(spacing: 0) {
             Spacer(minLength: 0)
-            ZStack(alignment: .leading) {
-                ForEach(0..<3, id: \.self) { cardId in
-                    let slot = thumbOrder.firstIndex(of: cardId) ?? cardId
-                    let x = CGFloat(slot) * (Self.thumbWidth + Self.thumbGap)
-                    thumbnailBoxPlaceholder(opacity: slot == 1 ? 1 : (slot == 0 ? 0.9 : 0.6))
-                        .offset(x: x)
-                        .animation(.easeInOut(duration: 0.7), value: thumbOrder)
+            Color.clear
+                .frame(width: totalWidth, height: Self.thumbHeight)
+                .overlay(alignment: .leading) {
+                    ZStack(alignment: .leading) {
+                        ForEach(0..<3, id: \.self) { cardId in
+                            let slot = thumbOrder.firstIndex(of: cardId) ?? cardId
+                            let x = CGFloat(slot) * (Self.thumbWidth + Self.thumbGap)
+                            let opacity = slot == 1 ? 1.0 : (slot == 0 ? 0.9 : 0.6)
+                            thumbnailBoxPlaceholder(opacity: opacity)
+                                .offset(x: x)
+                                .animation(.easeInOut(duration: 0.7), value: thumbOrder)
+                        }
+                    }
                 }
-            }
-            .frame(width: Self.thumbWidth * 3 + Self.thumbGap * 2, height: Self.thumbHeight)
             Spacer(minLength: 0)
         }
         .padding(.top, 10)
         .padding(.bottom, 20)
+    }
+
+    /// Cycle status phrases every ~2.5s while waiting for GPT (Task-based so it runs reliably in fullScreenCover).
+    private func startStatusPhraseCycling() {
+        Task { @MainActor in
+            statusPhraseIndex = 0
+            var waitCount = 0
+            while !importViewModel.isAnalyzing, waitCount < 50 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                waitCount += 1
+            }
+            while importViewModel.isAnalyzing {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                guard importViewModel.isAnalyzing else { break }
+                if statusPhraseIndex < statusPhrases.count - 1 {
+                    withAnimation(.easeInOut(duration: 0.35)) { statusPhraseIndex += 1 }
+                }
+            }
+        }
+    }
+
+    /// Shuffle thumbnail positions every ~2.4s while analyzing.
+    private func startThumbShuffle() {
+        Task { @MainActor in
+            var waitCount = 0
+            while !importViewModel.isAnalyzing, waitCount < 50 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                waitCount += 1
+            }
+            while importViewModel.isAnalyzing {
+                try? await Task.sleep(nanoseconds: 2_400_000_000)
+                guard importViewModel.isAnalyzing else { break }
+                performThumbSwap()
+            }
+        }
     }
 
     private func performThumbSwap() {
@@ -145,22 +184,24 @@ struct AnalyzingTransactionsView: View {
                     )
                     .frame(width: 120, height: 120)
                     .blur(radius: 8)
-                    .opacity(isProcessing ? 0.25 : 0.1)
-                    .scaleEffect(isProcessing ? 1.2 : 0.8)
+                    .opacity(importViewModel.isAnalyzing ? 0.25 : 0.1)
+                    .scaleEffect(importViewModel.isAnalyzing ? 1.2 : 0.8)
                     .animation(
-                        isProcessing ? .easeInOut(duration: 3).repeatForever(autoreverses: true) : .default,
-                        value: isProcessing
+                        importViewModel.isAnalyzing ? .easeInOut(duration: 3).repeatForever(autoreverses: true) : .default,
+                        value: importViewModel.isAnalyzing
                     )
 
                 CloudFloatView()
             }
 
-            Text(isProcessing ? statusPhrases[statusPhraseIndex] : "Ready")
+            Text(importViewModel.isAnalyzing ? statusPhrases[statusPhraseIndex] : "Ready")
+                .id(statusPhraseIndex)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundColor(OnboardingDesign.textSecondary)
                 .frame(height: 20)
-                .animation(.easeInOut(duration: 0.3), value: statusPhraseIndex)
-                .animation(.easeInOut(duration: 0.2), value: isProcessing)
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                .animation(.easeInOut(duration: 0.35), value: statusPhraseIndex)
+                .animation(.easeInOut(duration: 0.2), value: importViewModel.isAnalyzing)
         }
         .padding(.vertical, 20)
     }
@@ -169,7 +210,7 @@ struct AnalyzingTransactionsView: View {
         HStack {
             stepView(label: "Upload", isCompleted: true, isActive: false)
             progressLine
-            stepView(label: "Extract", isCompleted: !isProcessing, isActive: isProcessing)
+            stepView(label: "Extract", isCompleted: !importViewModel.isAnalyzing, isActive: importViewModel.isAnalyzing)
             progressLine
             stepView(label: "Review", isCompleted: false, isActive: false)
         }
@@ -219,16 +260,16 @@ struct AnalyzingTransactionsView: View {
                                 removal: .opacity
                             ))
                     }
-                    if isProcessing || visibleItemCount < extractedItems.count {
+                    if importViewModel.isAnalyzing || visibleItemCount < extractedItems.count {
                         shimmerRow
                     }
-                    if !isProcessing && extractedItems.isEmpty && importViewModel.errorMessage != nil {
+                    if !importViewModel.isAnalyzing && extractedItems.isEmpty && importViewModel.errorMessage != nil {
                         Text(importViewModel.errorMessage ?? "")
                             .font(.system(size: 13))
                             .foregroundColor(OnboardingDesign.textSecondary)
                             .padding()
                     }
-                    if !isProcessing && extractedItems.isEmpty && importViewModel.errorMessage == nil && importViewModel.resultMessage != nil {
+                    if !importViewModel.isAnalyzing && extractedItems.isEmpty && importViewModel.errorMessage == nil && importViewModel.resultMessage != nil {
                         Text(importViewModel.resultMessage ?? "")
                             .font(.system(size: 13))
                             .foregroundColor(OnboardingDesign.textSecondary)

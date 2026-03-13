@@ -283,7 +283,9 @@ final class CategoryDetailViewModel {
                 let label = outFormatter.string(from: date)
                 return DayGroup(id: dateKey, dateKey: dateKey, dateLabel: label, transactions: txs)
             }
-            totalAmount = groupedByDay.flatMap { $0.transactions }.reduce(0) { $0 + $1.amountOriginal }
+            totalAmount = groupedByDay.flatMap { $0.transactions }.reduce(0) { acc, tx in
+                acc + CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
+            }
         }
     }
 }

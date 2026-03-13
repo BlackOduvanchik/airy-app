@@ -201,6 +201,7 @@ struct CreateTransactionBody: Encodable {
     let category: String
     let subcategory: String?
     let isSubscription: Bool?
+    let subscriptionInterval: String?
     let comment: String?
     let sourceType: String?
 }
@@ -212,6 +213,8 @@ struct UpdateTransactionBody: Encodable {
     let category: String?
     let subcategory: String?
     let transactionDate: String?
+    let isSubscription: Bool?
+    let subscriptionInterval: String?
     let comment: String?
 }
 
@@ -227,8 +230,9 @@ struct ConfirmPendingOverrides: Encodable {
     var transactionTime: String?
     var category: String?
     var subcategory: String?
+    var subcategoryId: String?
 
-    init(type: String? = nil, amountOriginal: Double? = nil, currencyOriginal: String? = nil, amountBase: Double? = nil, baseCurrency: String? = nil, merchant: String? = nil, transactionDate: String? = nil, transactionTime: String? = nil, category: String? = nil, subcategory: String? = nil) {
+    init(type: String? = nil, amountOriginal: Double? = nil, currencyOriginal: String? = nil, amountBase: Double? = nil, baseCurrency: String? = nil, merchant: String? = nil, transactionDate: String? = nil, transactionTime: String? = nil, category: String? = nil, subcategory: String? = nil, subcategoryId: String? = nil) {
         self.type = type
         self.amountOriginal = amountOriginal
         self.currencyOriginal = currencyOriginal
@@ -239,17 +243,18 @@ struct ConfirmPendingOverrides: Encodable {
         self.transactionTime = transactionTime
         self.category = category
         self.subcategory = subcategory
+        self.subcategoryId = subcategoryId
     }
 
     var isEmpty: Bool {
         type == nil && amountOriginal == nil && currencyOriginal == nil && amountBase == nil
             && baseCurrency == nil && merchant == nil && transactionDate == nil && transactionTime == nil
-            && category == nil && subcategory == nil
+            && category == nil && subcategory == nil && subcategoryId == nil
     }
 
     enum CodingKeys: String, CodingKey {
         case type, amountOriginal, currencyOriginal, amountBase, baseCurrency
-        case merchant, transactionDate, transactionTime, category, subcategory
+        case merchant, transactionDate, transactionTime, category, subcategory, subcategoryId
     }
 
     func encode(to encoder: Encoder) throws {
@@ -264,6 +269,7 @@ struct ConfirmPendingOverrides: Encodable {
         if let v = transactionTime { try c.encode(v, forKey: .transactionTime) }
         if let v = category { try c.encode(v, forKey: .category) }
         if let v = subcategory { try c.encode(v, forKey: .subcategory) }
+        if let v = subcategoryId { try c.encode(v, forKey: .subcategoryId) }
     }
 }
 
@@ -281,6 +287,7 @@ struct Transaction: Codable, Identifiable, Hashable {
     let category: String
     let subcategory: String?
     let isSubscription: Bool?
+    let subscriptionInterval: String?
     let sourceType: String?
     let createdAt: String?
     let updatedAt: String?
@@ -376,6 +383,66 @@ struct Subscription: Codable, Identifiable {
     let interval: String
     let nextBillingDate: String?
     let status: String
+    /// Local only: id of the template transaction to update when a payment is recorded.
+    let templateTransactionId: String?
+    /// Local only: category id for icon and display name.
+    let categoryId: String?
+    /// Local only: subcategory id for icon and display name.
+    let subcategoryId: String?
+    /// Local only: description/title added to the product (transaction).
+    let title: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, merchant, amount, currency, interval, nextBillingDate, status
+        case templateTransactionId
+        case categoryId
+        case subcategoryId
+        case title
+    }
+
+    init(id: String, merchant: String, amount: Double, currency: String, interval: String, nextBillingDate: String?, status: String, templateTransactionId: String? = nil, categoryId: String? = nil, subcategoryId: String? = nil, title: String? = nil) {
+        self.id = id
+        self.merchant = merchant
+        self.amount = amount
+        self.currency = currency
+        self.interval = interval
+        self.nextBillingDate = nextBillingDate
+        self.status = status
+        self.templateTransactionId = templateTransactionId
+        self.categoryId = categoryId
+        self.subcategoryId = subcategoryId
+        self.title = title
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        merchant = try c.decode(String.self, forKey: .merchant)
+        amount = try c.decode(Double.self, forKey: .amount)
+        currency = try c.decode(String.self, forKey: .currency)
+        interval = try c.decode(String.self, forKey: .interval)
+        nextBillingDate = try c.decodeIfPresent(String.self, forKey: .nextBillingDate)
+        status = try c.decode(String.self, forKey: .status)
+        templateTransactionId = try c.decodeIfPresent(String.self, forKey: .templateTransactionId)
+        categoryId = try c.decodeIfPresent(String.self, forKey: .categoryId)
+        subcategoryId = try c.decodeIfPresent(String.self, forKey: .subcategoryId)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(merchant, forKey: .merchant)
+        try c.encode(amount, forKey: .amount)
+        try c.encode(currency, forKey: .currency)
+        try c.encode(interval, forKey: .interval)
+        try c.encodeIfPresent(nextBillingDate, forKey: .nextBillingDate)
+        try c.encode(status, forKey: .status)
+        try c.encodeIfPresent(templateTransactionId, forKey: .templateTransactionId)
+        try c.encodeIfPresent(categoryId, forKey: .categoryId)
+        try c.encodeIfPresent(subcategoryId, forKey: .subcategoryId)
+        try c.encodeIfPresent(title, forKey: .title)
+    }
 }
 
 struct EntitlementsResponse: Codable {
