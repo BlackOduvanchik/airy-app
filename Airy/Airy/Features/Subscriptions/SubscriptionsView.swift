@@ -2,7 +2,7 @@
 //  SubscriptionsView.swift
 //  Airy
 //
-//  Subscriptions tab: summary, next up strip, active list, insights, donut chart.
+//  Subscriptions tab: summary with donut, insights, active list with progress rings.
 //
 
 import SwiftUI
@@ -10,6 +10,7 @@ import SwiftUI
 struct SubscriptionsView: View {
     var onDismiss: (() -> Void)? = nil
     @State private var viewModel = SubscriptionsViewModel()
+    @State private var selectedSubscription: Subscription?
 
     var body: some View {
         NavigationStack {
@@ -20,20 +21,45 @@ struct SubscriptionsView: View {
                     VStack(spacing: 20) {
                         headerSection
                         summaryCardSection
-                        nextUpSection
-                        activeSubscriptionsSection
                         recurringInsightsSection
-                        donutChartSection
+                        activeSubscriptionsSection
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 24)
+                    .padding(.top, 8)
                     .padding(.bottom, 120)
                 }
                 .scrollIndicators(.hidden)
             }
-            .navigationBarHidden(true)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                if onDismiss != nil {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { onDismiss?() } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("SUBSCRIPTIONS")
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                }
+            }
             .sheet(isPresented: $viewModel.showPaywall) {
                 PaywallView()
+            }
+            .sheet(item: $selectedSubscription) { sub in
+                EditSubscriptionView(
+                    subscription: sub,
+                    onSave: { Task { await viewModel.load() } },
+                    onCancel: { Task { await viewModel.load() } }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
             }
             .task { await viewModel.load() }
         }
@@ -42,55 +68,15 @@ struct SubscriptionsView: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(spacing: 8) {
-            if onDismiss != nil {
-                HStack {
-                    Button {
-                        onDismiss?()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textPrimary)
-                            .frame(width: 40, height: 40)
-                            .background(Color.white.opacity(0.4))
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(OnboardingDesign.glassHighlight, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    Spacer()
-                    Color.clear.frame(width: 40, height: 40)
-                }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 12)
-            }
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [Color.white.opacity(0.9), Color.white.opacity(0.2)],
-                            center: .topLeading,
-                            startRadius: 0,
-                            endRadius: 30
-                        )
-                    )
-                    .frame(width: 48, height: 48)
-                Image(systemName: "cloud.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(OnboardingDesign.textPrimary)
-            }
-            .padding(.bottom, 8)
-            Text("What You Pay For")
-                .font(.system(size: 34, weight: .light))
-                .tracking(-0.5)
-                .lineSpacing(4)
-                .foregroundColor(OnboardingDesign.textPrimary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.vertical, 20)
-        .padding(.bottom, 2)
+        Text("What You Pay For")
+            .font(.system(size: 34, weight: .light))
+            .tracking(-0.5)
+            .lineSpacing(4)
+            .foregroundColor(OnboardingDesign.textPrimary)
+            .multilineTextAlignment(.center)
     }
 
-    // MARK: - Summary card
+    // MARK: - Summary card (with embedded donut + category legend)
 
     private var summaryCardSection: some View {
         Group {
@@ -101,21 +87,51 @@ struct SubscriptionsView: View {
                 }
             } else {
                 subsGlassPanel {
-                    VStack(spacing: 8) {
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text(formatCurrencyWhole(viewModel.totalMonthly))
-                                .font(.system(size: 32, weight: .medium))
-                                .foregroundColor(OnboardingDesign.textPrimary)
-                            Text("/mo")
-                                .font(.system(size: 16, weight: .regular))
-                                .foregroundColor(OnboardingDesign.textSecondary)
+                    VStack(spacing: 14) {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                                    Text(formatCurrencyWhole(viewModel.totalMonthly))
+                                        .font(.system(size: 32, weight: .medium))
+                                        .foregroundColor(OnboardingDesign.textPrimary)
+                                    Text("/mo")
+                                        .font(.system(size: 16, weight: .regular))
+                                        .foregroundColor(OnboardingDesign.textSecondary)
+                                }
+                                deltaChip(text: "+$12 vs last month")
+                            }
+                            Spacer()
+                            donutChartView
+                                .frame(width: 64, height: 64)
+                            Spacer()
                         }
-                        deltaChip(text: "+$12 vs last month")
-                        Text("\(viewModel.subscriptions.count) active subscriptions")
-                            .font(.system(size: 14))
-                            .foregroundColor(OnboardingDesign.textTertiary)
+                        if !subscriptionChartSegments.isEmpty {
+                            Rectangle()
+                                .fill(OnboardingDesign.glassBorder)
+                                .frame(height: 1)
+                            HStack(spacing: 10) {
+                                ForEach(subscriptionChartSegments.prefix(2)) { seg in
+                                    HStack(spacing: 4) {
+                                        Circle()
+                                            .fill(seg.color)
+                                            .frame(width: 6, height: 6)
+                                        Text("\(seg.label) \(Int(round(seg.percent * 100)))%")
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundColor(OnboardingDesign.textSecondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                Text("\u{00B7}")
+                                    .foregroundColor(OnboardingDesign.textTertiary)
+                                Text("\(viewModel.subscriptionSharePercent)% of spending")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(OnboardingDesign.textPrimary)
+                            }
+                        }
                     }
                     .padding(.vertical, 16)
+                    .padding(.horizontal, 4)
                 }
             }
         }
@@ -135,76 +151,11 @@ struct SubscriptionsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Next Up (horizontal scroll)
-
-    private var nextUpSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("NEXT UP")
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(1)
-                .foregroundColor(OnboardingDesign.textTertiary)
-                .padding(.leading, 4)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(viewModel.nextUpSubscriptions.prefix(5)) { sub in
-                        nextUpCard(subscription: sub)
-                    }
-                    if viewModel.nextUpSubscriptions.isEmpty && !viewModel.subscriptions.isEmpty {
-                        Text("No upcoming dates")
-                            .font(.system(size: 13))
-                            .foregroundColor(OnboardingDesign.textTertiary)
-                            .frame(minWidth: 140)
-                            .padding(16)
-                            .modifier(SubsGlassModifier())
-                    }
-                }
-                .padding(.vertical, 4)
-                .padding(.bottom, 12)
-            }
-        }
-    }
-
-    private func nextUpCard(subscription: Subscription) -> some View {
-        let days = daysUntil(subscription.nextBillingDate)
-        let urgent = days != nil && (days ?? 99) < 7
-        return VStack(alignment: .leading, spacing: 12) {
-            Circle()
-                .fill(merchantColor(subscription.merchant))
-                .frame(width: 32, height: 32)
-                .overlay(
-                    Text(String(subscription.merchant.prefix(1)).uppercased())
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                )
-            VStack(alignment: .leading, spacing: 2) {
-                Text(subscription.merchant)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
-                    .lineLimit(1)
-                Text(formatAmount(subscription.amount, subscription.currency))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textPrimary)
-            }
-            if let d = days {
-                Text(d == 0 ? "Today" : d == 1 ? "Tomorrow" : "\(d) days")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(urgent ? OnboardingDesign.accentAmber : OnboardingDesign.accentGreen)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background((urgent ? OnboardingDesign.accentAmber : OnboardingDesign.accentGreen).opacity(0.2))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-        }
-        .frame(minWidth: 140)
-        .padding(16)
-        .modifier(SubsGlassModifier())
-    }
-
-    // MARK: - Active subscriptions list
+    // MARK: - Active subscriptions list (sorted by billing date)
 
     private var activeSubscriptionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("ACTIVE SUBSCRIPTIONS")
+            Text("SUBSCRIPTION DETAILS")
                 .font(.system(size: 12, weight: .semibold))
                 .tracking(1)
                 .foregroundColor(OnboardingDesign.textTertiary)
@@ -219,8 +170,11 @@ struct SubscriptionsView: View {
                 }
             } else {
                 VStack(spacing: 8) {
-                    ForEach(viewModel.subscriptions) { sub in
-                        subRow(subscription: sub)
+                    ForEach(viewModel.nextUpSubscriptions) { sub in
+                        Button { selectedSubscription = sub } label: {
+                            subRow(subscription: sub)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -229,14 +183,24 @@ struct SubscriptionsView: View {
 
     private func subRow(subscription: Subscription) -> some View {
         let isTrial = subscription.status.lowercased().contains("trial")
+        let subColor = subscription.colorHex.flatMap { Color(hex: $0) } ?? merchantColor(subscription.merchant)
+        let subIcon = subscription.iconLetter ?? String(subscription.merchant.prefix(1)).uppercased()
+        let isSFSymbol = subIcon.count > 1
         return HStack(alignment: .center, spacing: 12) {
             RoundedRectangle(cornerRadius: 12)
-                .fill(merchantColor(subscription.merchant))
+                .fill(subColor)
                 .frame(width: 40, height: 40)
                 .overlay(
-                    Text(String(subscription.merchant.prefix(1)).uppercased())
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
+                    Group {
+                        if isSFSymbol {
+                            Image(systemName: subIcon)
+                                .font(.system(size: 18, weight: .bold))
+                        } else {
+                            Text(subIcon)
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                    }
+                    .foregroundColor(.white)
                 )
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -253,7 +217,7 @@ struct SubscriptionsView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                 }
-                Text("\(subscription.interval) · \(formatNextBillingShort(subscription.nextBillingDate))")
+                Text("\(subscription.interval) \u{00B7} \(formatNextBillingShort(subscription.nextBillingDate))")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(isTrial ? OnboardingDesign.accentAmber : OnboardingDesign.textTertiary)
             }
@@ -261,6 +225,7 @@ struct SubscriptionsView: View {
             Text(formatAmount(subscription.amount, subscription.currency))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(OnboardingDesign.textPrimary)
+            billingProgressRing(for: subscription)
         }
         .padding(16)
         .modifier(SubsGlassModifier())
@@ -272,6 +237,33 @@ struct SubscriptionsView: View {
                     .padding(.vertical, 16)
             }
         }
+    }
+
+    // MARK: - Billing progress ring
+
+    private func billingProgressRing(for subscription: Subscription) -> some View {
+        let cycleDays: Double = {
+            let interval = subscription.interval.lowercased()
+            if interval.hasPrefix("year") || interval.hasPrefix("annual") { return 365 }
+            if interval.hasPrefix("week") { return 7 }
+            return 30
+        }()
+        let daysLeft = max(Double(daysUntil(subscription.nextBillingDate) ?? 0), 0)
+        let progress = min((cycleDays - daysLeft) / cycleDays, 1)
+        let remainingRatio = daysLeft / cycleDays
+        let ringColor: Color = remainingRatio > 0.5 ? OnboardingDesign.accentGreen
+            : remainingRatio > 0.25 ? OnboardingDesign.accentAmber
+            : OnboardingDesign.textDanger
+
+        return ZStack {
+            Circle()
+                .stroke(ringColor.opacity(0.15), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(ringColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 24, height: 24)
     }
 
     // MARK: - Recurring insights
@@ -314,6 +306,7 @@ struct SubscriptionsView: View {
         let end: CGFloat
         let color: Color
         let label: String
+        let percent: Double
     }
 
     private var subscriptionChartSegments: [SubsChartSegment] {
@@ -348,7 +341,7 @@ struct SubscriptionsView: View {
             }
         }()
         let usableAngle = 360 * fillRatio
-        let gapAngle = n > 1 ? (360 - usableAngle) / Double(n - 1) : 0
+        let gapAngle = n > 1 ? (360 - usableAngle) / Double(n) : 0
         let fallbackColors: [Color] = [
             OnboardingDesign.accentGreen,
             OnboardingDesign.accentBlue,
@@ -371,53 +364,27 @@ struct SubscriptionsView: View {
                 start: CGFloat(start / 360),
                 end: CGFloat(end / 360),
                 color: color,
-                label: label
+                label: label,
+                percent: norm
             )
         }
     }
 
-    private var donutChartSection: some View {
-        HStack(alignment: .center, spacing: 24) {
-            donutChartView
-                .frame(width: 80, height: 80)
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(subscriptionChartSegments) { seg in
-                    legendRow(color: seg.color, label: seg.label)
-                }
-                if subscriptionChartSegments.isEmpty {
-                    Text("No subscriptions")
-                        .font(.system(size: 12))
-                        .foregroundColor(OnboardingDesign.textTertiary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(24)
-        .modifier(SubsGlassModifier())
-    }
-
     private var donutChartView: some View {
         ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.2), lineWidth: 4)
             ForEach(subscriptionChartSegments) { seg in
                 Circle()
                     .trim(from: seg.start, to: seg.end)
-                    .stroke(seg.color, style: StrokeStyle(lineWidth: 3, lineCap: .butt))
+                    .stroke(seg.color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
         }
         .padding(2)
     }
 
-    private func legendRow(color: Color, label: String) -> some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundColor(OnboardingDesign.textSecondary)
-        }
-    }
+
 
     // MARK: - Helpers
 
@@ -445,7 +412,7 @@ struct SubscriptionsView: View {
     }
 
     private func formatNextBillingShort(_ dateStr: String?) -> String {
-        guard let s = dateStr, !s.isEmpty else { return "—" }
+        guard let s = dateStr, !s.isEmpty else { return "\u{2014}" }
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")

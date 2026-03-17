@@ -24,7 +24,7 @@ final class LocalDataStore {
 
     // MARK: - Transactions
 
-    func fetchTransactions(limit: Int = 100, month: String? = nil, year: String? = nil) -> [Transaction] {
+    func fetchTransactions(limit: Int = 50, offset: Int = 0, month: String? = nil, year: String? = nil) -> [Transaction] {
         guard let ctx = context else { return [] }
         var descriptor = FetchDescriptor<LocalTransaction>(
             sortBy: [
@@ -33,6 +33,7 @@ final class LocalDataStore {
             ]
         )
         descriptor.fetchLimit = limit
+        descriptor.fetchOffset = offset
         if let m = month, let y = year, let yy = Int(y), let mm = Int(m), mm >= 1, mm <= 12 {
             let startDate = "\(y)-\(m)-01"
             let (endYear, endMonth): (String, String) = mm == 12
@@ -134,6 +135,33 @@ final class LocalDataStore {
         try? ctx.save()
     }
 
+    /// Clears subcategory on transactions that match the given subcategory name + parent category.
+    /// Transactions stay in their parent category — only the subcategory label is removed.
+    func clearSubcategory(named subcategoryName: String, inCategory categoryId: String) {
+        guard let ctx = context else { return }
+        let descriptor = FetchDescriptor<LocalTransaction>(predicate: #Predicate<LocalTransaction> {
+            $0.category == categoryId && $0.subcategory == subcategoryName
+        })
+        guard let list = try? ctx.fetch(descriptor) else { return }
+        for tx in list {
+            tx.subcategory = nil
+        }
+        try? ctx.save()
+    }
+
+    /// Renames subcategory on all transactions that match the old name + parent category.
+    func renameSubcategory(from oldName: String, to newName: String, inCategory categoryId: String) {
+        guard let ctx = context else { return }
+        let descriptor = FetchDescriptor<LocalTransaction>(predicate: #Predicate<LocalTransaction> {
+            $0.category == categoryId && $0.subcategory == oldName
+        })
+        guard let list = try? ctx.fetch(descriptor) else { return }
+        for tx in list {
+            tx.subcategory = newName
+        }
+        try? ctx.save()
+    }
+
     // MARK: - Pending
 
     func fetchPendingTransactions() -> [PendingTransaction] {
@@ -145,15 +173,25 @@ final class LocalDataStore {
         return list.map { $0.toPendingTransaction() }
     }
 
-    func addPendingTransaction(payload: PendingTransactionPayload, ocrText: String?, sourceImageHash: String?) {
+    func addPendingTransaction(payload: PendingTransactionPayload, ocrText: String?, sourceImageHash: String?, sourceFamilyId: String? = nil, sourceTemplateId: String? = nil) {
         guard let ctx = context else { return }
         let pending = LocalPendingTransaction(
             payload: payload,
             ocrText: ocrText,
-            sourceImageHash: sourceImageHash
+            sourceImageHash: sourceImageHash,
+            sourceFamilyId: sourceFamilyId,
+            sourceTemplateId: sourceTemplateId
         )
         ctx.insert(pending)
         try? ctx.save()
+    }
+
+    /// Fetch raw LocalPendingTransaction by id (needed to read sourceFamilyId for learning feedback).
+    func fetchPendingLocalTransaction(byId id: String) -> LocalPendingTransaction? {
+        guard let ctx = context else { return nil }
+        var descriptor = FetchDescriptor<LocalPendingTransaction>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try? ctx.fetch(descriptor).first
     }
 
     func confirmPending(id: String, overrides: ConfirmPendingOverrides? = nil, rememberMerchant: Bool = true) -> Bool {
@@ -195,6 +233,29 @@ final class LocalDataStore {
                 subcategory: MerchantCategoryRuleStore.shared.subcategoryId(for: payload.merchant) ?? merged.subcategory
             )
         }
+
+        // When user marks this pending as subscription, check for existing similar subscription
+        if overrides?.isSubscription == true {
+            let pendingMerchant = (merged.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let subscriptions = subscriptionsFromTransactions()
+            if let similar = subscriptions.first(where: { merchantSimilarity($0.merchant, pendingMerchant) >= 0.9 }),
+               let templateId = similar.templateTransactionId,
+               let expectedDate = similar.nextBillingDate,
+               let pendingDateStr = merged.transactionDate, !pendingDateStr.isEmpty {
+                if let daysDiff = daysBetween(dateStr1: String(pendingDateStr.prefix(10)), dateStr2: expectedDate) {
+                    if daysDiff <= 4 {
+                        rejectPending(id: id)
+                        return true
+                    }
+                    if daysDiff > 4, let newDate = merged.transactionDate {
+                        _ = try? updateTransaction(id: templateId, body: UpdateTransactionBody(amountOriginal: nil, amountBase: nil, merchant: nil, category: nil, subcategory: nil, transactionDate: newDate, isSubscription: nil, subscriptionInterval: nil, comment: nil))
+                        rejectPending(id: id)
+                        return true
+                    }
+                }
+            }
+        }
+
         let userBase = BaseCurrencyStore.baseCurrency
         let orig = merged.amountOriginal ?? 0
         let curr = merged.currencyOriginal ?? "USD"
@@ -210,6 +271,8 @@ final class LocalDataStore {
             transactionTime: merged.transactionTime,
             category: merged.category ?? "other",
             subcategory: merged.subcategory,
+            isSubscription: overrides?.isSubscription ?? false,
+            subscriptionInterval: overrides?.subscriptionInterval,
             sourceType: "screenshot",
             sourceImageHash: pending.sourceImageHash
         )
@@ -241,8 +304,50 @@ final class LocalDataStore {
             transactionDate: o.transactionDate ?? p.transactionDate,
             transactionTime: o.transactionTime ?? p.transactionTime,
             category: o.category ?? p.category,
-            subcategory: o.subcategoryId ?? o.subcategory ?? p.subcategory
+            subcategory: o.subcategoryId ?? o.subcategory ?? p.subcategory,
+            probableDuplicateOfId: p.probableDuplicateOfId
         )
+    }
+
+    /// Returns similarity in 0...1 (1 = identical). Uses Levenshtein; ≥0.9 used for "same merchant".
+    private func merchantSimilarity(_ a: String, _ b: String) -> Double {
+        let a = a.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let b = b.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if a.isEmpty && b.isEmpty { return 1 }
+        let maxLen = max(a.count, b.count)
+        if maxLen == 0 { return 1 }
+        let distance = Self.levenshteinDistance(a, b)
+        return 1 - Double(distance) / Double(maxLen)
+    }
+
+    private static func levenshteinDistance(_ a: String, _ b: String) -> Int {
+        let a = Array(a)
+        let b = Array(b)
+        let m = a.count
+        let n = b.count
+        if m == 0 { return n }
+        if n == 0 { return m }
+        var d = (0...n).map { $0 }
+        for i in 1...m {
+            var next = [i]
+            for j in 1...n {
+                let cost = a[i - 1] == b[j - 1] ? 0 : 1
+                next.append(min(next[j - 1] + 1, d[j] + 1, d[j - 1] + cost))
+            }
+            d = next
+        }
+        return d[n]
+    }
+
+    /// Absolute difference in days between two yyyy-MM-dd strings. Returns nil if either string is invalid.
+    private func daysBetween(dateStr1: String, dateStr2: String) -> Int? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone.current
+        guard let d1 = formatter.date(from: String(dateStr1.prefix(10))),
+              let d2 = formatter.date(from: String(dateStr2.prefix(10))) else { return nil }
+        let days = Calendar.current.dateComponents([.day], from: d1, to: d2).day ?? 0
+        return abs(days)
     }
 
     // MARK: - Analytics (local)
@@ -260,46 +365,43 @@ final class LocalDataStore {
         var thisByCategory: [String: Double] = [:]
         var lastSpent: Double = 0
 
+        // Pairs (monthKey, merchant) that have a non-subscription expense (so we don't double-count when both template and expense exist).
+        let expenseMonthMerchant: Set<String> = {
+            var set = Set<String>()
+            for tx in all where tx.type.lowercased() != "income" && tx.isSubscription != true {
+                let k = String(tx.transactionDate.prefix(7))
+                let m = tx.merchant ?? ""
+                set.insert("\(k)|\(m)")
+            }
+            return set
+        }()
+
         for tx in all {
             let key = String(tx.transactionDate.prefix(7))
             let inBase = CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
             if key == thisMonthKey {
                 if tx.type.lowercased() == "income" {
                     thisIncome += CurrencyService.amountInBase(amountOriginal: tx.amountOriginal, currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
-                } else if tx.isSubscription != true {
-                    thisSpent += inBase
-                    thisByCategory[tx.category, default: 0] += inBase
+                } else {
+                    let isSub = tx.isSubscription == true
+                    let monthMerchant = "\(key)|\(tx.merchant ?? "")"
+                    let alreadyCountedAsExpense = isSub && expenseMonthMerchant.contains(monthMerchant)
+                    if !alreadyCountedAsExpense {
+                        thisSpent += inBase
+                        thisByCategory[tx.category, default: 0] += inBase
+                    }
                 }
-            } else if key == lastMonthKey, tx.type.lowercased() != "income", tx.isSubscription != true {
-                lastSpent += inBase
+            } else if key == lastMonthKey, tx.type.lowercased() != "income" {
+                let isSub = tx.isSubscription == true
+                let monthMerchant = "\(key)|\(tx.merchant ?? "")"
+                let alreadyCountedAsExpense = isSub && expenseMonthMerchant.contains(monthMerchant)
+                if !alreadyCountedAsExpense {
+                    lastSpent += inBase
+                }
             }
         }
 
         let delta = lastSpent > 0 ? ((thisSpent - lastSpent) / lastSpent) * 100 : 0
-        // #region agent log
-        let payload: [String: Any] = [
-            "sessionId": "ad783c",
-            "location": "LocalDataStore.dashboardSummary",
-            "message": "dashboard totals",
-            "data": ["thisSpent": thisSpent, "thisIncome": thisIncome, "byCategoryCount": thisByCategory.count],
-            "timestamp": Int(Date().timeIntervalSince1970 * 1000),
-            "hypothesisId": "H1"
-        ]
-        if let json = try? JSONSerialization.data(withJSONObject: payload),
-           let line = String(data: json, encoding: .utf8) {
-            let path = "/Users/oduvanchik/Desktop/Airy/.cursor/debug-ad783c.log"
-            let lineData = (line + "\n").data(using: .utf8)!
-            if FileManager.default.fileExists(atPath: path) {
-                if let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) {
-                    defer { try? h.close() }
-                    h.seekToEndOfFile()
-                    h.write(lineData)
-                }
-            } else {
-                FileManager.default.createFile(atPath: path, contents: lineData, attributes: nil)
-            }
-        }
-        // #endregion
         let thisMonth = MonthSummary(
             totalSpent: thisSpent,
             totalIncome: thisIncome,
@@ -310,7 +412,12 @@ final class LocalDataStore {
     }
 
     func subscriptionsFromTransactions() -> [Subscription] {
-        let all = fetchTransactions(limit: 500)
+        guard let ctx = context else { return [] }
+        var descriptor = FetchDescriptor<LocalTransaction>(
+            sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = 500
+        guard let all = try? ctx.fetch(descriptor) else { return [] }
         let subs = all.filter { $0.isSubscription == true }
         return subs.enumerated().map { i, tx in
             let interval = tx.subscriptionInterval ?? "monthly"
@@ -326,7 +433,9 @@ final class LocalDataStore {
                 templateTransactionId: tx.id,
                 categoryId: tx.category,
                 subcategoryId: tx.subcategory,
-                title: tx.title
+                title: tx.title,
+                iconLetter: tx.subscriptionIconLetter,
+                colorHex: tx.subscriptionColorHex
             )
         }
     }
@@ -366,6 +475,30 @@ final class LocalDataStore {
                 _ = try updateTransaction(id: templateId, body: UpdateTransactionBody(amountOriginal: nil, amountBase: nil, merchant: nil, category: nil, subcategory: nil, transactionDate: due, isSubscription: nil, subscriptionInterval: nil, comment: nil))
             } catch {}
         }
+    }
+
+    func updateSubscriptionTemplate(templateId: String, iconLetter: String?, colorHex: String?) {
+        guard let ctx = context else { return }
+        var descriptor = FetchDescriptor<LocalTransaction>(predicate: #Predicate<LocalTransaction> { $0.id == templateId })
+        descriptor.fetchLimit = 1
+        guard let tx = try? ctx.fetch(descriptor).first else { return }
+        tx.subscriptionIconLetter = iconLetter
+        tx.subscriptionColorHex = colorHex
+        tx.updatedAt = Date()
+        try? ctx.save()
+    }
+
+    func cancelSubscription(templateId: String) {
+        guard let ctx = context else { return }
+        var descriptor = FetchDescriptor<LocalTransaction>(predicate: #Predicate<LocalTransaction> { $0.id == templateId })
+        descriptor.fetchLimit = 1
+        guard let tx = try? ctx.fetch(descriptor).first else { return }
+        tx.isSubscription = false
+        tx.subscriptionInterval = nil
+        tx.subscriptionIconLetter = nil
+        tx.subscriptionColorHex = nil
+        tx.updatedAt = Date()
+        try? ctx.save()
     }
 
     private func addInterval(to dateStr: String, interval: String) -> String {
@@ -423,32 +556,83 @@ final class LocalDataStore {
         return items
     }
 
-    /// True if a transaction with same merchant, same date, same amount already exists (saved or pending).
-    func isExactDuplicateTransaction(merchant: String?, date: String, amount: Double) -> Bool {
+    /// True if a transaction with same normalized merchant, same date, same amount already exists (saved, and optionally pending).
+    /// Uses confirmed alias store only; no substring/contains merchant match.
+    /// Use includePending: false when counting "Found X transactions" after re-sending the same image so the user still sees items that are only in pending.
+    func isExactDuplicateTransaction(merchant: String?, date: String, amount: Double, includePending: Bool = true) -> Bool {
+        switch duplicateClassification(merchant: merchant, date: date, amount: amount, includePending: includePending) {
+        case .exactDuplicate: return true
+        case .probableDuplicate, .notDuplicate: return false
+        }
+    }
+
+    /// Classification for duplicate logic: exact (exclude), probable (show in review with label), not. Uses trimmed merchant comparison; no substring/contains.
+    func duplicateClassification(merchant: String?, date: String, amount: Double, includePending: Bool = true) -> DuplicateClassification {
         let dateStr = String(date.prefix(10))
-        let merchantLower = (merchant ?? "").lowercased()
-        guard !merchantLower.isEmpty else { return false }
-        let transactions = fetchTransactions(limit: 500)
-        for tx in transactions {
-            guard abs(tx.amountOriginal - amount) < 0.01 else { continue }
-            guard String(tx.transactionDate.prefix(10)) == dateStr else { continue }
-            let txMerchant = (tx.merchant ?? "").lowercased()
-            guard txMerchant.contains(merchantLower) || merchantLower.contains(txMerchant) else { continue }
-            return true
+        let normCandidate = normalizeMerchantForDuplicate(merchant)
+        let amountTolerance = 0.01
+        let similarityThreshold = 0.85
+
+        let saved = fetchTransactions(limit: 500).map { tx in
+            SavedTransactionRecord(id: tx.id, merchant: tx.merchant, date: tx.transactionDate, amount: tx.amountOriginal)
         }
-        let pendingList = fetchPendingTransactions()
-        for p in pendingList {
-            guard let pl = p.decodedPayload,
-                  let amt = pl.amountOriginal,
-                  abs(amt - amount) < 0.01,
-                  let pd = pl.transactionDate,
-                  String(pd.prefix(10)) == dateStr,
-                  let pm = pl.merchant, !pm.isEmpty else { continue }
-            let pmLower = pm.lowercased()
-            guard pmLower.contains(merchantLower) || merchantLower.contains(pmLower) else { continue }
-            return true
+        for r in saved {
+            guard abs(r.amount - amount) < amountTolerance else { continue }
+            guard String(r.date.prefix(10)) == dateStr else { continue }
+            let normSaved = normalizeMerchantForDuplicate(r.merchant)
+            if normCandidate.lowercased() == normSaved.lowercased() {
+                return .exactDuplicate
+            }
+            if merchantSimilarityForDuplicate(normCandidate, normSaved) >= similarityThreshold {
+                return .probableDuplicate(ofSavedId: r.id)
+            }
         }
-        return false
+
+        if includePending {
+            let pendingList = fetchPendingTransactions()
+            for p in pendingList {
+                guard let pl = p.decodedPayload, let amt = pl.amountOriginal, let pd = pl.transactionDate else { continue }
+                guard abs(amt - amount) < amountTolerance, String(pd.prefix(10)) == dateStr else { continue }
+                let normSaved = normalizeMerchantForDuplicate(pl.merchant)
+                if normCandidate.lowercased() == normSaved.lowercased() {
+                    return .exactDuplicate
+                }
+                if merchantSimilarityForDuplicate(normCandidate, normSaved) >= similarityThreshold {
+                    return .probableDuplicate(ofSavedId: p.id)
+                }
+            }
+        }
+        return .notDuplicate
+    }
+
+    private func normalizeMerchantForDuplicate(_ raw: String?) -> String {
+        let s = (raw ?? "").trimmingCharacters(in: .whitespaces)
+        return s.isEmpty ? "Other" : s
+    }
+
+    private func merchantSimilarityForDuplicate(_ a: String, _ b: String) -> Double {
+        let aLower = a.lowercased()
+        let bLower = b.lowercased()
+        if aLower == bLower { return 1.0 }
+        if aLower.isEmpty || bLower.isEmpty { return 0 }
+        let distance = levenshteinDistanceForDuplicate(aLower, bLower)
+        let maxLen = max(aLower.count, bLower.count)
+        return 1.0 - (Double(distance) / Double(maxLen))
+    }
+
+    private func levenshteinDistanceForDuplicate(_ s1: String, _ s2: String) -> Int {
+        let a = Array(s1)
+        let b = Array(s2)
+        var row = (0...b.count).map { $0 }
+        for (i, c1) in a.enumerated() {
+            var next = [i + 1]
+            for (j, c2) in b.enumerated() {
+                let cost = c1 == c2 ? 0 : 1
+                next.append(min(next[j] + 1, row[j + 1] + 1, row[j] + cost))
+            }
+            row = next
+        }
+        return row.last ?? 0
     }
 
     private func monthKey(for date: Date) -> String {
@@ -465,6 +649,21 @@ final class LocalDataStore {
         f.maximumFractionDigits = 0
         return f.string(from: NSNumber(value: value)) ?? "$0"
     }
+}
+
+// MARK: - Duplicate classification (used by LocalDataStore.duplicateClassification and DuplicateClassifier)
+
+enum DuplicateClassification {
+    case exactDuplicate
+    case probableDuplicate(ofSavedId: String?)
+    case notDuplicate
+}
+
+struct SavedTransactionRecord {
+    let id: String?
+    let merchant: String?
+    let date: String
+    let amount: Double
 }
 
 enum LocalStoreError: Error {

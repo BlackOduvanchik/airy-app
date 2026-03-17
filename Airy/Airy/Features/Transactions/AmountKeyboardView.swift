@@ -27,6 +27,9 @@ func evaluateAmountExpression(_ expr: String) -> Double? {
     s = s.replacingOccurrences(of: "×", with: "*")
     s = s.replacingOccurrences(of: "÷", with: "/")
     s = s.replacingOccurrences(of: "−", with: "-")
+    // Sanitize incomplete decimals: "5." → "5.0", standalone "." → "0.0"
+    s = s.replacingOccurrences(of: #"\.(?=[+\-*/]|$)"#, with: ".0", options: .regularExpression)
+    if s == "." || s == ".0" { return 0 }
     let nsExpr = NSExpression(format: s)
     guard let result = nsExpr.expressionValue(with: nil, context: nil) as? NSNumber else { return nil }
     return result.doubleValue

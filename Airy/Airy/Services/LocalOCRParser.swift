@@ -17,6 +17,8 @@ struct ParsedTransactionItem: Equatable, Codable {
     var categoryId: String?
     var subcategoryId: String?
     var isSubscription: Bool?
+    /// Non-nil when this item was extracted locally using a saved OCR template.
+    var extractedByTemplateId: String?
 }
 
 struct LocalParseResult {

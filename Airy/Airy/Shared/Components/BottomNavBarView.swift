@@ -18,15 +18,15 @@ struct BottomNavBarView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            navButton(icon: "chart.xyaxis.line", isActive: insightsActive, action: onInsights)
+            navButton(icon: "chart.xyaxis.line", label: "Insights", isActive: insightsActive, action: onInsights)
             Spacer()
             fabButton(action: onFab)
             Spacer()
             Group {
                 if useDashboardButton, let onDashboard = onDashboard {
-                    navButton(icon: "house.fill", isActive: false, action: onDashboard)
+                    navButton(icon: "house.fill", label: "Dashboard", isActive: false, action: onDashboard)
                 } else {
-                    navButton(icon: "gearshape.fill", isActive: settingsActive, action: onSettings)
+                    navButton(icon: "gearshape.fill", label: "Settings", isActive: settingsActive, action: onSettings)
                 }
             }
         }
@@ -49,17 +49,17 @@ struct BottomNavBarView: View {
         .padding(.bottom, 30)
     }
 
-    private func navButton(icon: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+    private func navButton(icon: String, label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(isActive ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
-            }
-            .frame(width: 48, height: 48)
-            .contentShape(Rectangle())
+            Image(systemName: icon)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundColor(isActive ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private func fabButton(action: @escaping () -> Void) -> some View {
@@ -88,6 +88,7 @@ struct BottomNavBarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Add transaction")
         .offset(y: -24)
     }
 }

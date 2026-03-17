@@ -26,6 +26,8 @@ final class LocalTransaction {
     var subscriptionInterval: String?
     var sourceType: String?
     var sourceImageHash: String?
+    var subscriptionIconLetter: String?
+    var subscriptionColorHex: String?
     var createdAt: Date
     var updatedAt: Date?
 
@@ -46,6 +48,8 @@ final class LocalTransaction {
         subscriptionInterval: String? = nil,
         sourceType: String? = nil,
         sourceImageHash: String? = nil,
+        subscriptionIconLetter: String? = nil,
+        subscriptionColorHex: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date? = nil
     ) {
@@ -65,6 +69,8 @@ final class LocalTransaction {
         self.subscriptionInterval = subscriptionInterval
         self.sourceType = sourceType
         self.sourceImageHash = sourceImageHash
+        self.subscriptionIconLetter = subscriptionIconLetter
+        self.subscriptionColorHex = subscriptionColorHex
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -100,6 +106,11 @@ final class LocalPendingTransaction {
     var payloadData: Data?
     var ocrText: String?
     var sourceImageHash: String?
+    /// Layout family id active when this pending transaction was extracted. Used to feed user
+    /// feedback (confirm / correct) back to LayoutFamilyLearningStore.
+    var sourceFamilyId: String?
+    /// OCR template id used to extract this transaction. Non-nil → show "via template" badge.
+    var sourceTemplateId: String?
     var createdAt: Date
 
     init(
@@ -107,12 +118,16 @@ final class LocalPendingTransaction {
         payload: PendingTransactionPayload,
         ocrText: String? = nil,
         sourceImageHash: String? = nil,
+        sourceFamilyId: String? = nil,
+        sourceTemplateId: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
         self.payloadData = (try? JSONEncoder().encode(payload)) ?? nil
         self.ocrText = ocrText
         self.sourceImageHash = sourceImageHash
+        self.sourceFamilyId = sourceFamilyId
+        self.sourceTemplateId = sourceTemplateId
         self.createdAt = createdAt
     }
 
@@ -135,6 +150,8 @@ final class LocalPendingTransaction {
             if let v = p.transactionTime { d["transactionTime"] = AnyCodable(v) }
             if let v = p.category { d["category"] = AnyCodable(v) }
             if let v = p.subcategory { d["subcategory"] = AnyCodable(v) }
+            if let v = p.probableDuplicateOfId { d["probableDuplicateOfId"] = AnyCodable(v) }
+            if let v = p.extractedByTemplateId { d["extractedByTemplateId"] = AnyCodable(v) }
             payloadDict = d
         }
         return PendingTransaction(id: id, payload: payloadDict, confidence: nil, reason: nil)

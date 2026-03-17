@@ -20,6 +20,7 @@ struct TransactionReviewCard: View {
     let confidencePercent: Double?
     let isDuplicate: Bool
     let duplicateSeenText: String?
+    let isViaTemplate: Bool
     @Binding var rememberRule: Bool
     let onTap: () -> Void
 
@@ -31,6 +32,9 @@ struct TransactionReviewCard: View {
                 }
                 if isDuplicate, let text = duplicateSeenText {
                     duplicateBanner(text: text)
+                }
+                if isViaTemplate {
+                    templateBanner
                 }
                 mainRow
                 pillRow
@@ -64,6 +68,25 @@ struct TransactionReviewCard: View {
         .background(Color(red: 0.851, green: 0.627, blue: 0.357).opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .padding(.bottom, 8)
+    }
+
+    private var templateBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 14))
+                .foregroundColor(Color(red: 0.78, green: 0.45, blue: 0.15))
+            Text("Extracted using saved template")
+                .font(.system(size: 12))
+                .foregroundColor(Color(red: 0.78, green: 0.45, blue: 0.15))
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(red: 0.98, green: 0.85, blue: 0.60).opacity(0.15))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(red: 0.98, green: 0.70, blue: 0.30).opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4]))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func duplicateBanner(text: String) -> some View {

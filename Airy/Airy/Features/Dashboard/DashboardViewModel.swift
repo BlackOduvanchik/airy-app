@@ -29,32 +29,6 @@ final class DashboardViewModel {
             previousMonthSpent = prev
             deltaPercent = delta
             recentTransactions = LocalDataStore.shared.fetchTransactions(limit: 5)
-            // #region agent log
-            do {
-                let payload: [String: Any] = [
-                    "sessionId": "ad783c",
-                    "location": "DashboardViewModel.load",
-                    "message": "recentTransactions after fetch",
-                    "data": ["count": recentTransactions.count],
-                    "timestamp": Int(Date().timeIntervalSince1970 * 1000),
-                    "hypothesisId": "H1"
-                ]
-                if let json = try? JSONSerialization.data(withJSONObject: payload),
-                   let line = String(data: json, encoding: .utf8) {
-                    let path = "/Users/oduvanchik/Desktop/Airy/.cursor/debug-ad783c.log"
-                    let lineData = (line + "\n").data(using: .utf8)!
-                    if FileManager.default.fileExists(atPath: path) {
-                        if let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) {
-                            defer { try? h.close() }
-                            h.seekToEndOfFile()
-                            h.write(lineData)
-                        }
-                    } else {
-                        FileManager.default.createFile(atPath: path, contents: lineData, attributes: nil)
-                    }
-                }
-            }
-            // #endregion
             let subs = LocalDataStore.shared.subscriptionsFromTransactions()
             upcomingSubscriptions = subs
                 .filter { $0.nextBillingDate != nil && !($0.nextBillingDate?.isEmpty ?? true) }

@@ -2,23 +2,48 @@
 //  CalendarPickerSheetView.swift
 //  Airy
 //
-//  Full-screen calendar picker: swipe months/years, select day or month, highlights days with transactions.
+//  Full-screen calendar picker: swipe months/years, select day range or month, highlights days with transactions.
 //
 
 import SwiftUI
 
+// MARK: - Wheel snap behavior (reused from DatePickerPopoverView)
+
+private struct CalendarWheelSnap: ScrollTargetBehavior {
+    let rowHeight: CGFloat = 32
+    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+        let proposed = target.rect.origin.y
+        let snapped = round(proposed / rowHeight) * rowHeight
+        target.rect.origin.y = snapped
+    }
+}
+
+private let calMonthNames = ["January", "February", "March", "April", "May", "June",
+                              "July", "August", "September", "October", "November", "December"]
+
 struct CalendarPickerSheetView: View {
     let initialMonthKey: String
     let initialMonthLabel: String
-    let onSelect: (MonthDetailDestination, Int?) -> Void
+    let onSelect: (MonthDetailDestination, Int?, Int?) -> Void   // (dest, startDay, endDay)
     let onCancel: () -> Void
 
     @State private var currentYear: Int
     @State private var currentMonth: Int
-    @State private var selectedDay: Int?
-    @State private var selectWholeMonth: Bool = false
+    @State private var rangeStart: Int? = nil
+    @State private var rangeEnd: Int? = nil
     @State private var daysWithTransactions: Set<Int> = []
     @State private var isLoading = false
+    @State private var showMonthYearPicker = false
+
+    // Month/year wheel state
+    @State private var pickerMonthIndex: Int
+    @State private var pickerYearIndex: Int
+    @State private var pickerMonthScrollId: Int?
+    @State private var pickerYearScrollId: Int?
+    private static var yearRange: [Int] {
+        let y = Calendar.current.component(.year, from: Date())
+        return Array(2020...(y + 2))
+    }
 
     private var currentMonthKey: String {
         String(format: "%d-%02d", currentYear, currentMonth)
@@ -35,7 +60,7 @@ struct CalendarPickerSheetView: View {
         return formatter.string(from: date)
     }
 
-    init(monthKey: String, monthLabel: String, onSelect: @escaping (MonthDetailDestination, Int?) -> Void, onCancel: @escaping () -> Void) {
+    init(monthKey: String, monthLabel: String, onSelect: @escaping (MonthDetailDestination, Int?, Int?) -> Void, onCancel: @escaping () -> Void) {
         self.initialMonthKey = monthKey
         self.initialMonthLabel = monthLabel
         self.onSelect = onSelect
@@ -45,6 +70,10 @@ struct CalendarPickerSheetView: View {
         let m = parts.count >= 2 ? Int(parts[1]) ?? Calendar.current.component(.month, from: Date()) : Calendar.current.component(.month, from: Date())
         _currentYear = State(initialValue: y)
         _currentMonth = State(initialValue: m)
+        _pickerMonthIndex = State(initialValue: m - 1)
+        _pickerYearIndex = State(initialValue: Self.yearRange.firstIndex(of: y) ?? 0)
+        _pickerMonthScrollId = State(initialValue: m - 1)
+        _pickerYearScrollId = State(initialValue: Self.yearRange.firstIndex(of: y) ?? 0)
     }
 
     var body: some View {
@@ -60,9 +89,24 @@ struct CalendarPickerSheetView: View {
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 40)
+
+            // Month/Year picker overlay
+            if showMonthYearPicker {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture { applyMonthYearPicker() }
+
+                monthYearPickerPopup
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.9)).combined(with: .offset(y: -10)),
+                        removal: .opacity
+                    ))
+            }
         }
         .task(id: "\(currentYear)-\(currentMonth)") { await loadDaysWithTransactions() }
     }
+
+    // MARK: - Calendar content
 
     private var calendarContent: some View {
         VStack(spacing: 24) {
@@ -71,20 +115,21 @@ struct CalendarPickerSheetView: View {
         }
         .padding(24)
         .background(.ultraThinMaterial)
-        .overlay(OnboardingDesign.glassBg.opacity(0.5))
+        .overlay(OnboardingDesign.glassBg.opacity(0.5).allowsHitTesting(false))
         .clipShape(RoundedRectangle(cornerRadius: 28))
         .overlay(
             RoundedRectangle(cornerRadius: 28)
                 .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .allowsHitTesting(false)
         )
         .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
     }
 
+    // MARK: - Header
+
     private var headerRow: some View {
         HStack {
-            Button {
-                prevMonth()
-            } label: {
+            Button { prevMonth() } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(OnboardingDesign.textSecondary)
@@ -95,14 +140,29 @@ struct CalendarPickerSheetView: View {
             .buttonStyle(.plain)
 
             Spacer()
-            Text(currentMonthLabel)
-                .font(.system(size: 22, weight: .medium))
-                .foregroundColor(OnboardingDesign.textPrimary)
+
+            // Tappable month/year label → opens wheel picker
+            Button {
+                pickerMonthIndex = currentMonth - 1
+                pickerMonthScrollId = currentMonth - 1
+                pickerYearIndex = Self.yearRange.firstIndex(of: currentYear) ?? 0
+                pickerYearScrollId = Self.yearRange.firstIndex(of: currentYear) ?? 0
+                withAnimation(.easeOut(duration: 0.25)) { showMonthYearPicker = true }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(currentMonthLabel)
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(OnboardingDesign.textPrimary)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                }
+            }
+            .buttonStyle(.plain)
+
             Spacer()
 
-            Button {
-                nextMonth()
-            } label: {
+            Button { nextMonth() } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(OnboardingDesign.textSecondary)
@@ -113,6 +173,8 @@ struct CalendarPickerSheetView: View {
             .buttonStyle(.plain)
         }
     }
+
+    // MARK: - Calendar grid
 
     private var calendarGrid: some View {
         let calendarDays = buildCalendarDays()
@@ -133,9 +195,9 @@ struct CalendarPickerSheetView: View {
                 if let day = item.day {
                     let hasActivity = item.hasActivity
                     let isPrevNext = item.isPrevMonth
-                    let isSelected = selectWholeMonth ? false : (selectedDay == day && !isPrevNext)
+                    let rangeState = dayRangeState(day: day, isPrevNext: isPrevNext)
                     let isToday = isCurrentMonth && day == today && !isPrevNext
-                    dayCell(day: day, hasActivity: hasActivity, isPrevNext: isPrevNext, isSelected: isSelected, isToday: isToday)
+                    dayCell(day: day, hasActivity: hasActivity, isPrevNext: isPrevNext, rangeState: rangeState, isToday: isToday)
                 } else {
                     Color.clear
                         .frame(minHeight: 40)
@@ -144,29 +206,53 @@ struct CalendarPickerSheetView: View {
         }
     }
 
-    private func dayCell(day: Int, hasActivity: Bool, isPrevNext: Bool, isSelected: Bool, isToday: Bool) -> some View {
-        Button {
-            if !isPrevNext {
-                selectedDay = day
-                selectWholeMonth = false
-            }
+    // MARK: - Range state
+
+    private enum DayRangeState {
+        case none, start, end, inRange
+    }
+
+    private func dayRangeState(day: Int, isPrevNext: Bool) -> DayRangeState {
+        guard !isPrevNext else { return .none }
+        guard let start = rangeStart else { return .none }
+
+        if let end = rangeEnd {
+            let lo = min(start, end)
+            let hi = max(start, end)
+            if day == lo { return .start }
+            if day == hi { return .end }
+            if day > lo && day < hi { return .inRange }
+            return .none
+        } else {
+            return day == start ? .start : .none
+        }
+    }
+
+    // MARK: - Day cell
+
+    private func dayCell(day: Int, hasActivity: Bool, isPrevNext: Bool, rangeState: DayRangeState, isToday: Bool) -> some View {
+        let isEndpoint = rangeState == .start || rangeState == .end
+        let isInRange = rangeState == .inRange
+
+        return Button {
+            if !isPrevNext { handleDayTap(day) }
         } label: {
             ZStack(alignment: .bottom) {
                 Text("\(day)")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(foregroundFor(day: day, isPrevNext: isPrevNext, isSelected: isSelected, isToday: isToday))
+                    .foregroundColor(dayForeground(isPrevNext: isPrevNext, isEndpoint: isEndpoint, isInRange: isInRange, isToday: isToday))
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 40)
                     .background(
                         RoundedRectangle(cornerRadius: 14)
-                            .fill(backgroundColor(isSelected: isSelected, isToday: isToday))
+                            .fill(dayBackground(isEndpoint: isEndpoint, isInRange: isInRange, isToday: isToday))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
-                            .stroke(isToday && !isSelected ? OnboardingDesign.accentGreen : Color.clear, lineWidth: 1.5)
+                            .stroke(isToday && !isEndpoint ? OnboardingDesign.accentGreen : Color.clear, lineWidth: 1.5)
                     )
-                    .shadow(color: isSelected ? OnboardingDesign.accentGreen.opacity(0.3) : .clear, radius: 6, x: 0, y: 4)
-                if hasActivity && !isSelected {
+                    .shadow(color: isEndpoint ? OnboardingDesign.accentGreen.opacity(0.3) : .clear, radius: 6, x: 0, y: 4)
+                if hasActivity && !isEndpoint {
                     Circle()
                         .fill(OnboardingDesign.accentGreen)
                         .frame(width: 4, height: 4)
@@ -178,23 +264,49 @@ struct CalendarPickerSheetView: View {
         .disabled(isPrevNext)
     }
 
-    private func foregroundFor(day: Int, isPrevNext: Bool, isSelected: Bool, isToday: Bool) -> Color {
-        if isSelected { return .white }
+    private func dayForeground(isPrevNext: Bool, isEndpoint: Bool, isInRange: Bool, isToday: Bool) -> Color {
+        if isEndpoint { return .white }
+        if isInRange { return OnboardingDesign.accentGreen }
         if isPrevNext { return OnboardingDesign.textTertiary.opacity(0.5) }
         if isToday { return OnboardingDesign.accentGreen }
         return OnboardingDesign.textPrimary
     }
 
-    private func backgroundColor(isSelected: Bool, isToday: Bool) -> Color {
-        if isSelected { return OnboardingDesign.accentGreen }
+    private func dayBackground(isEndpoint: Bool, isInRange: Bool, isToday: Bool) -> Color {
+        if isEndpoint { return OnboardingDesign.accentGreen }
+        if isInRange { return OnboardingDesign.accentGreen.opacity(0.12) }
         return Color.clear
     }
+
+    // MARK: - Tap logic
+
+    private func handleDayTap(_ day: Int) {
+        if rangeStart == nil {
+            // First tap: set start
+            rangeStart = day
+            rangeEnd = nil
+        } else if rangeEnd == nil {
+            // Second tap: set end (or swap if before start)
+            if day == rangeStart {
+                // Tapped same day again — keep single selection
+                return
+            }
+            rangeEnd = day
+        } else {
+            // Third tap: reset to new start
+            rangeStart = day
+            rangeEnd = nil
+        }
+    }
+
+    // MARK: - Action buttons
 
     private var actionButtons: some View {
         VStack(spacing: 12) {
             Button {
-                selectWholeMonth = true
-                selectedDay = nil
+                // Select whole month
+                rangeStart = nil
+                rangeEnd = nil
                 confirmSelection()
             } label: {
                 Text("Select whole month")
@@ -218,7 +330,7 @@ struct CalendarPickerSheetView: View {
                 .buttonStyle(.plain)
 
                 Button { confirmSelection() } label: {
-                    Text("Select Date")
+                    Text(buttonLabel)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -232,6 +344,172 @@ struct CalendarPickerSheetView: View {
         .padding(.top, 24)
     }
 
+    private var buttonLabel: String {
+        if rangeStart != nil && rangeEnd != nil { return "Select Range" }
+        if rangeStart != nil { return "Select Date" }
+        return "Select Date"
+    }
+
+    // MARK: - Month/Year wheel picker popup
+
+    private let wheelRowHeight: CGFloat = 32
+    private let wheelVisibleHeight: CGFloat = 120
+
+    private var monthYearPickerPopup: some View {
+        VStack(spacing: 12) {
+            ZStack(alignment: .center) {
+                // Selection highlight
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.white.opacity(0.4))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                    )
+                    .frame(height: 34)
+                    .allowsHitTesting(false)
+
+                HStack(spacing: 0) {
+                    // Month wheel
+                    monthWheel
+                    Rectangle()
+                        .fill(Color.black.opacity(0.05))
+                        .frame(width: 1)
+                        .frame(maxHeight: .infinity)
+                    // Year wheel
+                    yearWheel
+                }
+                .frame(height: wheelVisibleHeight)
+            }
+
+            Button {
+                applyMonthYearPicker()
+            } label: {
+                Text("Done")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+                    .background(OnboardingDesign.accentGreen)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(width: 220)
+        .padding(16)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color.white.opacity(0.5))
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+        )
+        .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 16, x: 0, y: 8)
+    }
+
+    private var monthWheel: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 0) {
+                ForEach(0..<12, id: \.self) { i in
+                    Text(calMonthNames[i])
+                        .font(.system(size: pickerMonthIndex == i ? 18 : 16, weight: pickerMonthIndex == i ? .bold : .medium))
+                        .foregroundColor(pickerMonthIndex == i ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                        .frame(height: wheelRowHeight)
+                        .frame(maxWidth: .infinity)
+                        .id(i)
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                pickerMonthScrollId = i
+                                pickerMonthIndex = i
+                            }
+                        }
+                }
+            }
+            .padding(.vertical, (wheelVisibleHeight - wheelRowHeight) / 2)
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(CalendarWheelSnap())
+        .scrollPosition(id: $pickerMonthScrollId, anchor: .center)
+        .scrollViewNoBounce()
+        .mask(
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.35),
+                    .init(color: .black, location: 0.65),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .frame(maxWidth: .infinity)
+        .onChange(of: pickerMonthScrollId) { _, id in
+            if let id { pickerMonthIndex = id }
+        }
+    }
+
+    private var yearWheel: some View {
+        let years = Self.yearRange
+        return ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 0) {
+                ForEach(0..<years.count, id: \.self) { i in
+                    Text(String(years[i]))
+                        .font(.system(size: pickerYearIndex == i ? 18 : 16, weight: pickerYearIndex == i ? .bold : .medium))
+                        .foregroundColor(pickerYearIndex == i ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                        .frame(height: wheelRowHeight)
+                        .frame(maxWidth: .infinity)
+                        .id(i)
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                pickerYearScrollId = i
+                                pickerYearIndex = i
+                            }
+                        }
+                }
+            }
+            .padding(.vertical, (wheelVisibleHeight - wheelRowHeight) / 2)
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(CalendarWheelSnap())
+        .scrollPosition(id: $pickerYearScrollId, anchor: .center)
+        .scrollViewNoBounce()
+        .mask(
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.35),
+                    .init(color: .black, location: 0.65),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .frame(maxWidth: .infinity)
+        .onChange(of: pickerYearScrollId) { _, id in
+            if let id { pickerYearIndex = id }
+        }
+    }
+
+    private func applyMonthYearPicker() {
+        withAnimation(.easeOut(duration: 0.25)) { showMonthYearPicker = false }
+        let newMonth = pickerMonthIndex + 1
+        let newYear = Self.yearRange[pickerYearIndex]
+        if newMonth != currentMonth || newYear != currentYear {
+            currentMonth = newMonth
+            currentYear = newYear
+            rangeStart = nil
+            rangeEnd = nil
+        }
+    }
+
+    // MARK: - Navigation
+
     private func prevMonth() {
         if currentMonth == 1 {
             currentYear -= 1
@@ -239,8 +517,8 @@ struct CalendarPickerSheetView: View {
         } else {
             currentMonth -= 1
         }
-        selectedDay = nil
-        selectWholeMonth = false
+        rangeStart = nil
+        rangeEnd = nil
     }
 
     private func nextMonth() {
@@ -250,15 +528,20 @@ struct CalendarPickerSheetView: View {
         } else {
             currentMonth += 1
         }
-        selectedDay = nil
-        selectWholeMonth = false
+        rangeStart = nil
+        rangeEnd = nil
     }
+
+    // MARK: - Confirm
 
     private func confirmSelection() {
         let dest = MonthDetailDestination(monthKey: currentMonthKey, monthLabel: currentMonthLabel)
-        let day = selectWholeMonth ? nil : selectedDay
-        onSelect(dest, day)
+        let start: Int? = rangeStart
+        let end: Int? = rangeEnd
+        onSelect(dest, start, end)
     }
+
+    // MARK: - Data loading
 
     private func loadDaysWithTransactions() async {
         let monthStr = String(format: "%02d", currentMonth)
@@ -276,6 +559,8 @@ struct CalendarPickerSheetView: View {
         }
         await MainActor.run { daysWithTransactions = set }
     }
+
+    // MARK: - Calendar builder
 
     private func buildCalendarDays() -> [(offset: Int, day: Int?, hasActivity: Bool, isPrevMonth: Bool)] {
         var cal = Calendar.current

@@ -18,28 +18,56 @@ struct PendingReviewView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             OnboardingGradientBackground()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    headerSection
-                    if viewModel.isLoading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 40)
-                    } else if viewModel.pending.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(viewModel.pending) { item in
-                            cardFor(item)
+            if viewModel.isLoading || viewModel.pending.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        headerSection
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 40)
+                        } else {
+                            emptyState
                         }
                     }
+                    .padding(20)
+                    .padding(.bottom, 140)
                 }
-                .padding(20)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    headerSection
+                    List {
+                        ForEach(viewModel.pending) { item in
+                            cardFor(item)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                                .listRowBackground(Color.clear)
+                                .listRowSpacing(8)
+                        }
+                        .onDelete { indexSet in
+                            let ids = indexSet.map { viewModel.pending[$0].id }
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                                viewModel.removePendingLocally(ids: ids)
+                            }
+                            Task {
+                                for id in ids {
+                                    await viewModel.persistReject(id: id)
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.86), value: viewModel.pending.count)
+                }
+                .padding(.horizontal, 20)
                 .padding(.bottom, 140)
             }
             stickyBottom
         }
         .navigationTitle("Review Transactions")
         .navigationBarTitleDisplayMode(.inline)
+        .sensoryFeedback(.success, trigger: isSaving) { _, new in new }
         .task { await viewModel.load() }
         .sheet(item: $editPending) { pending in
             AddTransactionView(
@@ -109,6 +137,7 @@ struct PendingReviewView: View {
             set: { rememberRules[item.id] = $0 }
         )
         let isIncome = (p.type ?? "expense").lowercased() == "income"
+        let isViaTemplate = p.extractedByTemplateId != nil
         return AnyView(
             TransactionReviewCard(
                 merchant: merchant,
@@ -123,6 +152,7 @@ struct PendingReviewView: View {
                 confidencePercent: isLowConfidence ? (item.confidence ?? 0.45) * 100 : nil,
                 isDuplicate: dupText != nil,
                 duplicateSeenText: dupText,
+                isViaTemplate: isViaTemplate,
                 rememberRule: binding,
                 onTap: { editPending = item }
             )

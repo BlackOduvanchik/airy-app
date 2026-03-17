@@ -83,7 +83,9 @@ final class AddTransactionViewModel {
             transactionTime: timeStr,
             category: categoryStr,
             subcategory: subcategoryStr,
-            subcategoryId: selectedSubcategoryId
+            subcategoryId: selectedSubcategoryId,
+            isSubscription: isSubscription,
+            subscriptionInterval: isSubscription ? subscriptionInterval : nil
         )
     }
 

@@ -4,6 +4,10 @@
 //
 //  Presents PHPickerViewController immediately when view appears. No intermediate screen.
 //
+//  Note: loadObject(ofClass: UIImage.self) returns a system-chosen representation; the same
+//  photo may yield different resolutions across picks, so extraction cache key (image hash)
+//  is best-effort stable. PHPickerConfiguration does not expose a full-size-only option.
+//
 
 import SwiftUI
 import PhotosUI
@@ -15,7 +19,7 @@ struct GalleryPickerView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
         var config = PHPickerConfiguration()
         config.filter = .images
-        config.selectionLimit = 3
+        config.selectionLimit = 30
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
         return picker
@@ -37,7 +41,6 @@ struct GalleryPickerView: UIViewControllerRepresentable {
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            picker.dismiss(animated: true)
             guard !results.isEmpty else {
                 onCancel()
                 return

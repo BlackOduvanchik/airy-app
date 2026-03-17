@@ -13,6 +13,10 @@ struct MonthDetailView: View {
     @Binding var monthPath: [MonthDetailDestination]
     @State private var viewModel: MonthDetailViewModel
     @State private var showCalendarPicker = false
+    @State private var showEditSheet = false
+    @State private var selectedTransactionForEdit: Transaction? = nil
+    @State private var filterStartDay: Int? = nil
+    @State private var filterEndDay: Int? = nil
     @Environment(\.dismiss) private var dismiss
 
     init(monthKey: String, monthLabel: String, monthPath: Binding<[MonthDetailDestination]> = .constant([])) {
@@ -22,21 +26,40 @@ struct MonthDetailView: View {
         _viewModel = State(initialValue: MonthDetailViewModel(monthKey: monthKey, monthLabel: monthLabel))
     }
 
+    /// Transactions filtered by the selected day range (if any).
+    private var displayedTransactions: [Transaction] {
+        guard let start = filterStartDay else { return viewModel.transactions }
+        let lo = min(start, filterEndDay ?? start)
+        let hi = max(start, filterEndDay ?? start)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return viewModel.transactions.filter { tx in
+            let dateStr = String(tx.transactionDate.prefix(10))
+            guard let date = formatter.date(from: dateStr) else { return false }
+            let day = Calendar.current.component(.day, from: date)
+            return day >= lo && day <= hi
+        }
+    }
+
+    private var displayedTotal: Double {
+        displayedTransactions
+            .filter { $0.type.lowercased() != "income" }
+            .reduce(0) { acc, tx in
+                acc + CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
+            }
+    }
+
     var body: some View {
-        contentView(viewModel: viewModel)
+        contentView()
             .background(OnboardingGradientBackground())
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textPrimary)
-                            .frame(width: 44, height: 44)
-                            .background(OnboardingDesign.glassBg)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(OnboardingDesign.glassBorder, lineWidth: 1))
+                            .font(.system(size: 12, weight: .semibold))
                     }
                 }
                 ToolbarItem(placement: .principal) {
@@ -45,30 +68,41 @@ struct MonthDetailView: View {
                         .tracking(0.5)
                         .foregroundColor(OnboardingDesign.textPrimary)
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button { } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 18))
-                            .foregroundColor(OnboardingDesign.textPrimary)
-                            .frame(width: 44, height: 44)
-                    }
-                }
             }
             .fullScreenCover(isPresented: $showCalendarPicker) {
                 CalendarPickerSheetView(
                     monthKey: monthKey,
                     monthLabel: monthLabel,
-                    onSelect: { dest, _ in
+                    onSelect: { dest, startDay, endDay in
                         showCalendarPicker = false
-                        monthPath = [dest]
+                        if dest.monthKey != monthKey {
+                            // Different month → navigate
+                            filterStartDay = startDay
+                            filterEndDay = endDay
+                            monthPath = [dest]
+                        } else {
+                            // Same month → just apply filter
+                            filterStartDay = startDay
+                            filterEndDay = endDay
+                        }
                     },
                     onCancel: { showCalendarPicker = false }
                 )
             }
+            .sheet(isPresented: $showEditSheet, onDismiss: {
+                selectedTransactionForEdit = nil
+            }) {
+                if let tx = selectedTransactionForEdit {
+                    AddTransactionView(transaction: tx, onSuccess: {
+                        showEditSheet = false
+                        Task { await viewModel.load() }
+                    })
+                }
+            }
             .task { await viewModel.load() }
     }
 
-    private func contentView(viewModel: MonthDetailViewModel) -> some View {
+    private func contentView() -> some View {
         Group {
             if viewModel.isLoading && viewModel.transactions.isEmpty {
                 ProgressView()
@@ -77,9 +111,12 @@ struct MonthDetailView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        billSummarySection(total: viewModel.totalSpent)
-                        calendarSection(viewModel: viewModel)
-                        billListSection(viewModel: viewModel)
+                        billSummarySection(total: filterStartDay != nil ? displayedTotal : viewModel.totalSpent)
+                        calendarSection()
+                        if filterStartDay != nil {
+                            clearFilterChip
+                        }
+                        billListSection()
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -88,6 +125,33 @@ struct MonthDetailView: View {
                 .scrollIndicators(.hidden)
             }
         }
+    }
+
+    private var clearFilterChip: some View {
+        Button {
+            filterStartDay = nil
+            filterEndDay = nil
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 12))
+                let label: String = {
+                    guard let s = filterStartDay else { return "" }
+                    if let e = filterEndDay, e != s {
+                        return "Showing \(min(s, e))–\(max(s, e))"
+                    }
+                    return "Showing day \(s)"
+                }()
+                Text(label)
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundColor(OnboardingDesign.accentGreen)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(OnboardingDesign.accentGreen.opacity(0.12))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Bill summary
@@ -114,64 +178,81 @@ struct MonthDetailView: View {
 
     // MARK: - Calendar
 
-    private func calendarSection(viewModel: MonthDetailViewModel) -> some View {
+    private func calendarSection() -> some View {
         let calendarDays = buildCalendarDays(monthKey: monthKey, daysWithActivity: viewModel.daysWithTransactions)
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("SPENDING CALENDAR")
-                    .font(.system(size: 12, weight: .semibold))
-                    .tracking(0.5)
-                    .foregroundColor(OnboardingDesign.textTertiary)
-                Spacer()
-                Text("\(viewModel.transactions.count) \(viewModel.transactions.count == 1 ? "Transaction" : "Transactions")")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(OnboardingDesign.accentGreen)
-            }
-            .padding(.horizontal, 4)
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
-                ForEach(["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"], id: \.self) { label in
-                    Text(label)
-                        .font(.system(size: 11, weight: .semibold))
+        let txCount = displayedTransactions.count
+        return Button {
+            showCalendarPicker = true
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("SPENDING CALENDAR")
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(0.5)
                         .foregroundColor(OnboardingDesign.textTertiary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 8)
+                    Spacer()
+                    Text("\(txCount) \(txCount == 1 ? "Transaction" : "Transactions")")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(OnboardingDesign.accentGreen)
                 }
-                ForEach(calendarDays, id: \.offset) { item in
-                    if let day = item.day {
-                        let hasActivity = item.hasActivity
-                        let isPrevMonth = item.isPrevMonth
-                        ZStack(alignment: .bottom) {
-                            Text("\(day)")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(isPrevMonth ? OnboardingDesign.textTertiary : OnboardingDesign.textPrimary)
-                                .frame(maxWidth: .infinity)
-                                .frame(minHeight: 36)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.clear)
-                                )
-                            if hasActivity {
-                                Circle()
-                                    .fill(OnboardingDesign.accentGreen)
-                                    .frame(width: 4, height: 4)
-                                    .padding(.bottom, 4)
+                .padding(.horizontal, 4)
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
+                    ForEach(["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"], id: \.self) { label in
+                        Text(label)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(OnboardingDesign.textTertiary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.bottom, 8)
+                    }
+                    ForEach(calendarDays, id: \.offset) { item in
+                        if let day = item.day {
+                            let hasActivity = item.hasActivity
+                            let isPrevMonth = item.isPrevMonth
+                            let rangeState = inlineCalendarRangeState(day: day, isPrevMonth: isPrevMonth)
+                            let isEndpoint = rangeState == .start || rangeState == .end
+                            let isInRange = rangeState == .inRange
+                            ZStack(alignment: .bottom) {
+                                Text("\(day)")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(isEndpoint ? .white : isInRange ? OnboardingDesign.accentGreen : isPrevMonth ? OnboardingDesign.textTertiary : OnboardingDesign.textPrimary)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(minHeight: 36)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(isEndpoint ? OnboardingDesign.accentGreen : isInRange ? OnboardingDesign.accentGreen.opacity(0.12) : Color.clear)
+                                    )
+                                if hasActivity && !isEndpoint {
+                                    Circle()
+                                        .fill(OnboardingDesign.accentGreen)
+                                        .frame(width: 4, height: 4)
+                                        .padding(.bottom, 4)
+                                }
                             }
+                        } else {
+                            Color.clear
+                                .frame(minHeight: 36)
                         }
-                    } else {
-                        Color.clear
-                            .frame(minHeight: 36)
                     }
                 }
+                .padding(.top, 20)
             }
-            .padding(.top, 20)
+            .padding(24)
+            .modifier(MonthDetailGlassModifier())
         }
-        .padding(24)
-        .modifier(MonthDetailGlassModifier())
-        .contentShape(Rectangle())
-        .onTapGesture {
-            showCalendarPicker = true
-        }
+        .buttonStyle(.plain)
+    }
+
+    private enum InlineRangeState { case none, start, end, inRange }
+
+    private func inlineCalendarRangeState(day: Int, isPrevMonth: Bool) -> InlineRangeState {
+        guard !isPrevMonth, let start = filterStartDay else { return .none }
+        let lo = min(start, filterEndDay ?? start)
+        let hi = max(start, filterEndDay ?? start)
+        if day == lo { return .start }
+        if day == hi && lo != hi { return .end }
+        if day > lo && day < hi { return .inRange }
+        return .none
     }
 
     /// Builds (day number or nil, hasActivity, isPrevMonth) for the month grid. Sunday first (Su Mo Tu We Th Fr Sa).
@@ -220,21 +301,26 @@ struct MonthDetailView: View {
 
     // MARK: - Bill list
 
-    private func billListSection(viewModel: MonthDetailViewModel) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if viewModel.transactions.isEmpty {
-                Text("No transactions this month")
+    private func billListSection() -> some View {
+        let txList = displayedTransactions
+        return VStack(alignment: .leading, spacing: 0) {
+            if txList.isEmpty {
+                Text(filterStartDay != nil ? "No transactions for selected dates" : "No transactions this month")
                     .font(.system(size: 14))
                     .foregroundColor(OnboardingDesign.textTertiary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
             } else {
-                ForEach(Array(viewModel.transactions.enumerated()), id: \.element.id) { index, tx in
-                    NavigationLink(value: tx) {
+                ForEach(Array(txList.enumerated()), id: \.element.id) { index, tx in
+                    Button {
+                        selectedTransactionForEdit = tx
+                        showEditSheet = true
+                    } label: {
                         billRow(transaction: tx)
                     }
                     .buttonStyle(.plain)
-                    if index < viewModel.transactions.count - 1 {
+                    .contentShape(Rectangle())
+                    if index < txList.count - 1 {
                         Divider()
                             .background(Color.white.opacity(0.3))
                             .padding(.leading, 56)
@@ -274,6 +360,7 @@ struct MonthDetailView: View {
                 .foregroundColor(OnboardingDesign.textPrimary)
         }
         .padding(.vertical, 16)
+        .contentShape(Rectangle())
     }
 
     private func transactionIconName(_ tx: Transaction) -> String {
@@ -330,11 +417,12 @@ private struct MonthDetailGlassModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(.ultraThinMaterial)
-            .overlay(OnboardingDesign.glassBg.opacity(0.5))
+            .overlay(OnboardingDesign.glassBg.opacity(0.5).allowsHitTesting(false))
             .clipShape(RoundedRectangle(cornerRadius: 28))
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
                     .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                    .allowsHitTesting(false)
             )
             .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
     }

@@ -13,6 +13,7 @@ private enum SettingsDesign {
 
 struct SettingsView: View {
     @Environment(AuthStore.self) private var authStore
+    var importViewModel: ImportViewModel? = nil
     @State private var showPaywall = false
     @State private var iCloudSyncOn = true
     @State private var monthlySummaryOn = true
@@ -21,6 +22,7 @@ struct SettingsView: View {
     @State private var showDeleteConfirmation = false
     @State private var showAIParsingRules = false
     @State private var baseCurrency: String = BaseCurrencyStore.baseCurrency
+    @State private var showExtractionReport = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -35,6 +37,7 @@ struct SettingsView: View {
                     dataSection
                     notificationsSection
                     privacySection
+                    debugSection
                     accountSection
                 }
                 .padding(.horizontal, 20)
@@ -322,6 +325,92 @@ struct SettingsView: View {
         .padding(.top, 10)
     }
 
+    // MARK: - Debug
+
+    @State private var templateStoreCount: Int = OCRTemplateStore.shared.all().count
+    @State private var showClearTemplatesConfirm = false
+
+    private var debugSection: some View {
+        Group {
+            if let vm = importViewModel {
+                VStack(alignment: .leading, spacing: 0) {
+                    sectionCaption("Debug")
+                    settingsGroup {
+                        Button {
+                            showExtractionReport = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "doc.text.magnifyingglass")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(OnboardingDesign.textSecondary)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.white.opacity(0.5))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Last extraction report")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(OnboardingDesign.textPrimary)
+                                    Text("\(vm.lastExtractionReports.count) screenshot(s)")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(OnboardingDesign.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(OnboardingDesign.textTertiary)
+                            }
+                            .padding(.horizontal, 16)
+                            .frame(height: 64)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        Divider().padding(.leading, 60)
+
+                        Button {
+                            showClearTemplatesConfirm = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(SettingsDesign.textDanger)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.white.opacity(0.5))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Clear OCR templates")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(SettingsDesign.textDanger)
+                                    Text("\(templateStoreCount) template(s) stored")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(OnboardingDesign.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.horizontal, 16)
+                            .frame(height: 64)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .confirmationDialog("Clear OCR Templates", isPresented: $showClearTemplatesConfirm, titleVisibility: .visible) {
+                            Button("Clear", role: .destructive) {
+                                OCRTemplateStore.shared.clearAll()
+                                templateStoreCount = 0
+                            }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("All learned extraction templates will be deleted. New ones will be created automatically after the next GPT extraction.")
+                        }
+                    }
+                }
+                .padding(.top, 10)
+                .navigationDestination(isPresented: $showExtractionReport) {
+                    ExtractionDebugReportListView(reports: vm.lastExtractionReports)
+                }
+            }
+        }
+    }
+
     // MARK: - Account (Sign out)
 
     private var accountSection: some View {
@@ -376,11 +465,12 @@ struct SettingsView: View {
             content()
         }
         .background(.ultraThinMaterial)
-        .overlay(OnboardingDesign.glassBg.opacity(0.5))
+        .overlay(OnboardingDesign.glassBg.opacity(0.5).allowsHitTesting(false))
         .clipShape(RoundedRectangle(cornerRadius: 28))
         .overlay(
             RoundedRectangle(cornerRadius: 28)
                 .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .allowsHitTesting(false)
         )
         .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
     }

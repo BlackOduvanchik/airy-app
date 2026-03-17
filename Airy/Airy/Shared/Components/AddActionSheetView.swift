@@ -20,11 +20,11 @@ struct AddActionSheetView: View {
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: 3)
                 .fill(Color.white.opacity(0.5))
-                .frame(width: 36, height: 4)
-                .padding(.top, 4)
-                .padding(.bottom, 4)
+                .frame(width: 36, height: 5)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
 
             Text(showScreenshotPage ? "ADD SCREENSHOT" : "ADD TRANSACTION")
                 .font(.system(size: 11, weight: .semibold))
@@ -65,7 +65,7 @@ struct AddActionSheetView: View {
             .padding(.top, 6)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 20)
         .padding(.bottom, 16)
     }
 

@@ -7,11 +7,6 @@
 
 import SwiftUI
 
-private struct ImagesToAnalyze: Identifiable {
-    let id = UUID()
-    let images: [UIImage]
-}
-
 struct MainTabView: View {
     @State private var selectedTab: Tab = .dashboard
     @State private var showAddSheet = false
@@ -19,13 +14,14 @@ struct MainTabView: View {
     @State private var addTransactionInitialType: String? = nil
     @State private var addSheetQuickPickOrder: [String] = []
     @State private var showGalleryPicker = false
-    @State private var imagesToAnalyze: ImagesToAnalyze? = nil
+    @State private var showLiveExtraction = false
     @State private var showPendingReview = false
     @State private var pasteNoImageAlert = false
-    @State private var importViewModel = ImportViewModel()
     @State private var dashboardRefreshId = 0
     @State private var showAllTransactions = false
     @State private var showSubscriptions = false
+
+    private var importViewModel: ImportViewModel { ImportViewModel.shared }
 
     enum Tab: Int {
         case dashboard = 0
@@ -37,12 +33,17 @@ struct MainTabView: View {
         Group {
             switch selectedTab {
             case .dashboard:
-                DashboardView(refreshId: dashboardRefreshId, showAllTransactions: $showAllTransactions, onOpenSubscriptions: { showSubscriptions = true })
+                DashboardView(
+                    refreshId: dashboardRefreshId,
+                    showAllTransactions: $showAllTransactions,
+                    onOpenSubscriptions: { showSubscriptions = true },
+                    onCloudTapped: handleCloudTap
+                )
             case .insights:
                 InsightsView()
             case .settings:
                 NavigationStack {
-                    SettingsView()
+                    SettingsView(importViewModel: importViewModel)
                         .navigationTitle("Settings")
                 }
             }
@@ -75,7 +76,8 @@ struct MainTabView: View {
                     showAddSheet = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         if let image = UIPasteboard.general.image {
-                            imagesToAnalyze = ImagesToAnalyze(images: [image])
+                            ImportViewModel.shared.enqueue([image])
+                            showLiveExtraction = true
                         } else {
                             pasteNoImageAlert = true
                         }
@@ -105,25 +107,26 @@ struct MainTabView: View {
             GalleryPickerView(
                 onImagesPicked: { images in
                     showGalleryPicker = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        imagesToAnalyze = ImagesToAnalyze(images: images)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        ImportViewModel.shared.enqueue(images)
+                        showLiveExtraction = true
                     }
                 },
                 onCancel: { showGalleryPicker = false }
             )
+            .ignoresSafeArea()
         }
-        .fullScreenCover(item: $imagesToAnalyze) { wrapper in
+        .fullScreenCover(isPresented: $showLiveExtraction) {
             AnalyzingTransactionsView(
-                images: wrapper.images,
                 importViewModel: importViewModel,
                 onConfirm: {
-                    imagesToAnalyze = nil
+                    showLiveExtraction = false
                     if importViewModel.pendingCount > 0 {
                         showPendingReview = true
                     }
                 },
                 onCancel: {
-                    imagesToAnalyze = nil
+                    showLiveExtraction = false
                 }
             )
         }
@@ -152,32 +155,6 @@ struct MainTabView: View {
             TransactionListView(
                 showBottomBar: true,
                 onDismiss: {
-                    // #region agent log
-                    do {
-                        let payload: [String: Any] = [
-                            "sessionId": "ad783c",
-                            "location": "MainTabView.fullScreenCover.onDismiss",
-                            "message": "All transactions list dismissed",
-                            "data": ["dashboardRefreshId": dashboardRefreshId],
-                            "timestamp": Int(Date().timeIntervalSince1970 * 1000),
-                            "hypothesisId": "H2"
-                        ]
-                        if let json = try? JSONSerialization.data(withJSONObject: payload),
-                           let line = String(data: json, encoding: .utf8) {
-                            let path = "/Users/oduvanchik/Desktop/Airy/.cursor/debug-ad783c.log"
-                            let lineData = (line + "\n").data(using: .utf8)!
-                            if FileManager.default.fileExists(atPath: path) {
-                                if let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) {
-                                    defer { try? h.close() }
-                                    h.seekToEndOfFile()
-                                    h.write(lineData)
-                                }
-                            } else {
-                                FileManager.default.createFile(atPath: path, contents: lineData, attributes: nil)
-                            }
-                        }
-                    }
-                    // #endregion
                     showAllTransactions = false
                 },
                 onInsights: {
@@ -189,6 +166,25 @@ struct MainTabView: View {
                     selectedTab = .settings
                 }
             )
+        }
+    }
+
+    // MARK: - Cloud icon tap logic
+
+    private func handleCloudTap() {
+        if importViewModel.isAnalyzing {
+            showLiveExtraction = true
+        } else if importViewModel.hasUnreviewedResults {
+            importViewModel.addProcessedToPending()
+            dashboardRefreshId += 1
+            showPendingReview = true
+        } else {
+            let hasPending = !LocalDataStore.shared.fetchPendingTransactions().isEmpty
+            if hasPending {
+                showPendingReview = true
+            } else {
+                showAllTransactions = true
+            }
         }
     }
 

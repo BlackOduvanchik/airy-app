@@ -8,6 +8,24 @@
 import Foundation
 
 enum SFSymbolsCatalog {
+    static let alphabet: [String] = [
+        "letter:A", "letter:B", "letter:C", "letter:D", "letter:E", "letter:F",
+        "letter:G", "letter:H", "letter:I", "letter:J", "letter:K", "letter:L",
+        "letter:M", "letter:N", "letter:O", "letter:P", "letter:Q", "letter:R",
+        "letter:S", "letter:T", "letter:U", "letter:V", "letter:W", "letter:X",
+        "letter:Y", "letter:Z",
+    ]
+
+    /// Returns true if the symbol is a letter (from the Alphabet category).
+    static func isLetter(_ symbol: String) -> Bool {
+        symbol.hasPrefix("letter:")
+    }
+
+    /// Extracts the display letter from a "letter:X" symbol.
+    static func letterValue(_ symbol: String) -> String {
+        String(symbol.dropFirst(7))
+    }
+
     static let finance: [String] = [
         "creditcard.fill", "creditcard", "dollarsign", "dollarsign.circle.fill", "dollarsign.square.fill",
         "centsign", "yensign.circle.fill", "eurosign.circle.fill", "banknote.fill", "banknote",
@@ -104,6 +122,7 @@ enum SFSymbolsCatalog {
     ]
 
     static let byCategory: [String: [String]] = [
+        "Alphabet": alphabet,
         "Finance": finance,
         "Food": food,
         "Transport": transport,
@@ -118,7 +137,7 @@ enum SFSymbolsCatalog {
     ]
 
     static let categoryOrder: [String] = [
-        "Finance", "Food", "Transport", "Lifestyle", "Home", "Tech",
+        "Alphabet", "Finance", "Food", "Transport", "Lifestyle", "Home", "Tech",
         "Health", "Shopping", "Work", "Nature", "Education",
     ]
 

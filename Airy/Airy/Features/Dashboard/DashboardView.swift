@@ -15,8 +15,10 @@ struct DashboardView: View {
     var refreshId: Int = 0
     @Binding var showAllTransactions: Bool
     var onOpenSubscriptions: (() -> Void)? = nil
+    var onCloudTapped: (() -> Void)? = nil
     @State private var viewModel = DashboardViewModel()
     @State private var analyticsPath = NavigationPath()
+    @State private var pendingTransactionCount = 0
 
     var body: some View {
         NavigationStack(path: $analyticsPath) {
@@ -74,29 +76,89 @@ struct DashboardView: View {
     }
 
     private var mascotView: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Color.white.opacity(0.9), Color.white.opacity(0.2)],
-                        center: .topLeading,
-                        startRadius: 0,
-                        endRadius: 35
-                    )
-                )
-                .frame(width: 48, height: 48)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.5), lineWidth: 1)
-                )
-                .shadow(color: OnboardingDesign.accentBlue.opacity(0.3), radius: 8, x: 0, y: 0)
-                .shadow(color: .black.opacity(0.03), radius: 6, x: 0, y: 4)
+        let isAnalyzing = ImportViewModel.shared.isAnalyzing
+        let remaining = ImportViewModel.shared.remainingQueueCount
+        let hasUnreviewed = ImportViewModel.shared.hasUnreviewedResults
 
-            Image(systemName: "cloud.fill")
-                .font(.system(size: 24))
-                .foregroundColor(OnboardingDesign.textPrimary)
+        let a11yLabel: String = isAnalyzing
+            ? (remaining > 0 ? "Analyzing \(remaining) transactions" : "Analyzing transactions")
+            : hasUnreviewed ? "Review imported transactions"
+            : pendingTransactionCount > 0 ? "\(pendingTransactionCount) transactions pending review"
+            : "Import transactions"
+
+        return Button(action: { onCloudTapped?() }) {
+            ZStack(alignment: .topTrailing) {
+                // Icon — fixed 48×48, halos expand via overlay (don't affect layout)
+                ZStack {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.white.opacity(0.9), Color.white.opacity(0.2)],
+                                center: .topLeading,
+                                startRadius: 0,
+                                endRadius: 35
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+                        .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
+                        .shadow(color: OnboardingDesign.accentBlue.opacity(0.3), radius: 8, x: 0, y: 0)
+                        .shadow(color: .black.opacity(0.03), radius: 6, x: 0, y: 4)
+
+                    Image(systemName: "cloud.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(OnboardingDesign.textPrimary)
+                }
+                .frame(width: 48, height: 48)
+                // Halos expand outward as an overlay — they don't push the badge away
+                .overlay {
+                    if isAnalyzing {
+                        CloudRippleHalosView()
+                            .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                            .allowsHitTesting(false)
+                    }
+                }
+
+                // Badge — anchored to the 48×48 icon's topTrailing corner
+                if isAnalyzing && remaining > 0 {
+                    ZStack {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 18, height: 18)
+                        Text("\(remaining)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .offset(x: 4, y: -4)
+                } else if hasUnreviewed {
+                    ZStack {
+                        Circle()
+                            .fill(OnboardingDesign.accentGreen)
+                            .frame(width: 16, height: 16)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .offset(x: 4, y: -4)
+                } else if pendingTransactionCount > 0 {
+                    ZStack {
+                        Circle()
+                            .fill(OnboardingDesign.accentBlue)
+                            .frame(width: 18, height: 18)
+                        Text("\(min(pendingTransactionCount, 99))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .offset(x: 4, y: -4)
+                }
+            }
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(a11yLabel)
+        .accessibilityHint("Tap to manage transaction imports")
         .padding(.bottom, 4)
+        .task(id: refreshId) {
+            pendingTransactionCount = LocalDataStore.shared.fetchPendingTransactions().count
+        }
     }
 
     private func totalSpentFormatted(_ amount: Double) -> Text {
@@ -272,10 +334,12 @@ struct DashboardView: View {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 16))
                     .foregroundColor(OnboardingDesign.textTertiary)
+                    .accessibilityLabel("View all transactions")
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
             .contentShape(Rectangle())
+            .accessibilityLabel("Recent activity. View all transactions")
             .onTapGesture {
                 showAllTransactions = true
             }
@@ -372,6 +436,7 @@ struct DashboardView: View {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 16))
                         .foregroundColor(OnboardingDesign.textTertiary)
+                        .accessibilityLabel("View all subscriptions")
                 }
             }
             .padding(.horizontal, 20)
@@ -406,20 +471,26 @@ struct DashboardView: View {
 
     private func subCard(subscription: Subscription) -> some View {
         let monthDay = subscription.nextBillingDate.flatMap { formatMonthDay($0) } ?? "—"
-        let catId = subscription.categoryId ?? ""
-        let subId = subscription.subcategoryId
-        let iconName = CategoryIconHelper.iconName(categoryId: catId, subcategoryId: subId)
-        let iconColors = CategoryIconHelper.iconColors(categoryId: catId, subcategoryId: subId, isSubscription: true)
+        let subColor = subscription.colorHex.flatMap { Color(hex: $0) } ?? subscriptionFallbackColor(subscription.merchant)
+        let subIcon = subscription.iconLetter ?? String(subscription.merchant.prefix(1)).uppercased()
+        let isSFSymbol = subIcon.count > 1
         let displayTitle = subscriptionDisplayTitle(subscription: subscription)
         let description = (subscription.title ?? "").trimmingCharacters(in: .whitespaces)
         return VStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 10)
-                .fill(iconColors.0)
+                .fill(subColor)
                 .frame(width: 36, height: 36)
                 .overlay(
-                    Image(systemName: iconName)
-                        .font(.system(size: 18))
-                        .foregroundColor(iconColors.1)
+                    Group {
+                        if isSFSymbol {
+                            Image(systemName: subIcon)
+                                .font(.system(size: 16, weight: .bold))
+                        } else {
+                            Text(subIcon)
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                    }
+                    .foregroundColor(.white)
                 )
                 .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
             VStack(spacing: 2) {
@@ -464,6 +535,17 @@ struct DashboardView: View {
     }
 
     /// Display name for subscription card: merchant if set, else subcategory name, else category name.
+    private func subscriptionFallbackColor(_ merchant: String) -> Color {
+        let m = merchant.lowercased()
+        if m.contains("netflix") { return Color(red: 0.898, green: 0.035, blue: 0.078) }
+        if m.contains("spotify") { return Color(red: 0.114, green: 0.725, blue: 0.329) }
+        if m.contains("chatgpt") || m.contains("openai") { return Color(red: 0, green: 0.651, blue: 0.494) }
+        if m.contains("headspace") { return Color(red: 0.98, green: 0.365, blue: 0.365) }
+        if m.contains("adobe") { return Color(red: 0.176, green: 0.243, blue: 0.314) }
+        if m.contains("nyt") || m.contains("new york") { return Color(red: 0.071, green: 0.071, blue: 0.071) }
+        return OnboardingDesign.accentBlue
+    }
+
     private func subscriptionDisplayTitle(subscription: Subscription) -> String {
         let m = subscription.merchant.trimmingCharacters(in: .whitespaces)
         if !m.isEmpty, m.lowercased() != "unknown" { return m }
@@ -531,13 +613,49 @@ struct DashboardView: View {
     }
 }
 
+// MARK: - Cloud ripple halos (shown while analyzing)
+
+private struct CloudRippleHalosView: View {
+    var body: some View {
+        ZStack {
+            RippleRingView(delay: 0.0)
+            RippleRingView(delay: 0.55)
+            RippleRingView(delay: 1.1)
+        }
+        .frame(width: 120, height: 120)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct RippleRingView: View {
+    let delay: Double
+    @State private var isAnimating = false
+
+    var body: some View {
+        Circle()
+            .stroke(OnboardingDesign.accentBlue.opacity(0.4), lineWidth: 1.5)
+            .frame(width: 48, height: 48)
+            .scaleEffect(isAnimating ? 2.6 : 1.0)
+            .opacity(isAnimating ? 0 : 0.55)
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    withAnimation(.easeOut(duration: 1.7).repeatForever(autoreverses: false)) {
+                        isAnimating = true
+                    }
+                }
+            }
+    }
+}
+
 // MARK: - Glass panel style for dashboard
 
-private extension View {
-    func dashboardGlassStyle() -> some View {
-        self
-            .background(.ultraThinMaterial)
-            .overlay(OnboardingDesign.glassBg.opacity(0.5).allowsHitTesting(false))
+private struct DashboardGlassModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        content
+            .background(reduceTransparency ? AnyShapeStyle(Color(.secondarySystemGroupedBackground)) : AnyShapeStyle(.ultraThinMaterial))
+            .overlay(reduceTransparency ? nil : OnboardingDesign.glassBg.opacity(0.5).allowsHitTesting(false))
             .clipShape(RoundedRectangle(cornerRadius: 28))
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
@@ -552,6 +670,12 @@ private extension View {
                     .offset(y: 1)
                     .allowsHitTesting(false)
             )
+    }
+}
+
+private extension View {
+    func dashboardGlassStyle() -> some View {
+        modifier(DashboardGlassModifier())
     }
 }
 

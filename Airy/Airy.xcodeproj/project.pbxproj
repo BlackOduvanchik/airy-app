@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B0010000000000000000005F /* EditSubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005F /* EditSubscriptionView.swift */; };
+		B00100000000000000000060 /* EditSubscriptionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000060 /* EditSubscriptionViewModel.swift */; };
 		B00100000000000000000001 /* AiryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000001 /* AiryApp.swift */; };
 		B00100000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000002 /* ContentView.swift */; };
 		B00100000000000000000003 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000003 /* APIClient.swift */; };
@@ -50,8 +52,6 @@
 		B0010000000000000000002B /* LocalOCRParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002B /* LocalOCRParser.swift */; };
 		B0010000000000000000002C /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002C /* Category.swift */; };
 		B0010000000000000000002D /* NewCategorySheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002D /* NewCategorySheetView.swift */; };
-		B00100000000000000000043 /* SFSymbolsCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000043 /* SFSymbolsCatalog.swift */; };
-		B00100000000000000000044 /* IconLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000044 /* IconLibraryView.swift */; };
 		B0010000000000000000002E /* GalleryPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002E /* GalleryPickerView.swift */; };
 		B0010000000000000000002F /* AnalyzingTransactionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000002F /* AnalyzingTransactionsView.swift */; };
 		B00100000000000000000031 /* MerchantCorrectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000031 /* MerchantCorrectionStore.swift */; };
@@ -72,10 +72,53 @@
 		B00100000000000000000040 /* TimePickerPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000040 /* TimePickerPopoverView.swift */; };
 		B00100000000000000000041 /* DatePickerPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000041 /* DatePickerPopoverView.swift */; };
 		B00100000000000000000042 /* ScrollViewNoBounce.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000042 /* ScrollViewNoBounce.swift */; };
+		B00100000000000000000043 /* SFSymbolsCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000043 /* SFSymbolsCatalog.swift */; };
+		B00100000000000000000044 /* IconLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000044 /* IconLibraryView.swift */; };
 		B00100000000000000000045 /* AppSecrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000045 /* AppSecrets.swift */; };
 		B0010000000000000000004C /* CurrencyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000004C /* CurrencyService.swift */; };
 		B0010000000000000000004D /* MerchantCategoryRuleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000004D /* MerchantCategoryRuleStore.swift */; };
+		B0010000000000000000004E /* ExtractionDebugReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000004E /* ExtractionDebugReport.swift */; };
+		B0010000000000000000004F /* ExtractionDebugReportListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000004F /* ExtractionDebugReportListView.swift */; };
+		B00100000000000000000050 /* OCRBlockClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000050 /* OCRBlockClassifier.swift */; };
+		B00100000000000000000051 /* LayoutFamilyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000051 /* LayoutFamilyStore.swift */; };
+		B00100000000000000000052 /* LocalRowExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000052 /* LocalRowExtractor.swift */; };
+		B00100000000000000000053 /* LayoutFamilyLearningStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000053 /* LayoutFamilyLearningStore.swift */; };
+		B00100000000000000000054 /* GPTTeacherMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000054 /* GPTTeacherMapper.swift */; };
+		B00100000000000000000055 /* OCRTemplateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000055 /* OCRTemplateStore.swift */; };
+		B00100000000000000000056 /* OCRTemplateDeriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000056 /* OCRTemplateDeriver.swift */; };
+		B00100000000000000000057 /* OCRTemplateMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000057 /* OCRTemplateMatcher.swift */; };
+		B00100000000000000000058 /* AiryActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000058 /* AiryActivityAttributes.swift */; };
+		B00100000000000000000059 /* AiryActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000058 /* AiryActivityAttributes.swift */; };
+		B0010000000000000000005A /* AiryLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000059 /* AiryLiveActivity.swift */; };
+		B0010000000000000000005B /* WidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005A /* WidgetBundle.swift */; };
+		B0010000000000000000005C /* AiryWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = TARG00000000000000000003 /* AiryWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B0010000000000000000005D /* GPTBackgroundSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005B /* GPTBackgroundSession.swift */; };
+		B0010000000000000000005E /* AiryAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005C /* AiryAppDelegate.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		PROXY0000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = PROJ00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = TARG00000000000000000004;
+			remoteInfo = AiryWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		COPYBP00000000000000001 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B0010000000000000000005C /* AiryWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		F00100000000000000000001 /* AiryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiryApp.swift; sourceTree = "<group>"; };
@@ -98,6 +141,8 @@
 		F00100000000000000000012 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000013 /* SubscriptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000014 /* SubscriptionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsViewModel.swift; sourceTree = "<group>"; };
+		F0010000000000000000005F /* EditSubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditSubscriptionView.swift; sourceTree = "<group>"; };
+		F00100000000000000000060 /* EditSubscriptionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditSubscriptionViewModel.swift; sourceTree = "<group>"; };
 		F00100000000000000000015 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
 		F00100000000000000000016 /* AddTransactionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionViewModel.swift; sourceTree = "<group>"; };
 		F00100000000000000000017 /* TransactionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDetailView.swift; sourceTree = "<group>"; };
@@ -123,11 +168,6 @@
 		F0010000000000000000002B /* LocalOCRParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalOCRParser.swift; sourceTree = "<group>"; };
 		F0010000000000000000002C /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
 		F0010000000000000000002D /* NewCategorySheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewCategorySheetView.swift; sourceTree = "<group>"; };
-		F00100000000000000000043 /* SFSymbolsCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFSymbolsCatalog.swift; sourceTree = "<group>"; };
-		F00100000000000000000044 /* IconLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconLibraryView.swift; sourceTree = "<group>"; };
-		F00100000000000000000045 /* AppSecrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSecrets.swift; sourceTree = "<group>"; };
-		F0010000000000000000004C /* CurrencyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyService.swift; sourceTree = "<group>"; };
-		F0010000000000000000004D /* MerchantCategoryRuleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantCategoryRuleStore.swift; sourceTree = "<group>"; };
 		F0010000000000000000002E /* GalleryPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryPickerView.swift; sourceTree = "<group>"; };
 		F0010000000000000000002F /* AnalyzingTransactionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyzingTransactionsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000031 /* MerchantCorrectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantCorrectionStore.swift; sourceTree = "<group>"; };
@@ -148,11 +188,39 @@
 		F00100000000000000000040 /* TimePickerPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimePickerPopoverView.swift; sourceTree = "<group>"; };
 		F00100000000000000000041 /* DatePickerPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatePickerPopoverView.swift; sourceTree = "<group>"; };
 		F00100000000000000000042 /* ScrollViewNoBounce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollViewNoBounce.swift; sourceTree = "<group>"; };
+		F00100000000000000000043 /* SFSymbolsCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFSymbolsCatalog.swift; sourceTree = "<group>"; };
+		F00100000000000000000044 /* IconLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconLibraryView.swift; sourceTree = "<group>"; };
+		F00100000000000000000045 /* AppSecrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSecrets.swift; sourceTree = "<group>"; };
+		F0010000000000000000004C /* CurrencyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyService.swift; sourceTree = "<group>"; };
+		F0010000000000000000004D /* MerchantCategoryRuleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantCategoryRuleStore.swift; sourceTree = "<group>"; };
+		F0010000000000000000004E /* ExtractionDebugReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionDebugReport.swift; sourceTree = "<group>"; };
+		F0010000000000000000004F /* ExtractionDebugReportListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionDebugReportListView.swift; sourceTree = "<group>"; };
+		F00100000000000000000050 /* OCRBlockClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRBlockClassifier.swift; sourceTree = "<group>"; };
+		F00100000000000000000051 /* LayoutFamilyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutFamilyStore.swift; sourceTree = "<group>"; };
+		F00100000000000000000052 /* LocalRowExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalRowExtractor.swift; sourceTree = "<group>"; };
+		F00100000000000000000053 /* LayoutFamilyLearningStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutFamilyLearningStore.swift; sourceTree = "<group>"; };
+		F00100000000000000000054 /* GPTTeacherMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTTeacherMapper.swift; sourceTree = "<group>"; };
+		F00100000000000000000055 /* OCRTemplateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRTemplateStore.swift; sourceTree = "<group>"; };
+		F00100000000000000000056 /* OCRTemplateDeriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRTemplateDeriver.swift; sourceTree = "<group>"; };
+		F00100000000000000000057 /* OCRTemplateMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRTemplateMatcher.swift; sourceTree = "<group>"; };
+		F00100000000000000000058 /* AiryActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiryActivityAttributes.swift; sourceTree = "<group>"; };
+		F00100000000000000000059 /* AiryLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiryLiveActivity.swift; sourceTree = "<group>"; };
+		F0010000000000000000005A /* WidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetBundle.swift; sourceTree = "<group>"; };
+		F0010000000000000000005B /* GPTBackgroundSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTBackgroundSession.swift; sourceTree = "<group>"; };
+		F0010000000000000000005C /* AiryAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiryAppDelegate.swift; sourceTree = "<group>"; };
 		TARG00000000000000000001 /* Airy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Airy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		TARG00000000000000000003 /* AiryWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AiryWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		FRMBP000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FRMBP000000000000000002 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -166,6 +234,7 @@
 			isa = PBXGroup;
 			children = (
 				TARG00000000000000000001 /* Airy.app */,
+				TARG00000000000000000003 /* AiryWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -174,6 +243,7 @@
 			isa = PBXGroup;
 			children = (
 				GRP00000000000000000002 /* Airy */,
+				GRP00000000000000000018 /* AiryWidgets */,
 				F0010000000000000000001C /* Info.plist */,
 				F0010000000000000000001D /* Assets.xcassets */,
 				BUILT000000000000000001 /* Products */,
@@ -197,6 +267,7 @@
 			isa = PBXGroup;
 			children = (
 				F00100000000000000000001 /* AiryApp.swift */,
+				F0010000000000000000005C /* AiryAppDelegate.swift */,
 				F00100000000000000000002 /* ContentView.swift */,
 			);
 			path = App;
@@ -230,18 +301,11 @@
 		GRP00000000000000000008 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				F00100000000000000000058 /* AiryActivityAttributes.swift */,
 				GRP00000000000000000014 /* Components */,
 				GRP00000000000000000017 /* Utilities */,
 			);
 			path = Shared;
-			sourceTree = "<group>";
-		};
-		GRP00000000000000000017 /* Utilities */ = {
-			isa = PBXGroup;
-			children = (
-				F00100000000000000000042 /* ScrollViewNoBounce.swift */,
-			);
-			path = Utilities;
 			sourceTree = "<group>";
 		};
 		GRP00000000000000000009 /* Services */ = {
@@ -250,6 +314,12 @@
 				F0010000000000000000001B /* OCRService.swift */,
 				F0010000000000000000002B /* LocalOCRParser.swift */,
 				F00100000000000000000033 /* GPTRulesService.swift */,
+				F00100000000000000000050 /* OCRBlockClassifier.swift */,
+				F00100000000000000000052 /* LocalRowExtractor.swift */,
+				F00100000000000000000054 /* GPTTeacherMapper.swift */,
+				F00100000000000000000056 /* OCRTemplateDeriver.swift */,
+				F00100000000000000000057 /* OCRTemplateMatcher.swift */,
+				F0010000000000000000005B /* GPTBackgroundSession.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -292,6 +362,7 @@
 				F0010000000000000000003B /* TransactionReviewCard.swift */,
 				F0010000000000000000002F /* AnalyzingTransactionsView.swift */,
 				F0010000000000000000002E /* GalleryPickerView.swift */,
+				F0010000000000000000004F /* ExtractionDebugReportListView.swift */,
 				F00100000000000000000008 /* ImportView.swift */,
 				F00100000000000000000009 /* ImportViewModel.swift */,
 				F0010000000000000000000A /* PendingReviewView.swift */,
@@ -342,6 +413,8 @@
 			children = (
 				F00100000000000000000013 /* SubscriptionsView.swift */,
 				F00100000000000000000014 /* SubscriptionsViewModel.swift */,
+				F0010000000000000000005F /* EditSubscriptionView.swift */,
+				F00100000000000000000060 /* EditSubscriptionViewModel.swift */,
 			);
 			path = Subscriptions;
 			sourceTree = "<group>";
@@ -388,8 +461,11 @@
 				F0010000000000000000004D /* MerchantCategoryRuleStore.swift */,
 				F00100000000000000000031 /* MerchantCorrectionStore.swift */,
 				F00100000000000000000032 /* ParsingRulesStore.swift */,
+				F00100000000000000000051 /* LayoutFamilyStore.swift */,
+				F00100000000000000000053 /* LayoutFamilyLearningStore.swift */,
 				F0010000000000000000002A /* LocalDataStore.swift */,
 				F0010000000000000000004C /* CurrencyService.swift */,
+				F00100000000000000000055 /* OCRTemplateStore.swift */,
 			);
 			path = Storage;
 			sourceTree = "<group>";
@@ -402,9 +478,27 @@
 				F00100000000000000000037 /* TransactionType.swift */,
 				F00100000000000000000038 /* CandidateTransaction.swift */,
 				F00100000000000000000039 /* ExtractionResult.swift */,
+				F0010000000000000000004E /* ExtractionDebugReport.swift */,
 				F0010000000000000000003A /* ReviewModels.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		GRP00000000000000000017 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				F00100000000000000000042 /* ScrollViewNoBounce.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		GRP00000000000000000018 /* AiryWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				F00100000000000000000059 /* AiryLiveActivity.swift */,
+				F0010000000000000000005A /* WidgetBundle.swift */,
+			);
+			path = AiryWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -417,15 +511,34 @@
 				SRCBP000000000000000001 /* Sources */,
 				FRMBP000000000000000001 /* Frameworks */,
 				RESBP000000000000000001 /* Resources */,
+				COPYBP00000000000000001 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				DEP000000000000000000001 /* PBXTargetDependency */,
 			);
 			name = Airy;
 			productName = Airy;
 			productReference = TARG00000000000000000001 /* Airy.app */;
 			productType = "com.apple.product-type.application";
+		};
+		TARG00000000000000000004 /* AiryWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BCL00000000000000000003 /* Build configuration list for PBXNativeTarget "AiryWidgets" */;
+			buildPhases = (
+				SRCBP000000000000000002 /* Sources */,
+				FRMBP000000000000000002 /* Frameworks */,
+				RESBP000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AiryWidgets;
+			productName = AiryWidgets;
+			productReference = TARG00000000000000000003 /* AiryWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -451,6 +564,7 @@
 			projectRoot = "";
 			targets = (
 				TARG00000000000000000002 /* Airy */,
+				TARG00000000000000000004 /* AiryWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -461,6 +575,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				B0010000000000000000001D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		RESBP000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -493,6 +614,8 @@
 				B00100000000000000000012 /* SettingsView.swift in Sources */,
 				B00100000000000000000013 /* SubscriptionsView.swift in Sources */,
 				B00100000000000000000014 /* SubscriptionsViewModel.swift in Sources */,
+				B0010000000000000000005F /* EditSubscriptionView.swift in Sources */,
+				B00100000000000000000060 /* EditSubscriptionViewModel.swift in Sources */,
 				B00100000000000000000015 /* AddTransactionView.swift in Sources */,
 				B00100000000000000000016 /* AddTransactionViewModel.swift in Sources */,
 				B00100000000000000000040 /* TimePickerPopoverView.swift in Sources */,
@@ -528,6 +651,7 @@
 				B0010000000000000000004D /* MerchantCategoryRuleStore.swift in Sources */,
 				B00100000000000000000031 /* MerchantCorrectionStore.swift in Sources */,
 				B00100000000000000000032 /* ParsingRulesStore.swift in Sources */,
+				B00100000000000000000051 /* LayoutFamilyStore.swift in Sources */,
 				B00100000000000000000033 /* GPTRulesService.swift in Sources */,
 				B00100000000000000000034 /* AIParsingRulesSheetView.swift in Sources */,
 				B00100000000000000000035 /* ScreenType.swift in Sources */,
@@ -538,10 +662,40 @@
 				B0010000000000000000003A /* ReviewModels.swift in Sources */,
 				B0010000000000000000003B /* TransactionReviewCard.swift in Sources */,
 				B0010000000000000000003C /* BottomNavBarView.swift in Sources */,
+				B0010000000000000000004E /* ExtractionDebugReport.swift in Sources */,
+				B0010000000000000000004F /* ExtractionDebugReportListView.swift in Sources */,
+				B00100000000000000000050 /* OCRBlockClassifier.swift in Sources */,
+				B00100000000000000000052 /* LocalRowExtractor.swift in Sources */,
+				B00100000000000000000053 /* LayoutFamilyLearningStore.swift in Sources */,
+				B00100000000000000000054 /* GPTTeacherMapper.swift in Sources */,
+				B00100000000000000000055 /* OCRTemplateStore.swift in Sources */,
+				B00100000000000000000056 /* OCRTemplateDeriver.swift in Sources */,
+				B00100000000000000000057 /* OCRTemplateMatcher.swift in Sources */,
+				B00100000000000000000058 /* AiryActivityAttributes.swift in Sources */,
+				B0010000000000000000005D /* GPTBackgroundSession.swift in Sources */,
+				B0010000000000000000005E /* AiryAppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		SRCBP000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B00100000000000000000059 /* AiryActivityAttributes.swift in Sources */,
+				B0010000000000000000005A /* AiryLiveActivity.swift in Sources */,
+				B0010000000000000000005B /* WidgetBundle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		DEP000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = TARG00000000000000000004 /* AiryWidgets */;
+			targetProxy = PROXY0000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		BCF00000000000000000001 /* Debug */ = {
@@ -677,7 +831,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -715,7 +869,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -724,6 +878,62 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.solosoft.airy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		BCF00000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9QHBAG79D9;
+				INFOPLIST_FILE = AiryWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.solosoft.airy.AiryWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		BCF00000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9QHBAG79D9;
+				INFOPLIST_FILE = AiryWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.solosoft.airy.AiryWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -751,6 +961,15 @@
 			buildConfigurations = (
 				BCF00000000000000000001 /* Debug */,
 				BCF00000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BCL00000000000000000003 /* Build configuration list for PBXNativeTarget "AiryWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BCF00000000000000000005 /* Debug */,
+				BCF00000000000000000006 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

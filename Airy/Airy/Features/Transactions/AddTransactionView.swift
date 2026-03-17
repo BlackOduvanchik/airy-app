@@ -81,41 +81,80 @@ struct AddTransactionView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            OnboardingGradientBackground()
-                .ignoresSafeArea()
+        NavigationStack {
+            ZStack(alignment: .top) {
+                OnboardingGradientBackground()
+                    .ignoresSafeArea()
 
-            sheetContent
+                sheetContent
 
-            VStack {
-                Spacer()
-                AmountKeyboardView(
-                    expression: $calculatorExpression,
-                    amountText: $viewModel.amountText,
-                    transactionType: $viewModel.transactionType,
-                    selectedCurrency: $viewModel.selectedCurrency,
-                    currencies: AddTransactionViewModel.currencies,
-                    onDismiss: {
-                        if !calculatorExpression.isEmpty {
-                            viewModel.amountText = displayAmountResult
-                            calculatorExpression = ""
+                VStack {
+                    Spacer()
+                    AmountKeyboardView(
+                        expression: $calculatorExpression,
+                        amountText: $viewModel.amountText,
+                        transactionType: $viewModel.transactionType,
+                        selectedCurrency: $viewModel.selectedCurrency,
+                        currencies: AddTransactionViewModel.currencies,
+                        onDismiss: {
+                            if !calculatorExpression.isEmpty {
+                                viewModel.amountText = displayAmountResult
+                                calculatorExpression = ""
+                            }
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+                                showCustomKeyboard = false
+                            }
                         }
-                        withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
-                            showCustomKeyboard = false
-                        }
-                    }
-                )
+                    )
+                }
+                .ignoresSafeArea(edges: .bottom)
+                .opacity(showCustomKeyboard ? 1 : 0)
+                .scaleEffect(showCustomKeyboard ? 1 : 0.94, anchor: .bottom)
+                .allowsHitTesting(showCustomKeyboard)
+                .animation(.spring(response: 0.5, dampingFraction: 0.82), value: showCustomKeyboard)
             }
-            .ignoresSafeArea(edges: .bottom)
-            .opacity(showCustomKeyboard ? 1 : 0)
-            .scaleEffect(showCustomKeyboard ? 1 : 0.94, anchor: .bottom)
-            .allowsHitTesting(showCustomKeyboard)
-            .animation(.spring(response: 0.5, dampingFraction: 0.82), value: showCustomKeyboard)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    if viewModel.sheetTitle != "New Entry" {
+                        Text(viewModel.sheetTitle)
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(0.5)
+                            .foregroundColor(OnboardingDesign.textTertiary)
+                    } else {
+                        Menu {
+                            ForEach(AddTransactionViewModel.currencies, id: \.self) { code in
+                                Button("\(code) ($)") { viewModel.selectedCurrency = code }
+                            }
+                        } label: {
+                            Text("\(viewModel.selectedCurrency) ($)")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(OnboardingDesign.textSecondary)
+                        }
+                        .disabled(viewModel.isEditMode)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        if pendingTransaction != nil {
+                            onCancelPending?()
+                            dismiss()
+                        } else {
+                            dismiss()
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                }
+            }
         }
         .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .presentationContentInteraction(.scrolls)
         .interactiveDismissDisabled(showTimePicker || showDatePicker)
+        .sensoryFeedback(.success, trigger: viewModel.didSucceed) { _, new in new }
         .onChange(of: viewModel.didSucceed) { _, ok in
             if ok {
                 dismiss()
@@ -132,19 +171,12 @@ struct AddTransactionView: View {
 
     private var sheetContent: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 0) {
-                handleBar
-                headerActions
-            }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
             ScrollView {
                 VStack(spacing: 0) {
                     VStack(spacing: 0) {
                         amountSection
                         typeToggle
                     }
-                    .offset(y: viewModel.isSubscription && isNoteFocused ? -56 : 0)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.82), value: viewModel.isSubscription && isNoteFocused)
                     subscriptionSection
                     categorySection
                     formFields
@@ -153,6 +185,8 @@ struct AddTransactionView: View {
                     }
                     Spacer(minLength: 24)
                 }
+                .offset(y: viewModel.isSubscription && isNoteFocused ? -56 : 0)
+                .animation(.spring(response: 0.4, dampingFraction: 0.82), value: viewModel.isSubscription && isNoteFocused)
             }
             .scrollDismissesKeyboard(.interactively)
             actionBar
@@ -160,20 +194,10 @@ struct AddTransactionView: View {
         .padding(.horizontal, 20)
         .padding(.top, 4)
         .padding(.bottom, 40)
-        .background(
-            RoundedRectangle(cornerRadius: 40)
-                .fill(Color.white.opacity(0.4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 40)
-                        .stroke(Color.white.opacity(0.7), lineWidth: 1)
-                )
-        )
         .ignoresSafeArea(edges: .bottom)
         .overlay {
             if showTimePicker || showDatePicker {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Color.black.opacity(0.001)
                     .onTapGesture {
                         withAnimation(.easeOut(duration: 0.2)) {
                             showTimePicker = false
@@ -208,57 +232,6 @@ struct AddTransactionView: View {
         }
     }
 
-    private var handleBar: some View {
-        RoundedRectangle(cornerRadius: 3)
-            .fill(Color.black.opacity(0.08))
-            .frame(width: 36, height: 5)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-    }
-
-    private var headerActions: some View {
-        HStack(alignment: .center) {
-            Button {
-                if pendingTransaction != nil {
-                    onCancelPending?()
-                    dismiss()
-                } else {
-                    dismiss()
-                }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textSecondary)
-                    .frame(width: 40, height: 40)
-            }
-            Spacer()
-            if viewModel.sheetTitle != "New Entry" {
-                Text(viewModel.sheetTitle)
-                    .font(.system(size: 12, weight: .semibold))
-                    .tracking(0.5)
-                    .foregroundColor(OnboardingDesign.textPrimary)
-            } else {
-                Menu {
-                    ForEach(AddTransactionViewModel.currencies, id: \.self) { code in
-                        Button("\(code) ($)") { viewModel.selectedCurrency = code }
-                    }
-                } label: {
-                    Text("\(viewModel.selectedCurrency) ($)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textSecondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.5))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white, lineWidth: 1))
-                }
-                .disabled(viewModel.isEditMode)
-            }
-            Spacer()
-            Color.clear.frame(width: 40, height: 40)
-        }
-        .padding(.bottom, 12)
-    }
 
     private var amountSection: some View {
         VStack(spacing: 4) {
@@ -430,6 +403,7 @@ struct AddTransactionView: View {
                 }
                 categoryPill(categoryId: "other", isOther: true)
             }
+            .padding(.horizontal, 1)
         }
         .sheet(isPresented: $showCategoriesSheet) {
             CategoriesSheetView(
@@ -610,9 +584,11 @@ struct AddTransactionView: View {
                 .focused($isNoteFocused)
         }
         .padding(16)
+        .contentShape(Rectangle())
         .background(Color.white.opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.4), lineWidth: 1))
+        .id("noteInput")
     }
 
     private var dateFormatted: String {

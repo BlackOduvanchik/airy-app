@@ -24,10 +24,11 @@ final class MerchantCorrectionStore {
     func saveCorrection(amount: Double, date: String, originalMerchant: String?, correctedMerchant: String) {
         guard !correctedMerchant.isEmpty, correctedMerchant != (originalMerchant ?? "Transaction") else { return }
         var all = loadAll()
+        let orig = originalMerchant ?? "Transaction"
         let correction = MerchantCorrection(
             amount: amount,
             date: date,
-            originalMerchant: originalMerchant ?? "Transaction",
+            originalMerchant: orig,
             correctedMerchant: correctedMerchant
         )
         all.removeAll { $0.amount == amount && $0.date == date && $0.originalMerchant == correction.originalMerchant }
@@ -41,6 +42,11 @@ final class MerchantCorrectionStore {
     func lookup(amount: Double, date: String, originalMerchant: String?) -> String? {
         let orig = originalMerchant ?? "Transaction"
         return loadAll().first { $0.amount == amount && $0.date == date && $0.originalMerchant == orig }?.correctedMerchant
+    }
+
+    /// All corrections for seeding MerchantAliasStore (confirmed aliases). Used once at startup.
+    func loadAllForMigration() -> [MerchantCorrection] {
+        loadAll()
     }
 
     private func loadAll() -> [MerchantCorrection] {

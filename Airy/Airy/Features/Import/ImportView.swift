@@ -14,13 +14,15 @@ enum ImportSource {
 struct ImportView: View {
     var initialSource: ImportSource = .gallery
     @State private var selectedItems: [PhotosPickerItem] = []
+    @State private var pendingSelection: [PhotosPickerItem] = []
+    @State private var isLoadingSelection = false
     @State private var viewModel = ImportViewModel()
     @State private var didAttemptClipboard = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                if viewModel.isProcessing {
+                if viewModel.isProcessing || isLoadingSelection {
                     ProgressView("Processing…")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
@@ -35,7 +37,7 @@ struct ImportView: View {
                             .foregroundStyle(.secondary)
                         PhotosPicker(
                             selection: $selectedItems,
-                            maxSelectionCount: 3,
+                            maxSelectionCount: 30,
                             matching: .images,
                             photoLibrary: .shared()
                         ) {
@@ -48,7 +50,7 @@ struct ImportView: View {
                 } else {
                     PhotosPicker(
                         selection: $selectedItems,
-                        maxSelectionCount: 3,
+                        maxSelectionCount: 30,
                         matching: .images,
                         photoLibrary: .shared()
                     ) {
@@ -57,7 +59,7 @@ struct ImportView: View {
                             .padding()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.isProcessing)
+                    .disabled(viewModel.isProcessing || isLoadingSelection)
                 }
                 if let msg = viewModel.resultMessage {
                     Text(msg)
@@ -79,10 +81,20 @@ struct ImportView: View {
             }
             .onChange(of: selectedItems) { _, new in
                 guard !new.isEmpty else { return }
-                let items = new
-                Task {
-                    await viewModel.processImages(items)
-                    await MainActor.run { selectedItems = [] }
+                pendingSelection = new
+                isLoadingSelection = true
+            }
+            .task(id: pendingSelection.count) {
+                guard !pendingSelection.isEmpty else { return }
+                let toProcess = pendingSelection
+                await viewModel.processImages(toProcess)
+                await MainActor.run {
+                    if viewModel.pipelinePhase == .idle && viewModel.errorMessage == nil && viewModel.resultMessage == nil {
+                        viewModel.resultMessage = "Import didn't start – try again"
+                    }
+                    selectedItems = []
+                    pendingSelection = []
+                    isLoadingSelection = false
                 }
             }
             .task {

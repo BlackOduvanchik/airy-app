@@ -30,67 +30,57 @@ struct CategoryDetailView: View {
     @State private var selectedTransactionForEdit: Transaction? = nil
 
     var body: some View {
-        ZStack {
-            OnboardingGradientBackground()
-                .ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                OnboardingGradientBackground()
+                    .ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 20) {
-                    headerSection
-                    detailHero
-                    transactionsByDay
+                ScrollView {
+                    VStack(spacing: 20) {
+                        detailHero
+                        transactionsByDay
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 24)
+                    .padding(.bottom, 120)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-                .padding(.bottom, 120)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
-        }
-        .navigationBarHidden(true)
-        .sheet(item: $selectedTransactionForEdit) { tx in
-            AddTransactionView(
-                transaction: tx,
-                onSuccess: {
-                    selectedTransactionForEdit = nil
-                    Task { @MainActor in
-                        await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey)
-                        if viewModel.groupedByDay.isEmpty {
-                            dismiss()
-                        }
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .semibold))
                     }
                 }
-            )
-        }
-        .task {
-            await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey)
-        }
-    }
-
-    // MARK: - Header
-
-    private var headerSection: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textPrimary)
-                    .frame(width: 40, height: 40)
-                    .background(Color.white.opacity(0.4))
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(OnboardingDesign.glassHighlight, lineWidth: 1))
+                ToolbarItem(placement: .principal) {
+                    Text("Category Details")
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                }
             }
-            .buttonStyle(.plain)
-
-            Spacer()
-            Text("Category Details")
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(0.5)
-                .foregroundColor(OnboardingDesign.textPrimary)
-            Spacer()
-            Color.clear
-                .frame(width: 40, height: 40)
+            .sheet(item: $selectedTransactionForEdit) { tx in
+                AddTransactionView(
+                    transaction: tx,
+                    onSuccess: {
+                        selectedTransactionForEdit = nil
+                        Task { @MainActor in
+                            await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey)
+                            if viewModel.groupedByDay.isEmpty {
+                                dismiss()
+                            }
+                        }
+                    }
+                )
+            }
+            .task {
+                await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey)
+            }
         }
-        .padding(.horizontal, 4)
     }
 
     // MARK: - Hero

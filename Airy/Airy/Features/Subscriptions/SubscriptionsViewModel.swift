@@ -24,7 +24,8 @@ final class SubscriptionsViewModel {
     }
 
     var totalMonthly: Double {
-        subscriptions.reduce(0) { sum, sub in
+        let base = BaseCurrencyStore.baseCurrency
+        return subscriptions.reduce(0) { sum, sub in
             let monthly: Double
             let interval = sub.interval.lowercased()
             if interval.hasPrefix("year") || interval.hasPrefix("annual") {
@@ -34,15 +35,19 @@ final class SubscriptionsViewModel {
             } else {
                 monthly = sub.amount
             }
-            return sum + monthly
+            return sum + CurrencyService.convert(amount: monthly, from: sub.currency, to: base)
         }
     }
+
+    var subscriptionSharePercent: Int = 0
 
     func load() async {
         isLoading = true
         defer { Task { @MainActor in isLoading = false } }
         await MainActor.run {
             subscriptions = LocalDataStore.shared.subscriptionsFromTransactions()
+            let totalSpent = LocalDataStore.shared.dashboardSummary().thisMonth.totalSpent
+            subscriptionSharePercent = totalSpent > 0 ? Int(round(totalMonthly / totalSpent * 100)) : 0
         }
     }
 }

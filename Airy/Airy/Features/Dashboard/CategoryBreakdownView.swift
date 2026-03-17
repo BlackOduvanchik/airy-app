@@ -21,7 +21,6 @@ struct CategoryBreakdownView: View {
 
             ScrollView {
                 VStack(spacing: 20) {
-                    headerSection
                     chartSection
                     if let idx = selectedSegmentIndex, idx < viewModel.segments.count {
                         selectedCategoryTooltip(segment: viewModel.segments[idx])
@@ -34,40 +33,29 @@ struct CategoryBreakdownView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .navigationBarHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+            }
+            ToolbarItem(placement: .principal) {
+                Text(viewModel.monthLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(OnboardingDesign.textTertiary)
+            }
+        }
         .fullScreenCover(item: $selectedCategoryDetail, onDismiss: {
             Task { await viewModel.load() }
         }) { dest in
             CategoryDetailView(destination: dest)
         }
         .task(id: refreshId) { await viewModel.load() }
-    }
-
-    // MARK: - Header
-
-    private var headerSection: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textPrimary)
-                    .frame(width: 40, height: 40)
-                    .background(Color.white.opacity(0.4))
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(OnboardingDesign.glassHighlight, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-            Text(viewModel.monthLabel)
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(0.5)
-                .foregroundColor(OnboardingDesign.textPrimary)
-            Spacer()
-            Color.clear
-                .frame(width: 40, height: 40)
-        }
-        .padding(.horizontal, 4)
     }
 
     // MARK: - Donut Chart
@@ -364,7 +352,12 @@ final class CategoryBreakdownViewModel {
             monthLabel = (Calendar.current.date(from: comp).map { formatter.string(from: $0) }) ?? "\(month)/\(year)"
 
             let transactions = LocalDataStore.shared.fetchTransactions(limit: 500, month: monthStr, year: yearStr)
-            let expenseOnly = transactions.filter { $0.type.lowercased() != "income" && $0.isSubscription != true }
+            let nonSubExpenseMerchants = Set(transactions.filter { $0.type.lowercased() != "income" && $0.isSubscription != true }.map { $0.merchant ?? "" })
+            let expenseOnly = transactions.filter { tx in
+                guard tx.type.lowercased() != "income" else { return false }
+                if tx.isSubscription != true { return true }
+                return !nonSubExpenseMerchants.contains(tx.merchant ?? "")
+            }
             totalSpent = expenseOnly.reduce(0) { acc, tx in
                 acc + CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
             }
@@ -391,11 +384,11 @@ final class CategoryBreakdownViewModel {
             let fillRatio: Double = {
                 switch n {
                 case 1: return 1.0
-                case 2: return 0.90
-                case 3: return 0.88
-                case 4: return 0.78
-                case 5: return 0.70
-                default: return 0.60
+                case 2: return 0.85
+                case 3: return 0.75
+                case 4: return 0.70
+                case 5: return 0.60
+                default: return 0.40
                 }
             }()
             let usableAngle: Double = 360 * fillRatio

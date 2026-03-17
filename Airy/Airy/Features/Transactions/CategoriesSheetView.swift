@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct CategoriesSheetView: View {
     /// Selected: (categoryId, subcategoryId?). subcategoryId nil = category itself selected.
@@ -26,6 +27,11 @@ struct CategoriesSheetView: View {
     @State private var selectedParentForSubcategory: Category?
     @State private var selectedCategoryId: String?
     @State private var selectedSubcategoryId: String?
+    @State private var editExpandedCategoryIds: Set<String> = []
+    @State private var subcategoryToEdit: Subcategory?
+    @State private var subcategoryToDelete: Subcategory?
+    @State private var showDeleteSubcategoryConfirm = false
+    @State private var draggingCategoryId: String?
 
     private var filteredCategories: [Category] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -37,52 +43,49 @@ struct CategoriesSheetView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if showHandle {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.black.opacity(0.08))
-                    .frame(width: 36, height: 5)
-                    .padding(.top, 16)
-                    .padding(.bottom, 20)
-            } else {
-                Spacer().frame(height: 24)
+        NavigationStack {
+            VStack(spacing: 0) {
+                searchBar
+                categoryList
             }
-            header
-            searchBar
-            categoryList
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(red: 0.956, green: 0.969, blue: 0.961).ignoresSafeArea())
+            .onDrop(of: [UTType.text], isTargeted: nil) { _ in
+                draggingCategoryId = nil
+                return false
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        onDismiss?()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("CATEGORIES")
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { showEditMode.toggle(); draggingCategoryId = nil } } label: {
+                        Image(systemName: "square.and.pencil")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showNewCategory = true } label: {
+                        Image(systemName: "plus.circle")
+                    }
+                }
+            }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, showHandle ? 0 : 8)
-        .padding(.bottom, 40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 40,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: 40
-                )
-                .fill(Color(red: 0.956, green: 0.969, blue: 0.961))
-            )
-            .clipShape(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 40,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: 40
-                )
-            )
-            .overlay(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 40,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: 40
-                )
-                .stroke(Color.white.opacity(0.7), lineWidth: 1)
-            )
-            .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 24, x: 0, y: -4)
-        .ignoresSafeArea(edges: .bottom)
+        .presentationDragIndicator(showHandle ? .visible : .hidden)
         .onAppear {
             CategoryStore.ensureDefaults()
             categories = CategoryStore.load()
@@ -120,59 +123,56 @@ struct CategoriesSheetView: View {
         .sheet(isPresented: $showNewSubcategory) {
             if let parent = selectedParentForSubcategory {
                 NewSubcategorySheetView(
-                    parentCategoryId: parent.id,
-                    parentDisplayName: parent.name
-                ) { sub in
-                    SubcategoryStore.add(sub)
-                    expandedCategoryIds.insert(parent.id)
+                    initialParentCategoryId: parent.id,
+                    parentDisplayName: parent.name,
+                    onCreate: { sub in
+                        SubcategoryStore.add(sub)
+                        expandedCategoryIds.insert(sub.parentCategoryId)
+                        editExpandedCategoryIds.insert(sub.parentCategoryId)
+                        categories = CategoryStore.load()
+                    }
+                )
+            }
+        }
+        .sheet(item: $subcategoryToEdit) { sub in
+            let parentName = CategoryStore.byId(sub.parentCategoryId)?.name ?? ""
+            NewSubcategorySheetView(
+                initialParentCategoryId: sub.parentCategoryId,
+                parentDisplayName: parentName,
+                existing: sub,
+                onUpdate: { updated in
+                    if sub.name != updated.name {
+                        LocalDataStore.shared.renameSubcategory(from: sub.name, to: updated.name, inCategory: sub.parentCategoryId)
+                    }
+                    if sub.parentCategoryId != updated.parentCategoryId {
+                        // Parent changed — move subcategory to new parent
+                        LocalDataStore.shared.clearSubcategory(named: sub.name, inCategory: sub.parentCategoryId)
+                    }
+                    SubcategoryStore.update(updated)
                     categories = CategoryStore.load()
                 }
+            )
+        }
+        .confirmationDialog(
+            "Delete Subcategory",
+            isPresented: $showDeleteSubcategoryConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let sub = subcategoryToDelete {
+                    LocalDataStore.shared.clearSubcategory(named: sub.name, inCategory: sub.parentCategoryId)
+                    SubcategoryStore.delete(id: sub.id)
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        categories = CategoryStore.load()
+                    }
+                }
             }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Transactions will stay in the parent category.")
         }
     }
 
-    private var header: some View {
-        HStack {
-            Text("Categories")
-                .font(.system(size: 19, weight: .bold))
-                .foregroundColor(OnboardingDesign.textPrimary)
-            Spacer()
-            HStack(spacing: 8) {
-                Button {
-                    showEditMode.toggle()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 14, weight: .bold))
-                        Text("Edit")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-                    .foregroundColor(OnboardingDesign.textSecondary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.02), lineWidth: 1))
-                }
-                Button {
-                    showNewCategory = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .bold))
-                        Text("New")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color(red: 0.122, green: 0.157, blue: 0.137))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-            }
-        }
-        .padding(.bottom, 20)
-    }
 
     private var searchBar: some View {
         HStack(spacing: 12) {
@@ -198,30 +198,31 @@ struct CategoriesSheetView: View {
     private var categoryList: some View {
         Group {
             if showEditMode {
-                List {
-                    ForEach(categories) { cat in
-                        editModeCategoryRow(cat)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                if categories.count > 1 {
-                                    Button(role: .destructive) {
-                                        deleteCategory(cat)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(categories) { cat in
+                            VStack(alignment: .leading, spacing: 0) {
+                                editModeCategoryRow(cat)
+                                if editExpandedCategoryIds.contains(cat.id) {
+                                    editModeSubcategoryList(for: cat)
                                 }
                             }
+                            .onDrag {
+                                draggingCategoryId = cat.id
+                                return NSItemProvider(object: cat.id as NSString)
+                            }
+                            .onDrop(of: [UTType.text], delegate: CategoryDropDelegate(
+                                targetCategoryId: cat.id,
+                                categories: $categories,
+                                draggingCategoryId: $draggingCategoryId
+                            ))
+                            .opacity(draggingCategoryId == cat.id ? 0.4 : 1.0)
+                            .animation(nil, value: draggingCategoryId)
+                        }
                     }
-                    .onMove { from, to in
-                        categories.move(fromOffsets: from, toOffset: to)
-                        CategoryStore.reorder(categories)
-                    }
+                    .padding(.bottom, 40)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .environment(\.editMode, .constant(.active))
+                .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
@@ -231,15 +232,28 @@ struct CategoriesSheetView: View {
                     }
                     .padding(.bottom, 40)
                 }
+                .frame(maxHeight: .infinity)
             }
         }
-        .frame(maxHeight: .infinity)
     }
 
     private func editModeCategoryRow(_ cat: Category) -> some View {
         let isAccentBlueCategory = cat.colorHex == CategoryStore.defaultColorBlue
+        let subcategories = SubcategoryStore.forParent(cat.id)
+        let hasSubcategories = !subcategories.isEmpty
+        let isExpanded = editExpandedCategoryIds.contains(cat.id)
         return Button {
-            categoryToEdit = cat
+            if hasSubcategories {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    if isExpanded {
+                        editExpandedCategoryIds.remove(cat.id)
+                    } else {
+                        editExpandedCategoryIds.insert(cat.id)
+                    }
+                }
+            } else {
+                categoryToEdit = cat
+            }
         } label: {
             HStack(spacing: 14) {
                 ZStack {
@@ -254,9 +268,29 @@ struct CategoriesSheetView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(OnboardingDesign.textPrimary)
                 Spacer()
-                Image(systemName: "pencil")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                if hasSubcategories {
+                    Text("\(subcategories.count)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.6))
+                        .clipShape(Capsule())
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(isExpanded ? OnboardingDesign.accentBlue : OnboardingDesign.textTertiary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .frame(width: 28, height: 28)
+                }
+                Button {
+                    categoryToEdit = cat
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -270,6 +304,79 @@ struct CategoriesSheetView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func editModeSubcategoryList(for cat: Category) -> some View {
+        let subcategories = SubcategoryStore.forParent(cat.id)
+        return VStack(spacing: 6) {
+            ForEach(subcategories) { sub in
+                editModeSubcategoryRow(sub, parentCategory: cat)
+            }
+            Button {
+                selectedParentForSubcategory = cat
+                showNewSubcategory = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(OnboardingDesign.accentBlue.opacity(0.8))
+                    Text("Add subcategory")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(OnboardingDesign.accentBlue)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 48)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+        .transition(.opacity)
+    }
+
+    private func editModeSubcategoryRow(_ sub: Subcategory, parentCategory: Category) -> some View {
+        HStack(spacing: 10) {
+            Button {
+                subcategoryToDelete = sub
+                showDeleteSubcategoryConfirm = true
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(.plain)
+
+            Circle()
+                .fill(parentCategory.color)
+                .frame(width: 8, height: 8)
+
+            Text(sub.name)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(OnboardingDesign.textPrimary)
+
+            Spacer()
+
+            Image(systemName: "pencil")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(OnboardingDesign.textTertiary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.white.opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.5), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            subcategoryToEdit = sub
+        }
     }
 
     private func deleteCategory(_ cat: Category) {
@@ -293,85 +400,86 @@ struct CategoriesSheetView: View {
         let isAccentBlueCategory = cat.colorHex == CategoryStore.defaultColorBlue
 
         return VStack(alignment: .leading, spacing: 0) {
-            VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(isAccentBlueCategory ? OnboardingDesign.accentBlue.opacity(0.08) : Self.iconBoxBg)
-                            .frame(width: 48, height: 48)
-                        Image(systemName: iconName(for: cat))
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundColor(cat.color)
+            Button {
+                if hasSubcategories {
+                    _ = withAnimation(.easeInOut(duration: 0.3)) {
+                        expandedCategoryIds.insert(cat.id)
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(cat.name)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(OnboardingDesign.textPrimary)
-                        if hasSubcategories {
-                            Text(subcategories.map { $0.name }.joined(separator: ", "))
-                                .font(.system(size: 12))
-                                .foregroundColor(OnboardingDesign.textTertiary)
-                                .lineLimit(1)
-                        }
-                    }
-                    Spacer()
-                    if isCategorySelected && !hasSubcategories {
+                } else {
+                    selectedCategoryId = cat.id
+                    selectedSubcategoryId = nil
+                    onSelect(cat.id, nil)
+                    dismiss()
+                }
+            } label: {
+                VStack(spacing: 0) {
+                    HStack(spacing: 14) {
                         ZStack {
-                            Circle()
-                                .fill(OnboardingDesign.accentGreen)
-                                .frame(width: 24, height: 24)
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.white)
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(isAccentBlueCategory ? OnboardingDesign.accentBlue.opacity(0.08) : Self.iconBoxBg)
+                                .frame(width: 48, height: 48)
+                            Image(systemName: iconName(for: cat))
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundColor(cat.color)
                         }
-                        .padding(.trailing, 4)
-                    }
-                    if hasSubcategories {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(isExpanded ? OnboardingDesign.accentBlue : cat.color)
-                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                let _ = withAnimation(.easeInOut(duration: 0.3)) {
-                                    if isExpanded {
-                                        expandedCategoryIds.remove(cat.id)
-                                    } else {
-                                        expandedCategoryIds.insert(cat.id)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(cat.name)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(OnboardingDesign.textPrimary)
+                            if hasSubcategories {
+                                Text(subcategories.map { $0.name }.joined(separator: ", "))
+                                    .font(.system(size: 12))
+                                    .foregroundColor(OnboardingDesign.textTertiary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        Spacer()
+                        if isCategorySelected && !hasSubcategories {
+                            ZStack {
+                                Circle()
+                                    .fill(OnboardingDesign.accentGreen)
+                                    .frame(width: 24, height: 24)
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.trailing, 4)
+                        }
+                        if hasSubcategories {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(isExpanded ? OnboardingDesign.accentBlue : cat.color)
+                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    let _ = withAnimation(.easeInOut(duration: 0.3)) {
+                                        if isExpanded {
+                                            expandedCategoryIds.remove(cat.id)
+                                        } else {
+                                            expandedCategoryIds.insert(cat.id)
+                                        }
                                     }
                                 }
-                            }
-                    }
-                }
-                .padding(4)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if hasSubcategories {
-                        let _ = withAnimation(.easeInOut(duration: 0.3)) {
-                            expandedCategoryIds.insert(cat.id)
                         }
-                    } else {
-                        selectedCategoryId = cat.id
-                        selectedSubcategoryId = nil
-                        onSelect(cat.id, nil)
-                        dismiss()
                     }
+                    .padding(4)
                 }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 24)
+                        .fill(isCategorySelected && !hasSubcategories ? Color.white : Color.white.opacity(0.4))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24)
+                        .stroke(
+                            isCategorySelected && !hasSubcategories ? OnboardingDesign.accentGreen :
+                            isExpanded ? OnboardingDesign.accentBlue.opacity(0.3) : Color.white.opacity(0.6),
+                            lineWidth: 1
+                        )
+                )
             }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(isCategorySelected && !hasSubcategories ? Color.white : Color.white.opacity(0.4))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 24)
-                    .stroke(
-                        isCategorySelected && !hasSubcategories ? OnboardingDesign.accentGreen :
-                        isExpanded ? OnboardingDesign.accentBlue.opacity(0.3) : Color.white.opacity(0.6),
-                        lineWidth: 1
-                    )
-            )
+            .buttonStyle(.plain)
 
             if isExpanded {
                 VStack(spacing: 6) {
@@ -438,4 +546,38 @@ struct CategoriesSheetView: View {
     private func iconName(for cat: Category) -> String {
         CategoryIconHelper.iconName(categoryId: cat.id)
     }
+}
+
+// MARK: - Drag & Drop
+
+private struct CategoryDropDelegate: DropDelegate {
+    let targetCategoryId: String
+    @Binding var categories: [Category]
+    @Binding var draggingCategoryId: String?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging = draggingCategoryId,
+              dragging != targetCategoryId,
+              let fromIndex = categories.firstIndex(where: { $0.id == dragging }),
+              let toIndex = categories.firstIndex(where: { $0.id == targetCategoryId })
+        else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            categories.move(fromOffsets: IndexSet(integer: fromIndex),
+                            toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        CategoryStore.reorder(categories)
+        draggingCategoryId = nil
+        return true
+    }
+
+    func dropExited(info: DropInfo) {}
+
+    func validateDrop(info: DropInfo) -> Bool { true }
 }

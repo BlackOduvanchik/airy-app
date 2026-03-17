@@ -7,14 +7,10 @@
 
 import SwiftUI
 
-/// Filter pill options for the transaction list (matches design: All, Food, Transport, …).
-enum TransactionCategoryFilter: String, CaseIterable {
-    case all = "All"
-    case food = "Food"
-    case transport = "Transport"
-    case shopping = "Shopping"
-    case subscriptions = "Subscriptions"
-    case health = "Health"
+/// Dynamic category filter item for the transaction list.
+struct CategoryFilterItem: Identifiable, Equatable {
+    let id: String
+    let label: String
 }
 
 /// One month group: label (e.g. "June 2025"), total spent, and transactions.
@@ -35,8 +31,11 @@ final class TransactionListViewModel {
     var errorMessage: String?
 
     var searchText = ""
-    var selectedFilter: TransactionCategoryFilter = .all
+    var selectedFilterId: String? = nil // nil = "All"
+    var categoryFilters: [CategoryFilterItem] = [CategoryFilterItem(id: "all", label: "All")]
     var refreshTrigger = 0
+    var pinnedIds: Set<String> = []
+    private let pageSize = 50
 
     private let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -62,18 +61,12 @@ final class TransactionListViewModel {
                 $0.category.lowercased().contains(q)
             }
         }
-        switch selectedFilter {
-        case .all: break
-        case .food:
-            list = list.filter { $0.category.lowercased().contains("food") || $0.category.lowercased().contains("dining") }
-        case .transport:
-            list = list.filter { $0.category.lowercased().contains("transport") || $0.category.lowercased().contains("transit") }
-        case .shopping:
-            list = list.filter { $0.category.lowercased().contains("shopping") }
-        case .subscriptions:
-            list = list.filter { $0.isSubscription == true }
-        case .health:
-            list = list.filter { $0.category.lowercased().contains("health") }
+        if let filterId = selectedFilterId {
+            if filterId == "subscriptions" {
+                list = list.filter { $0.isSubscription == true }
+            } else {
+                list = list.filter { $0.category == filterId }
+            }
         }
         return list.sorted { (a, b) in
             (a.transactionDate, a.transactionTime ?? "") > (b.transactionDate, b.transactionTime ?? "")
@@ -82,15 +75,13 @@ final class TransactionListViewModel {
 
     /// Pinned transactions only (for Pinned Items section).
     var pinnedTransactions: [Transaction] {
-        let pinned = LocalDataStore.shared.pinnedTransactionIds()
-        return filteredTransactions.filter { pinned.contains($0.id) }
+        return filteredTransactions.filter { pinnedIds.contains($0.id) }
             .sorted { (a, b) in (a.transactionDate, a.transactionTime ?? "") > (b.transactionDate, b.transactionTime ?? "") }
     }
 
     /// Groups filtered transactions by month, excluding pinned; each group has total (expenses only).
     var groupedByMonth: [TransactionMonthGroup] {
-        let pinned = LocalDataStore.shared.pinnedTransactionIds()
-        let nonPinned = filteredTransactions.filter { !pinned.contains($0.id) }
+        let nonPinned = filteredTransactions.filter { !pinnedIds.contains($0.id) }
         var groupDict: [String: (monthLabel: String, total: Double, list: [Transaction])] = [:]
         for tx in nonPinned {
             let dateStr = String(tx.transactionDate.prefix(10))
@@ -115,7 +106,7 @@ final class TransactionListViewModel {
     }
 
     func isPinned(_ tx: Transaction) -> Bool {
-        LocalDataStore.shared.pinnedTransactionIds().contains(tx.id)
+        pinnedIds.contains(tx.id)
     }
 
     /// Heuristic: same month has another tx with same merchant and subscription → possible duplicate.
@@ -129,9 +120,54 @@ final class TransactionListViewModel {
         if !append { isLoading = true }
         defer { if !append { Task { @MainActor in isLoading = false } } }
         await MainActor.run {
-            transactions = LocalDataStore.shared.fetchTransactions(limit: 100)
-            nextCursor = nil
-            hasMore = false
+            pinnedIds = LocalDataStore.shared.pinnedTransactionIds()
+            if append {
+                let offset = transactions.count
+                let page = LocalDataStore.shared.fetchTransactions(limit: pageSize, offset: offset)
+                transactions.append(contentsOf: page)
+                hasMore = page.count == pageSize
+            } else {
+                let page = LocalDataStore.shared.fetchTransactions(limit: pageSize)
+                transactions = page
+                hasMore = page.count == pageSize
+                buildCategoryFilters()
+            }
         }
+    }
+
+    private func buildCategoryFilters() {
+        let allCategories = CategoryStore.load()
+
+        let thisMonthKey: String = {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM"
+            return f.string(from: Date())
+        }()
+        var byCategory: [String: Double] = [:]
+        for tx in transactions where tx.type.lowercased() != "income" {
+            let key = String(tx.transactionDate.prefix(7))
+            if key == thisMonthKey {
+                byCategory[tx.category, default: 0] += abs(tx.amountOriginal)
+            }
+        }
+
+        var sorted: [Category]
+        if byCategory.isEmpty {
+            sorted = allCategories.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        } else {
+            sorted = allCategories.sorted { a, b in
+                let aSpend = byCategory[a.id] ?? 0
+                let bSpend = byCategory[b.id] ?? 0
+                if aSpend != bSpend { return aSpend > bSpend }
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            }
+        }
+
+        var filters: [CategoryFilterItem] = [CategoryFilterItem(id: "all", label: "All")]
+        for cat in sorted {
+            filters.append(CategoryFilterItem(id: cat.id, label: cat.name))
+        }
+        filters.append(CategoryFilterItem(id: "subscriptions", label: "Subscriptions"))
+        categoryFilters = filters
     }
 }

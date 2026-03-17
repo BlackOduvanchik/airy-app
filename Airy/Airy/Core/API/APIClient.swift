@@ -231,8 +231,10 @@ struct ConfirmPendingOverrides: Encodable {
     var category: String?
     var subcategory: String?
     var subcategoryId: String?
+    var isSubscription: Bool?
+    var subscriptionInterval: String?
 
-    init(type: String? = nil, amountOriginal: Double? = nil, currencyOriginal: String? = nil, amountBase: Double? = nil, baseCurrency: String? = nil, merchant: String? = nil, transactionDate: String? = nil, transactionTime: String? = nil, category: String? = nil, subcategory: String? = nil, subcategoryId: String? = nil) {
+    init(type: String? = nil, amountOriginal: Double? = nil, currencyOriginal: String? = nil, amountBase: Double? = nil, baseCurrency: String? = nil, merchant: String? = nil, transactionDate: String? = nil, transactionTime: String? = nil, category: String? = nil, subcategory: String? = nil, subcategoryId: String? = nil, isSubscription: Bool? = nil, subscriptionInterval: String? = nil) {
         self.type = type
         self.amountOriginal = amountOriginal
         self.currencyOriginal = currencyOriginal
@@ -244,17 +246,21 @@ struct ConfirmPendingOverrides: Encodable {
         self.category = category
         self.subcategory = subcategory
         self.subcategoryId = subcategoryId
+        self.isSubscription = isSubscription
+        self.subscriptionInterval = subscriptionInterval
     }
 
     var isEmpty: Bool {
         type == nil && amountOriginal == nil && currencyOriginal == nil && amountBase == nil
             && baseCurrency == nil && merchant == nil && transactionDate == nil && transactionTime == nil
             && category == nil && subcategory == nil && subcategoryId == nil
+            && isSubscription == nil && subscriptionInterval == nil
     }
 
     enum CodingKeys: String, CodingKey {
         case type, amountOriginal, currencyOriginal, amountBase, baseCurrency
         case merchant, transactionDate, transactionTime, category, subcategory, subcategoryId
+        case isSubscription, subscriptionInterval
     }
 
     func encode(to encoder: Encoder) throws {
@@ -270,6 +276,8 @@ struct ConfirmPendingOverrides: Encodable {
         if let v = category { try c.encode(v, forKey: .category) }
         if let v = subcategory { try c.encode(v, forKey: .subcategory) }
         if let v = subcategoryId { try c.encode(v, forKey: .subcategoryId) }
+        if let v = isSubscription { try c.encode(v, forKey: .isSubscription) }
+        if let v = subscriptionInterval { try c.encode(v, forKey: .subscriptionInterval) }
     }
 }
 
@@ -330,6 +338,40 @@ struct PendingTransactionPayload: Codable {
     let transactionTime: String?
     let category: String?
     let subcategory: String?
+    /// When set, show "Possible duplicate of …" in review (probable duplicate of saved transaction).
+    let probableDuplicateOfId: String?
+    /// When set, this transaction was extracted using a saved OCR template (not GPT).
+    let extractedByTemplateId: String?
+
+    init(
+        type: String? = nil,
+        amountOriginal: Double? = nil,
+        currencyOriginal: String? = nil,
+        amountBase: Double? = nil,
+        baseCurrency: String? = nil,
+        merchant: String? = nil,
+        title: String? = nil,
+        transactionDate: String? = nil,
+        transactionTime: String? = nil,
+        category: String? = nil,
+        subcategory: String? = nil,
+        probableDuplicateOfId: String? = nil,
+        extractedByTemplateId: String? = nil
+    ) {
+        self.type = type
+        self.amountOriginal = amountOriginal
+        self.currencyOriginal = currencyOriginal
+        self.amountBase = amountBase
+        self.baseCurrency = baseCurrency
+        self.merchant = merchant
+        self.title = title
+        self.transactionDate = transactionDate
+        self.transactionTime = transactionTime
+        self.category = category
+        self.subcategory = subcategory
+        self.probableDuplicateOfId = probableDuplicateOfId
+        self.extractedByTemplateId = extractedByTemplateId
+    }
 }
 
 struct DashboardResponse: Codable {
@@ -391,6 +433,10 @@ struct Subscription: Codable, Identifiable {
     let subcategoryId: String?
     /// Local only: description/title added to the product (transaction).
     let title: String?
+    /// Local only: custom icon letter for display (default: first letter of merchant).
+    let iconLetter: String?
+    /// Local only: custom hex color for icon (default: merchantColor mapping).
+    let colorHex: String?
 
     enum CodingKeys: String, CodingKey {
         case id, merchant, amount, currency, interval, nextBillingDate, status
@@ -398,9 +444,11 @@ struct Subscription: Codable, Identifiable {
         case categoryId
         case subcategoryId
         case title
+        case iconLetter
+        case colorHex
     }
 
-    init(id: String, merchant: String, amount: Double, currency: String, interval: String, nextBillingDate: String?, status: String, templateTransactionId: String? = nil, categoryId: String? = nil, subcategoryId: String? = nil, title: String? = nil) {
+    init(id: String, merchant: String, amount: Double, currency: String, interval: String, nextBillingDate: String?, status: String, templateTransactionId: String? = nil, categoryId: String? = nil, subcategoryId: String? = nil, title: String? = nil, iconLetter: String? = nil, colorHex: String? = nil) {
         self.id = id
         self.merchant = merchant
         self.amount = amount
@@ -412,6 +460,8 @@ struct Subscription: Codable, Identifiable {
         self.categoryId = categoryId
         self.subcategoryId = subcategoryId
         self.title = title
+        self.iconLetter = iconLetter
+        self.colorHex = colorHex
     }
 
     init(from decoder: Decoder) throws {
@@ -427,6 +477,8 @@ struct Subscription: Codable, Identifiable {
         categoryId = try c.decodeIfPresent(String.self, forKey: .categoryId)
         subcategoryId = try c.decodeIfPresent(String.self, forKey: .subcategoryId)
         title = try c.decodeIfPresent(String.self, forKey: .title)
+        iconLetter = try c.decodeIfPresent(String.self, forKey: .iconLetter)
+        colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -442,6 +494,8 @@ struct Subscription: Codable, Identifiable {
         try c.encodeIfPresent(categoryId, forKey: .categoryId)
         try c.encodeIfPresent(subcategoryId, forKey: .subcategoryId)
         try c.encodeIfPresent(title, forKey: .title)
+        try c.encodeIfPresent(iconLetter, forKey: .iconLetter)
+        try c.encodeIfPresent(colorHex, forKey: .colorHex)
     }
 }
 
