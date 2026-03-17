@@ -284,15 +284,22 @@ final class GPTRulesService {
             let raw = String(data: data, encoding: .utf8) ?? "Unknown"
             throw Self.apiErrorOrQuota(statusCode: bgResponse1.statusCode, message: "API error \(bgResponse1.statusCode): \(raw.prefix(200))")
         }
+        // Fallback: background session may report status 200 even when API returned an error body.
+        if let errBody = try? JSONDecoder().decode(OpenAIErrorBody.self, from: data),
+           let msg = errBody.error?.message, !msg.isEmpty {
+            throw Self.apiErrorOrQuota(statusCode: 401, message: msg)
+        }
 
         let chatResponse: ChatResponse
         do {
             chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
         } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary \(data.count) bytes>"
+            print("[GPT] ❌ ChatResponse decode failed. Status: \(bgResponse1.statusCode). Raw: \(raw.prefix(500))")
             throw GPTRulesError.invalidResponse("Failed to decode API response: \(error.localizedDescription)")
         }
 
-        guard let content = chatResponse.choices.first?.message.content, !content.isEmpty else {
+        guard let content = chatResponse.extractedContent, !content.isEmpty else {
             throw GPTRulesError.invalidResponse("Empty response from model")
         }
 
@@ -374,15 +381,21 @@ final class GPTRulesService {
             let raw = String(data: data, encoding: .utf8) ?? "Unknown"
             throw Self.apiErrorOrQuota(statusCode: bgResponse2.statusCode, message: "API error \(bgResponse2.statusCode): \(raw.prefix(200))")
         }
+        if let errBody = try? JSONDecoder().decode(OpenAIErrorBody.self, from: data),
+           let msg = errBody.error?.message, !msg.isEmpty {
+            throw Self.apiErrorOrQuota(statusCode: 401, message: msg)
+        }
 
         let chatResponse: ChatResponse
         do {
             chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
         } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary \(data.count) bytes>"
+            print("[GPT] ❌ ChatResponse decode failed. Status: \(bgResponse2.statusCode). Raw: \(raw.prefix(500))")
             throw GPTRulesError.invalidResponse("Failed to decode API response: \(error.localizedDescription)")
         }
 
-        guard let content = chatResponse.choices.first?.message.content, !content.isEmpty else {
+        guard let content = chatResponse.extractedContent, !content.isEmpty else {
             throw GPTRulesError.invalidResponse("Empty response from model")
         }
 
@@ -488,14 +501,20 @@ final class GPTRulesService {
             let raw = String(data: data, encoding: .utf8) ?? "Unknown"
             throw Self.apiErrorOrQuota(statusCode: bgResponseV.statusCode, message: "API error \(bgResponseV.statusCode): \(raw.prefix(200))")
         }
+        if let errBody = try? JSONDecoder().decode(OpenAIErrorBody.self, from: data),
+           let msg = errBody.error?.message, !msg.isEmpty {
+            throw Self.apiErrorOrQuota(statusCode: 401, message: msg)
+        }
 
         let chatResponse: ChatResponse
         do {
             chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
         } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary \(data.count) bytes>"
+            print("[GPT] ❌ ChatResponse decode failed. Status: \(bgResponseV.statusCode). Raw: \(raw.prefix(500))")
             throw GPTRulesError.invalidResponse("Failed to decode API response: \(error.localizedDescription)")
         }
-        guard let contentStr = chatResponse.choices.first?.message.content, !contentStr.isEmpty else {
+        guard let contentStr = chatResponse.extractedContent, !contentStr.isEmpty else {
             throw GPTRulesError.invalidResponse("Empty response from model")
         }
         var cleaned = contentStr
@@ -586,14 +605,20 @@ final class GPTRulesService {
             let raw = String(data: data, encoding: .utf8) ?? "Unknown"
             throw Self.apiErrorOrQuota(statusCode: bgResponseV.statusCode, message: "API error \(bgResponseV.statusCode): \(raw.prefix(200))")
         }
+        if let errBody = try? JSONDecoder().decode(OpenAIErrorBody.self, from: data),
+           let msg = errBody.error?.message, !msg.isEmpty {
+            throw Self.apiErrorOrQuota(statusCode: 401, message: msg)
+        }
 
         let chatResponse: ChatResponse
         do {
             chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
         } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary \(data.count) bytes>"
+            print("[GPT] ❌ ChatResponse decode failed. Status: \(bgResponseV.statusCode). Raw: \(raw.prefix(500))")
             throw GPTRulesError.invalidResponse("Failed to decode API response: \(error.localizedDescription)")
         }
-        guard let contentStr = chatResponse.choices.first?.message.content, !contentStr.isEmpty else {
+        guard let contentStr = chatResponse.extractedContent, !contentStr.isEmpty else {
             throw GPTRulesError.invalidResponse("Empty response from model")
         }
         var jsonData = Self.extractJSONDataFromBatchResponse(contentStr)
@@ -708,6 +733,146 @@ final class GPTRulesService {
         }
         return GPTBatchExtractionResponse(imageResults: results)
     }
+
+    // MARK: - Subscription Insights
+
+    struct SubscriptionInsightResponse: Decodable {
+        let merchant: String
+        let currentMarketMonthlyPrice: Double?
+        let alternatives: [AlternativeResponse]
+        let tip: String
+        let monthlySavingsPotential: Double
+
+        struct AlternativeResponse: Decodable {
+            let planName: String
+            let price: Double
+            let interval: String
+        }
+    }
+
+    func analyzeSubscriptions(
+        subscriptions: [(merchant: String, amount: Double, interval: String, currency: String)]
+    ) async throws -> [SubscriptionInsightResponse] {
+        let apiKey = AppSecrets.openAIKey.isEmpty ? KeychainHelper.loadOpenAIKey() : AppSecrets.openAIKey
+        guard let key = apiKey, !key.isEmpty else {
+            throw GPTRulesError.noApiKey
+        }
+
+        struct SubInput: Encodable {
+            let merchant: String
+            let amount: Double
+            let interval: String
+            let currency: String
+        }
+        let subInputs = subscriptions.map { SubInput(merchant: $0.merchant, amount: $0.amount, interval: $0.interval, currency: $0.currency) }
+        let subsJSON: String
+        if let encoded = try? JSONEncoder().encode(subInputs),
+           let str = String(data: encoded, encoding: .utf8) {
+            subsJSON = str
+        } else {
+            subsJSON = "[]"
+        }
+
+        let prompt = """
+        You are a personal finance advisor. Analyze these subscription services.
+        For each subscription, check if the price matches current market rates (include ~15% tax).
+        Suggest cheaper alternatives (annual plan, family plan, student discount) if available.
+
+        Subscriptions:
+        \(subsJSON)
+
+        Return ONLY valid JSON array, no markdown:
+        [{
+          "merchant": "Service Name",
+          "currentMarketMonthlyPrice": 14.99,
+          "alternatives": [
+            {"planName": "Annual Plan (prepaid)", "price": 99.99, "interval": "yearly"},
+            {"planName": "Family Plan", "price": 16.99, "interval": "monthly"}
+          ],
+          "tip": "Your annual plan saves $30/year vs monthly billing.",
+          "monthlySavingsPotential": 2.50
+        }]
+
+        Rules:
+        - Only include alternatives you're confident exist as of 2024-2025
+        - Prices should reflect US market with ~15% tax included
+        - If no savings possible, set monthlySavingsPotential to 0 and tip to a positive note
+        - Be concise in tips (1-2 sentences max)
+        - If you don't recognize a merchant, skip it (don't guess)
+        """
+
+        var request = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let bodyData = try JSONEncoder().encode(ChatRequest(model: model, messages: [
+            .init(role: "user", content: prompt)
+        ]))
+
+        print("[SubsInsight] >>> Sending \(subscriptions.count) subs to GPT:")
+        for s in subscriptions {
+            print("[SubsInsight] >>>  · \(s.merchant) \(s.amount) \(s.currency) / \(s.interval)")
+        }
+
+        // Use foreground URLSession (not background) — subscription analysis runs while app is active,
+        // and background upload tasks have aggressive system timeouts that cause failures.
+        request.httpBody = bodyData
+        request.timeoutInterval = 120
+
+        let data: Data
+        let httpResponse: HTTPURLResponse
+        do {
+            let (respData, resp) = try await URLSession.shared.data(for: request)
+            data = respData
+            httpResponse = resp as! HTTPURLResponse
+        } catch {
+            print("[SubsInsight] <<< Network error: \(error)")
+            throw GPTRulesError.network(error)
+        }
+
+        let rawStr = String(data: data, encoding: .utf8) ?? "<binary \(data.count) bytes>"
+        print("[SubsInsight] <<< Status: \(httpResponse.statusCode), raw response (\(data.count) bytes):\n\(rawStr.prefix(2000))")
+        if httpResponse.statusCode >= 400 {
+            if let errBody = try? JSONDecoder().decode(OpenAIErrorBody.self, from: data),
+               let msg = errBody.error?.message, !msg.isEmpty {
+                throw Self.apiErrorOrQuota(statusCode: httpResponse.statusCode, message: msg)
+            }
+            let raw = String(data: data, encoding: .utf8) ?? "Unknown"
+            throw Self.apiErrorOrQuota(statusCode: httpResponse.statusCode, message: "API error \(httpResponse.statusCode): \(raw.prefix(200))")
+        }
+
+        let chatResponse: ChatResponse
+        do {
+            chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
+        } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary \(data.count) bytes>"
+            print("[GPT] ❌ Subscriptions decode failed. Raw: \(raw.prefix(500))")
+            throw GPTRulesError.invalidResponse("Failed to decode API response: \(error.localizedDescription)")
+        }
+
+        guard let content = chatResponse.extractedContent, !content.isEmpty else {
+            throw GPTRulesError.invalidResponse("Empty response from model")
+        }
+
+        let cleaned = content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let jsonData = cleaned.data(using: .utf8) else {
+            throw GPTRulesError.invalidResponse("Could not convert subscription response to data")
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        do {
+            return try decoder.decode([SubscriptionInsightResponse].self, from: jsonData)
+        } catch {
+            print("[GPT] ❌ Subscription insights JSON parse failed: \(error). Raw: \(cleaned.prefix(500))")
+            throw GPTRulesError.invalidResponse("Invalid subscription insights format: \(error.localizedDescription)")
+        }
+    }
 }
 
 private struct ChatRequest: Encodable {
@@ -745,11 +910,30 @@ private struct VisionChatRequest: Encodable {
 }
 
 private struct ChatResponse: Decodable {
-    let choices: [Choice]
+    let choices: [Choice]?
+    let output: [OutputItem]?
+
     struct Choice: Decodable {
         let message: Message
         struct Message: Decodable {
             let content: String?
         }
+    }
+
+    struct OutputItem: Decodable {
+        let content: [ContentPart]?
+        struct ContentPart: Decodable {
+            let text: String?
+        }
+    }
+
+    /// Extract text content from either Chat Completions or Responses API format.
+    var extractedContent: String? {
+        if let c = choices?.first?.message.content { return c }
+        if let parts = output?.first?.content {
+            let joined = parts.compactMap { $0.text }.joined()
+            return joined.isEmpty ? nil : joined
+        }
+        return nil
     }
 }

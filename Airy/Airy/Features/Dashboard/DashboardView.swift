@@ -16,9 +16,12 @@ struct DashboardView: View {
     @Binding var showAllTransactions: Bool
     var onOpenSubscriptions: (() -> Void)? = nil
     var onCloudTapped: (() -> Void)? = nil
-    @State private var viewModel = DashboardViewModel()
+    @State private var viewModel = DashboardViewModel.shared
     @State private var analyticsPath = NavigationPath()
     @State private var pendingTransactionCount = 0
+    @State private var editingTransaction: Transaction?
+    @State private var editingSubscription: Subscription?
+    @State private var colorVersion = 0
 
     var body: some View {
         NavigationStack(path: $analyticsPath) {
@@ -34,7 +37,7 @@ struct DashboardView: View {
                         subsSection
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 24)
+                    .padding(.top, 8)
                     .padding(.bottom, 120)
                 }
                 .scrollIndicators(.hidden)
@@ -47,6 +50,26 @@ struct DashboardView: View {
                 }
             }
             .task(id: refreshId) { await viewModel.load() }
+            .onChange(of: analyticsPath) { _, path in
+                if path.isEmpty { colorVersion += 1 }
+            }
+            .sheet(item: $editingTransaction) { tx in
+                AddTransactionView(transaction: tx, onSuccess: {
+                    colorVersion += 1
+                    Task { await viewModel.load() }
+                })
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+            }
+            .sheet(item: $editingSubscription) { sub in
+                EditSubscriptionView(
+                    subscription: sub,
+                    onSave: { colorVersion += 1; Task { await viewModel.load() } },
+                    onCancel: { colorVersion += 1; Task { await viewModel.load() } }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+            }
         }
     }
 
@@ -226,6 +249,7 @@ struct DashboardView: View {
                         .font(.system(size: 14))
                         .lineSpacing(4)
                         .foregroundColor(OnboardingDesign.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(18)
@@ -266,6 +290,7 @@ struct DashboardView: View {
     ]
 
     private var categorySegments: [(label: String, ratio: CGFloat, color: Color)] {
+        _ = colorVersion // force re-evaluation when colors change
         guard let byCat = viewModel.thisMonth?.byCategory, !byCat.isEmpty else {
             return Self.fallbackSegments
         }
@@ -354,6 +379,8 @@ struct DashboardView: View {
                 ForEach(Array(viewModel.recentTransactions.enumerated()), id: \.element.id) { index, tx in
                     VStack(spacing: 0) {
                         recentItem(transaction: tx)
+                            .contentShape(Rectangle())
+                            .onTapGesture { editingTransaction = tx }
                         if index < viewModel.recentTransactions.count - 1 {
                             Divider()
                                 .background(Color.white.opacity(0.3))
@@ -372,7 +399,7 @@ struct DashboardView: View {
         let txInBase = CurrencyService.amountInBase(amountOriginal: abs(transaction.amountOriginal), currencyOriginal: transaction.currencyOriginal, amountBase: transaction.amountBase, baseCurrency: transaction.baseCurrency)
         let pct = total > 0 ? CGFloat(txInBase / total) : 0.2
         let barRatio = (pct.isFinite && pct >= 0) ? min(1, pct * 3) : 0.2
-        let barColor = transaction.isSubscription == true ? OnboardingDesign.accentWarning : CategoryIconHelper.color(categoryId: transaction.category)
+        let barColor = CategoryIconHelper.color(categoryId: transaction.category)
         return HStack(alignment: .center, spacing: 16) {
             itemIcon(category: transaction.category, isSubscription: transaction.isSubscription == true)
             VStack(alignment: .leading, spacing: 4) {
@@ -404,8 +431,8 @@ struct DashboardView: View {
     }
 
     private func itemIcon(category: String, isSubscription: Bool = false) -> some View {
-        let iconName = isSubscription ? CategoryIconHelper.subscriptionIconName() : CategoryIconHelper.iconName(categoryId: category)
-        let iconColor = isSubscription ? OnboardingDesign.accentWarning : CategoryIconHelper.color(categoryId: category)
+        let iconName = CategoryIconHelper.iconName(categoryId: category)
+        let iconColor = CategoryIconHelper.color(categoryId: category)
         return RoundedRectangle(cornerRadius: 16)
             .fill(Color.white.opacity(0.6))
             .frame(width: 44, height: 44)
@@ -457,6 +484,7 @@ struct DashboardView: View {
                     HStack(spacing: 12) {
                         ForEach(viewModel.upcomingSubscriptions) { sub in
                             subCard(subscription: sub)
+                                .onTapGesture { editingSubscription = sub }
                         }
                     }
                     .padding(.horizontal, 20)
@@ -507,6 +535,8 @@ struct DashboardView: View {
                 Text(formatAmount(subscription.amount, subscription.currency))
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(OnboardingDesign.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 if !description.isEmpty {
                     Text(description)
                         .font(.system(size: 11, weight: .regular))

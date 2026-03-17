@@ -11,6 +11,7 @@ struct SubscriptionsView: View {
     var onDismiss: (() -> Void)? = nil
     @State private var viewModel = SubscriptionsViewModel()
     @State private var selectedSubscription: Subscription?
+    @State private var showSubscriptionLab = false
 
     var body: some View {
         NavigationStack {
@@ -60,6 +61,12 @@ struct SubscriptionsView: View {
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
+            }
+            .navigationDestination(isPresented: $showSubscriptionLab) {
+                SubscriptionLabView(
+                    subscriptions: viewModel.subscriptions,
+                    insights: SubscriptionInsightStore.shared.loadAll()
+                )
             }
             .task { await viewModel.load() }
         }
@@ -269,16 +276,63 @@ struct SubscriptionsView: View {
     // MARK: - Recurring insights
 
     private var recurringInsightsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("RECURRING INSIGHTS")
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(1)
-                .foregroundColor(OnboardingDesign.textTertiary)
-                .padding(.leading, 4)
-            VStack(spacing: 12) {
-                insightCard("You have 3 subscriptions you haven't used in 30+ days.")
-                insightCard("Annual plans could save you $94/year on 2 services.")
+        let insights = SubscriptionInsightStore.shared.loadAll()
+            .filter { $0.monthlySavingsPotential > 0 }
+            .sorted { $0.monthlySavingsPotential > $1.monthlySavingsPotential }
+        let hasSavings = !insights.isEmpty
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("RECURRING INSIGHTS")
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(1)
+                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .padding(.leading, 4)
+                Spacer()
+                if hasSavings {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                }
             }
+
+            Button { showSubscriptionLab = true } label: {
+                VStack(spacing: 12) {
+                    if hasSavings {
+                        let totalYearlySavings = Int(insights.reduce(0) { $0 + $1.monthlySavingsPotential } * 12)
+                        insightCard("You could save ~$\(totalYearlySavings)/year on \(insights.count) service\(insights.count == 1 ? "" : "s").")
+                        ForEach(insights.prefix(2)) { insight in
+                            insightCard(insight.tip)
+                        }
+                    } else if SubscriptionAnalysisService.shared.isAnalyzing {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                                .tint(OnboardingDesign.accentBlue)
+                            Text("Analyzing your subscriptions...")
+                                .font(.system(size: 14))
+                                .foregroundColor(OnboardingDesign.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
+                        .modifier(SubsGlassModifier())
+                    } else {
+                        insightCard("We'll analyze your subscriptions for savings opportunities.")
+                    }
+                }
+                .padding(hasSavings ? 16 : 0)
+                .background(
+                    hasSavings
+                        ? RoundedRectangle(cornerRadius: 28)
+                            .fill(OnboardingDesign.accentGreen.opacity(0.06))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 28)
+                                    .stroke(OnboardingDesign.accentGreen.opacity(0.3), lineWidth: 1.5)
+                            )
+                        : nil
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -291,6 +345,7 @@ struct SubscriptionsView: View {
                 .font(.system(size: 14))
                 .lineSpacing(4)
                 .foregroundColor(OnboardingDesign.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 20)
@@ -445,7 +500,7 @@ struct SubscriptionsView: View {
 
 // MARK: - Glass modifier
 
-private struct SubsGlassModifier: ViewModifier {
+struct SubsGlassModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(.ultraThinMaterial)

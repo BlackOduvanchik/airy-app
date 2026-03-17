@@ -8,10 +8,12 @@
 import SwiftUI
 
 private let designColors: [String] = [
-    "#67A082", "#7B9DAB", "#C4956A", "#E07A7A",
-    "#9B7EC8", "#E8A838", "#5E7A6B", "#4A90A4",
-    "#6B9B7A", "#B87D5B", "#D4A574", "#8B7EC8",
-    "#5B8A9E", "#E07A5F", "#81B29A", "#3D5A80",
+    // Row 1: bright
+    "#E50914", "#1DB954", "#0061FF", "#FF9900",
+    "#9B51E0", "#00A67E", "#E07A5F", "#000000",
+    // Row 2: muted analogues
+    "#C4956A", "#67A082", "#3D5A80", "#E8A838",
+    "#9B7EC8", "#7B9DAB", "#E07A7A", "#5E7A6B",
 ]
 
 struct NewCategorySheetView: View {
@@ -23,7 +25,7 @@ struct NewCategorySheetView: View {
     @State private var name = ""
     @State private var shortDescription = ""
     @State private var selectedIcon = "creditcard.fill"
-    @State private var selectedColorHex = "#67A082"
+    @State private var selectedColorHex = "#1DB954"
     @State private var parentCategoryId: String? = nil
     @State private var showParentPicker = false
     @State private var showIconLibrary = false
@@ -349,28 +351,31 @@ private struct CategoryColorRow: View {
     @Binding var selectedColorHex: String
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 8), spacing: 12) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 8), spacing: 10) {
             ForEach(designColors, id: \.self) { hex in
                 let isSelected = selectedColorHex == hex
+                let color = Color(hex: hex) ?? .gray
                 Button {
                     selectedColorHex = hex
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color(hex: hex) ?? .gray)
-                            .frame(width: 32, height: 32)
-                        if isSelected {
-                            Circle()
-                                .stroke(OnboardingDesign.textPrimary, lineWidth: 1.5)
-                                .frame(width: 40, height: 40)
-                        }
-                    }
-                    .frame(width: 44, height: 44)
+                    Circle()
+                        .fill(color)
+                        .frame(width: 28, height: 28)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        .shadow(color: color.opacity(0.3), radius: 4, x: 0, y: 2)
+                        .scaleEffect(isSelected ? 1.15 : 1.0)
+                        .overlay(
+                            isSelected ?
+                                Circle()
+                                    .stroke(OnboardingDesign.textPrimary, lineWidth: 2)
+                                    .scaleEffect(1.35)
+                                : nil
+                        )
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
         .padding(.bottom, 22)
     }
 }

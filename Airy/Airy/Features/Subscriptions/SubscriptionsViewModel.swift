@@ -48,6 +48,13 @@ final class SubscriptionsViewModel {
             subscriptions = LocalDataStore.shared.subscriptionsFromTransactions()
             let totalSpent = LocalDataStore.shared.dashboardSummary().thisMonth.totalSpent
             subscriptionSharePercent = totalSpent > 0 ? Int(round(totalMonthly / totalSpent * 100)) : 0
+
+            // Debug: dump saved GPT insights
+            let allInsights = SubscriptionInsightStore.shared.loadAll()
+            print("[SubsInsight] Stored insights: \(allInsights.count)")
+            for ins in allInsights {
+                print("[SubsInsight]  · \(ins.merchant): savings $\(String(format: "%.2f", ins.monthlySavingsPotential))/mo | tip: \(ins.tip) | fetched: \(ins.fetchedAt)")
+            }
         }
     }
 }

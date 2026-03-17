@@ -9,6 +9,8 @@ import SwiftUI
 
 @Observable
 final class DashboardViewModel {
+    static let shared = DashboardViewModel()
+
     var thisMonth: MonthSummary?
     var previousMonthSpent: Double = 0
     var deltaPercent: Double = 0
@@ -19,8 +21,10 @@ final class DashboardViewModel {
     var upcomingSubscriptions: [Subscription] = []
     var aiSummaryLine: String?
 
+    private init() {}
+
     func load() async {
-        isLoading = true
+        if thisMonth == nil { isLoading = true }
         defer { Task { @MainActor in isLoading = false } }
         await MainActor.run {
             LocalDataStore.shared.processDueSubscriptions()
@@ -38,14 +42,8 @@ final class DashboardViewModel {
                 }
                 .prefix(5)
                 .map { $0 }
-            if delta < 0 {
-                let absPct = abs(Int(delta.rounded()))
-                aiSummaryLine = "Spending is down \(absPct)% vs last month. Keep it up."
-            } else if delta > 0 {
-                aiSummaryLine = "Spending is up \(Int(delta.rounded()))% vs last month. Review your habits."
-            } else {
-                aiSummaryLine = "Your spending is in line with last month."
-            }
+            let snapshot = SpendingInsightsEngine.shared.compute()
+            aiSummaryLine = SpendingInsightsEngine.shared.generateSummaryText(snapshot)
         }
     }
 }

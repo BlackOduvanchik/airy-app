@@ -32,8 +32,7 @@ struct InsightsView: View {
                 }
                 .scrollIndicators(.hidden)
             }
-            .navigationTitle("Insights")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
             .sheet(isPresented: $viewModel.showPaywall) {
                 PaywallView()
             }
@@ -80,7 +79,7 @@ struct InsightsView: View {
 
     private var aiCardSection: some View {
         Group {
-            if viewModel.isLoading && viewModel.summary.isEmpty {
+            if viewModel.isLoading && viewModel.summaryText.isEmpty {
                 insightsGlassPanel {
                     HStack(alignment: .center, spacing: 14) {
                         ProgressView()
@@ -97,10 +96,11 @@ struct InsightsView: View {
                         Image(systemName: "sparkles")
                             .font(.system(size: 20))
                             .foregroundColor(OnboardingDesign.accentBlue)
-                        Text(viewModel.summary.isEmpty ? "Your spending insights will appear here." : viewModel.summary)
+                        Text(viewModel.summaryText.isEmpty ? "Your spending insights will appear here." : viewModel.summaryText)
                             .font(.system(size: 14))
                             .lineSpacing(4)
                             .foregroundColor(OnboardingDesign.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.vertical, 4)
@@ -117,7 +117,7 @@ struct InsightsView: View {
                 caption: "This Month",
                 amount: viewModel.thisMonthSpent,
                 isPrimary: true,
-                deltaPercent: viewModel.deltaPercent
+                deltaPercent: viewModel.hasMultipleMonths ? viewModel.deltaPercent : nil
             )
             comparisonTile(
                 caption: "Last Month",
@@ -139,6 +139,9 @@ struct InsightsView: View {
                 .foregroundColor(isPrimary ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
             if let delta = deltaPercent, isPrimary {
                 deltaChip(down: delta < 0, value: abs(Int(delta.rounded())))
+            } else {
+                // Invisible spacer matching deltaChip height for equal tile sizes
+                Color.clear.frame(height: 22)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,20 +166,22 @@ struct InsightsView: View {
     // MARK: - Yearly overview chart
 
     private var yearlyChartSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let history = viewModel.snapshot?.monthlyHistory ?? []
+
+        return VStack(alignment: .leading, spacing: 0) {
             Text("YEARLY OVERVIEW")
                 .font(.system(size: 12, weight: .semibold))
                 .tracking(1)
                 .foregroundColor(OnboardingDesign.textTertiary)
-            yearlyChartView
+            yearlyChartView(points: history)
                 .frame(height: 120)
                 .padding(.top, 16)
             HStack {
-                ForEach(Array(["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"].enumerated()), id: \.offset) { index, m in
-                    Text(m)
+                ForEach(Array(history.enumerated()), id: \.element.id) { index, pt in
+                    Text(pt.shortLabel)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(index == 5 ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
-                    if index < 11 { Spacer(minLength: 0) }
+                        .foregroundColor(pt.isCurrent ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                    if index < history.count - 1 { Spacer(minLength: 0) }
                 }
             }
             .padding(.horizontal, 4)
@@ -187,44 +192,55 @@ struct InsightsView: View {
         .modifier(InsightsGlassModifier())
     }
 
-    private var yearlyChartView: some View {
+    private func yearlyChartView(points: [MonthlySpendPoint]) -> some View {
         GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
-            let pts: [(CGFloat, CGFloat)] = [
-                (0, 0.67), (0.09, 0.58), (0.17, 0.75), (0.26, 0.5), (0.34, 0.33), (0.44, 0.38),
-                (0.52, 0.58), (0.61, 0.42), (0.70, 0.54), (0.78, 0.62), (0.87, 0.54), (1, 0.58)
-            ]
-            ZStack(alignment: .topLeading) {
-                Path { p in
-                    guard pts.count >= 2 else { return }
-                    let xs = pts.map { $0.0 * w }
-                    let ys = pts.map { (1 - $0.1) * h }
-                    p.move(to: CGPoint(x: xs[0], y: ys[0]))
-                    for i in 1..<pts.count { p.addLine(to: CGPoint(x: xs[i], y: ys[i])) }
-                    p.addLine(to: CGPoint(x: xs.last!, y: h))
-                    p.addLine(to: CGPoint(x: xs[0], y: h))
-                    p.closeSubpath()
-                }
-                .fill(
-                    LinearGradient(
-                        colors: [OnboardingDesign.accentGreen.opacity(0.3), OnboardingDesign.accentGreen.opacity(0)],
-                        startPoint: .top,
-                        endPoint: .bottom
+            let maxVal = points.map(\.total).max() ?? 1
+            let safeMax = maxVal > 0 ? maxVal : 1
+
+            let normalized: [(x: CGFloat, y: CGFloat, isCurrent: Bool)] = points.enumerated().map { i, pt in
+                let x = points.count > 1 ? CGFloat(i) / CGFloat(points.count - 1) : 0.5
+                let y = CGFloat(pt.total / safeMax)
+                return (x, y, pt.isCurrent)
+            }
+
+            if normalized.count >= 2 {
+                ZStack(alignment: .topLeading) {
+                    // Fill
+                    Path { p in
+                        let xs = normalized.map { $0.x * w }
+                        let ys = normalized.map { (1 - $0.y) * h }
+                        p.move(to: CGPoint(x: xs[0], y: ys[0]))
+                        for i in 1..<normalized.count { p.addLine(to: CGPoint(x: xs[i], y: ys[i])) }
+                        p.addLine(to: CGPoint(x: xs.last!, y: h))
+                        p.addLine(to: CGPoint(x: xs[0], y: h))
+                        p.closeSubpath()
+                    }
+                    .fill(
+                        LinearGradient(
+                            colors: [OnboardingDesign.accentGreen.opacity(0.3), OnboardingDesign.accentGreen.opacity(0)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     )
-                )
-                Path { p in
-                    let xs = pts.map { $0.0 * w }
-                    let ys = pts.map { (1 - $0.1) * h }
-                    p.move(to: CGPoint(x: xs[0], y: ys[0]))
-                    for i in 1..<pts.count { p.addLine(to: CGPoint(x: xs[i], y: ys[i])) }
+                    // Line
+                    Path { p in
+                        let xs = normalized.map { $0.x * w }
+                        let ys = normalized.map { (1 - $0.y) * h }
+                        p.move(to: CGPoint(x: xs[0], y: ys[0]))
+                        for i in 1..<normalized.count { p.addLine(to: CGPoint(x: xs[i], y: ys[i])) }
+                    }
+                    .stroke(OnboardingDesign.accentGreen, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                    // Current month dot
+                    if let current = normalized.first(where: { $0.isCurrent }) {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 8, height: 8)
+                            .overlay(Circle().stroke(OnboardingDesign.accentGreen, lineWidth: 2))
+                            .position(x: current.x * w, y: (1 - current.y) * h)
+                    }
                 }
-                .stroke(OnboardingDesign.accentGreen, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 8, height: 8)
-                    .overlay(Circle().stroke(OnboardingDesign.accentGreen, lineWidth: 2))
-                    .position(x: w * 0.44, y: (1 - 0.38) * h)
             }
         }
     }
@@ -232,27 +248,56 @@ struct InsightsView: View {
     // MARK: - What Changed (horizontal pills)
 
     private var whatChangedSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("WHAT CHANGED")
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(1)
-                .foregroundColor(OnboardingDesign.textTertiary)
-                .padding(.leading, 4)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    deltaPill(emoji: "🍱", label: "Dining", delta: -14, up: false)
-                    deltaPill(emoji: "🛍️", label: "Shopping", delta: 22, up: true)
-                    deltaPill(emoji: "✈️", label: "Travel", delta: -8, up: false)
-                    deltaPill(emoji: "📺", label: "Subs", delta: 5, up: true)
+        let deltas = (viewModel.snapshot?.categoryDeltas ?? [])
+            .filter { abs($0.deltaPercent) >= 5 && $0.lastMonth > 0 }
+            .prefix(6)
+
+        return Group {
+            if !deltas.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("WHAT CHANGED")
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(1)
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .padding(.leading, 4)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(Array(deltas)) { d in
+                                deltaPill(categoryId: d.id, label: d.name, delta: Int(d.deltaPercent.rounded()), up: d.deltaPercent > 0)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
-                .padding(.vertical, 4)
+            } else if viewModel.hasMultipleMonths && viewModel.hasEnoughData {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("WHAT CHANGED")
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(1)
+                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .padding(.leading, 4)
+                    insightsGlassPanel {
+                        Text("Your spending is stable across categories.")
+                            .font(.system(size: 14))
+                            .foregroundColor(OnboardingDesign.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
             }
         }
     }
 
-    private func deltaPill(emoji: String, label: String, delta: Int, up: Bool) -> some View {
-        HStack(spacing: 8) {
-            Text(emoji)
+    private func deltaPill(categoryId: String, label: String, delta: Int, up: Bool) -> some View {
+        let iconName = CategoryIconHelper.iconName(categoryId: categoryId)
+        let iconColor = CategoryIconHelper.color(categoryId: categoryId)
+
+        return HStack(spacing: 8) {
+            Image(systemName: iconName)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 22, height: 22)
+                .background(iconColor)
+                .clipShape(Circle())
             Text(label)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(OnboardingDesign.textPrimary)
@@ -270,102 +315,153 @@ struct InsightsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
-    // MARK: - Insight mirror cards (from API)
+    // MARK: - Insight mirror cards
 
     private var insightMirrorSections: some View {
-        Group {
-            ForEach(Array(viewModel.insights.enumerated()), id: \.offset) { _, item in
+        let cards = buildInsightCards()
+        return Group {
+            ForEach(Array(cards.enumerated()), id: \.offset) { _, text in
                 insightsGlassPanel {
-                    VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 14) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 18))
                             .foregroundColor(OnboardingDesign.accentBlue)
-                        Text(item.body)
+                        Text(text)
                             .font(.system(size: 14))
                             .lineSpacing(4)
                             .foregroundColor(OnboardingDesign.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.vertical, 4)
                 }
             }
-            if viewModel.insights.isEmpty && !viewModel.isLoading {
-                insightsGlassPanel {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 18))
-                            .foregroundColor(OnboardingDesign.accentBlue)
-                        Text("You tend to overspend on weekends — avg $94 vs $41 weekdays.")
-                            .font(.system(size: 14))
-                            .lineSpacing(4)
-                            .foregroundColor(OnboardingDesign.textPrimary)
-                    }
-                    .padding(.vertical, 4)
-                }
+        }
+    }
+
+    private func buildInsightCards() -> [String] {
+        guard let s = viewModel.snapshot, viewModel.hasEnoughData else {
+            return ["Add more transactions to see personalized insights."]
+        }
+        var cards: [String] = []
+
+        // Weekend vs weekday
+        if s.weekendAvgSpend > 0 && s.weekdayAvgSpend > 0 {
+            if s.weekendAvgSpend > s.weekdayAvgSpend * 1.3 {
+                cards.append("You tend to spend more on weekends — avg \(fmtCur(s.weekendAvgSpend))/day vs \(fmtCur(s.weekdayAvgSpend)) on weekdays.")
+            } else if s.weekdayAvgSpend > s.weekendAvgSpend * 1.3 {
+                cards.append("Your weekday spending is higher than weekends — \(fmtCur(s.weekdayAvgSpend))/day vs \(fmtCur(s.weekendAvgSpend)).")
             }
         }
+
+        // Projected savings
+        if s.projectedMonthlySavings > 50 && s.thisMonthIncome > 0 {
+            cards.append("At your current pace, you're on track to save \(fmtCur(s.projectedMonthlySavings)) this month.")
+        }
+
+        // Safe to spend
+        if s.safeToSpend > 0 && s.thisMonthIncome > 0 {
+            cards.append("You have roughly \(fmtCur(s.safeToSpend)) safe to spend for the rest of the month.")
+        }
+
+        // Top merchant in biggest shifting category
+        if let topDelta = s.categoryDeltas.first(where: { abs($0.deltaPercent) > 15 && $0.lastMonth > 0 }),
+           let topMerch = s.topMerchantByCategory[topDelta.id] {
+            let dir = topDelta.deltaPercent > 0 ? "higher" : "lower"
+            cards.append("\(topDelta.name) is tracking \(dir) than usual, mostly at \(topMerch.merchant).")
+        }
+
+        if cards.isEmpty {
+            cards.append("Your spending patterns look healthy this month.")
+        }
+        return Array(cards.prefix(3))
     }
 
     // MARK: - Anomaly card
 
+    @ViewBuilder
     private var anomalyCardSection: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Image(systemName: "triangle.exclamationmark.fill")
-                .font(.system(size: 24))
-                .foregroundColor(OnboardingDesign.accentAmber)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Uber Eats")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
-                    Spacer()
-                    Text("$187")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(OnboardingDesign.accentAmber)
+        if let anomaly = viewModel.snapshot?.merchantAnomalies.first, viewModel.hasEnoughData {
+            HStack(alignment: .top, spacing: 16) {
+                Image(systemName: "triangle.exclamationmark.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(OnboardingDesign.accentAmber)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(anomaly.merchant)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(OnboardingDesign.textPrimary)
+                        Spacer()
+                        Text(fmtCur(anomaly.currentSpent))
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(OnboardingDesign.accentAmber)
+                    }
+                    Text(String(format: "%.1f× your usual monthly spend", anomaly.ratio))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(OnboardingDesign.textTertiary)
                 }
-                Text("2.4× your usual spend this week")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(Color.orange.opacity(0.08))
+            .overlay(
+                Rectangle()
+                    .fill(OnboardingDesign.accentAmber)
+                    .frame(width: 4),
+                alignment: .leading
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 28))
         }
-        .padding(20)
-        .background(Color.orange.opacity(0.08))
-        .overlay(
-            Rectangle()
-                .fill(OnboardingDesign.accentAmber)
-                .frame(width: 4),
-            alignment: .leading
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 28))
     }
 
     // MARK: - Subscription trend
 
+    @ViewBuilder
     private var subscriptionTrendSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("SUBSCRIPTION TREND")
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(1)
-                .foregroundColor(OnboardingDesign.textTertiary)
-            HStack(alignment: .bottom, spacing: 8) {
-                ForEach([0.4, 0.35, 0.45, 0.5, 0.75, 0.9], id: \.self) { h in
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(h >= 0.7 ? OnboardingDesign.accentBlue : OnboardingDesign.bgBottomLeft.opacity(0.4))
-                        .frame(height: 60 * h)
-                        .frame(maxWidth: .infinity)
+        if let trend = viewModel.snapshot?.subscriptionTrend, !trend.monthlyTotals.isEmpty,
+           trend.monthlyTotals.contains(where: { $0.total > 0 }) {
+            let maxTotal = trend.monthlyTotals.map(\.total).max() ?? 1
+            let safeMax = maxTotal > 0 ? maxTotal : 1
+            let isLast = trend.monthlyTotals.count
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text("SUBSCRIPTION TREND")
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(1)
+                    .foregroundColor(OnboardingDesign.textTertiary)
+                HStack(alignment: .bottom, spacing: 8) {
+                    ForEach(Array(trend.monthlyTotals.enumerated()), id: \.offset) { i, item in
+                        let ratio = item.total / safeMax
+                        let isRecent = i >= isLast - 2
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(isRecent ? OnboardingDesign.accentBlue : OnboardingDesign.bgBottomLeft.opacity(0.4))
+                            .frame(height: max(4, 60 * CGFloat(ratio)))
+                            .frame(maxWidth: .infinity)
+                    }
                 }
+                .frame(height: 60)
+                .padding(.top, 20)
+                Text(subscriptionTrendText(trend))
+                    .font(.system(size: 13))
+                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .padding(.top, 16)
             }
-            .frame(height: 60)
-            .padding(.top, 20)
-            Text("Up $12 since March · 2 new trials detected")
-                .font(.system(size: 13))
-                .foregroundColor(OnboardingDesign.textSecondary)
-                .padding(.top, 16)
+            .padding(24)
+            .padding(.horizontal, 4)
+            .modifier(InsightsGlassModifier())
         }
-        .padding(24)
-        .padding(.horizontal, 4)
-        .modifier(InsightsGlassModifier())
+    }
+
+    private func subscriptionTrendText(_ trend: SubscriptionTrendData) -> String {
+        var parts: [String] = []
+        if abs(trend.deltaAmount) > 1 {
+            let dir = trend.deltaAmount > 0 ? "Up" : "Down"
+            parts.append("\(dir) \(fmtCur(abs(trend.deltaAmount))) over 6 months")
+        }
+        if trend.newTrialsCount > 0 {
+            parts.append("\(trend.newTrialsCount) new subscription\(trend.newTrialsCount == 1 ? "" : "s") this month")
+        }
+        return parts.isEmpty ? "Your subscriptions are stable." : parts.joined(separator: " · ")
     }
 
     // MARK: - Helpers
@@ -378,9 +474,13 @@ struct InsightsView: View {
     }
 
     private func formatCurrency(_ value: Double) -> String {
+        fmtCur(value)
+    }
+
+    private func fmtCur(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
+        formatter.currencyCode = BaseCurrencyStore.baseCurrency
         formatter.maximumFractionDigits = 0
         formatter.minimumFractionDigits = 0
         return formatter.string(from: NSNumber(value: value)) ?? "$0"

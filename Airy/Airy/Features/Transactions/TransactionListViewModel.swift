@@ -116,6 +116,18 @@ final class TransactionListViewModel {
         return !sameMerchant.isEmpty
     }
 
+    /// Incrementally load remaining pages (used when a filter is active to avoid spinner stuck).
+    func loadRemaining() async {
+        while hasMore {
+            await MainActor.run {
+                let offset = transactions.count
+                let page = LocalDataStore.shared.fetchTransactions(limit: pageSize, offset: offset)
+                transactions.append(contentsOf: page)
+                hasMore = page.count == pageSize
+            }
+        }
+    }
+
     func load(append: Bool = false) async {
         if !append { isLoading = true }
         defer { if !append { Task { @MainActor in isLoading = false } } }

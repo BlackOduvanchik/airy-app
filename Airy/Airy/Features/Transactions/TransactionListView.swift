@@ -105,6 +105,11 @@ struct TransactionListView: View {
                 })
             }
             .task { await viewModel.load() }
+            .onChange(of: viewModel.selectedFilterId) { _, newValue in
+                if newValue != nil && viewModel.hasMore {
+                    Task { await viewModel.loadRemaining() }
+                }
+            }
             .sensoryFeedback(.warning, trigger: deletingTransactionIds.count)
         }
         .offset(x: showBottomBar ? dragOffset : 0)
@@ -227,7 +232,7 @@ struct TransactionListView: View {
                 ForEach(viewModel.groupedByMonth) { group in
                     monthSection(group: group)
                 }
-                if viewModel.hasMore {
+                if viewModel.hasMore && viewModel.selectedFilterId == nil {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 20)
@@ -442,8 +447,8 @@ struct TransactionListView: View {
     }
 
     private func iconCircle(category: String, isSubscription: Bool) -> some View {
-        let iconName = isSubscription ? CategoryIconHelper.subscriptionIconName() : CategoryIconHelper.iconName(categoryId: category)
-        let (bg, fg) = CategoryIconHelper.iconColors(categoryId: category, isSubscription: isSubscription)
+        let iconName = CategoryIconHelper.iconName(categoryId: category)
+        let (bg, fg) = CategoryIconHelper.iconColors(categoryId: category)
         return ZStack {
             Circle()
                 .fill(bg)

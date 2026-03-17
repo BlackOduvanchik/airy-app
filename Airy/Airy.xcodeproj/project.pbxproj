@@ -7,8 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B0010000000000000000005F /* EditSubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005F /* EditSubscriptionView.swift */; };
-		B00100000000000000000060 /* EditSubscriptionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000060 /* EditSubscriptionViewModel.swift */; };
 		B00100000000000000000001 /* AiryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000001 /* AiryApp.swift */; };
 		B00100000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000002 /* ContentView.swift */; };
 		B00100000000000000000003 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000003 /* APIClient.swift */; };
@@ -94,6 +92,14 @@
 		B0010000000000000000005C /* AiryWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = TARG00000000000000000003 /* AiryWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B0010000000000000000005D /* GPTBackgroundSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005B /* GPTBackgroundSession.swift */; };
 		B0010000000000000000005E /* AiryAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005C /* AiryAppDelegate.swift */; };
+		B0010000000000000000005F /* EditSubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005F /* EditSubscriptionView.swift */; };
+		B00100000000000000000060 /* EditSubscriptionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000060 /* EditSubscriptionViewModel.swift */; };
+		B00100000000000000000061 /* SubscriptionInsightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005D /* SubscriptionInsightStore.swift */; };
+		B00100000000000000000062 /* SubscriptionAnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000005E /* SubscriptionAnalysisService.swift */; };
+		B00100000000000000000063 /* SpendingInsightModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000061 /* SpendingInsightModels.swift */; };
+		B00100000000000000000064 /* SpendingInsightsEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000062 /* SpendingInsightsEngine.swift */; };
+		B00100000000000000000065 /* SubscriptionLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000063 /* SubscriptionLabView.swift */; };
+		B00100000000000000000066 /* SubscriptionLabViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000064 /* SubscriptionLabViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -141,8 +147,6 @@
 		F00100000000000000000012 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000013 /* SubscriptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000014 /* SubscriptionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsViewModel.swift; sourceTree = "<group>"; };
-		F0010000000000000000005F /* EditSubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditSubscriptionView.swift; sourceTree = "<group>"; };
-		F00100000000000000000060 /* EditSubscriptionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditSubscriptionViewModel.swift; sourceTree = "<group>"; };
 		F00100000000000000000015 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
 		F00100000000000000000016 /* AddTransactionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionViewModel.swift; sourceTree = "<group>"; };
 		F00100000000000000000017 /* TransactionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDetailView.swift; sourceTree = "<group>"; };
@@ -208,6 +212,14 @@
 		F0010000000000000000005A /* WidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetBundle.swift; sourceTree = "<group>"; };
 		F0010000000000000000005B /* GPTBackgroundSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPTBackgroundSession.swift; sourceTree = "<group>"; };
 		F0010000000000000000005C /* AiryAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiryAppDelegate.swift; sourceTree = "<group>"; };
+		F0010000000000000000005D /* SubscriptionInsightStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionInsightStore.swift; sourceTree = "<group>"; };
+		F0010000000000000000005E /* SubscriptionAnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionAnalysisService.swift; sourceTree = "<group>"; };
+		F0010000000000000000005F /* EditSubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditSubscriptionView.swift; sourceTree = "<group>"; };
+		F00100000000000000000060 /* EditSubscriptionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditSubscriptionViewModel.swift; sourceTree = "<group>"; };
+		F00100000000000000000061 /* SpendingInsightModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendingInsightModels.swift; sourceTree = "<group>"; };
+		F00100000000000000000062 /* SpendingInsightsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendingInsightsEngine.swift; sourceTree = "<group>"; };
+		F00100000000000000000063 /* SubscriptionLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionLabView.swift; sourceTree = "<group>"; };
+		F00100000000000000000064 /* SubscriptionLabViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionLabViewModel.swift; sourceTree = "<group>"; };
 		TARG00000000000000000001 /* Airy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Airy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		TARG00000000000000000003 /* AiryWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AiryWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -320,6 +332,8 @@
 				F00100000000000000000056 /* OCRTemplateDeriver.swift */,
 				F00100000000000000000057 /* OCRTemplateMatcher.swift */,
 				F0010000000000000000005B /* GPTBackgroundSession.swift */,
+				F0010000000000000000005E /* SubscriptionAnalysisService.swift */,
+				F00100000000000000000062 /* SpendingInsightsEngine.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -415,6 +429,8 @@
 				F00100000000000000000014 /* SubscriptionsViewModel.swift */,
 				F0010000000000000000005F /* EditSubscriptionView.swift */,
 				F00100000000000000000060 /* EditSubscriptionViewModel.swift */,
+				F00100000000000000000063 /* SubscriptionLabView.swift */,
+				F00100000000000000000064 /* SubscriptionLabViewModel.swift */,
 			);
 			path = Subscriptions;
 			sourceTree = "<group>";
@@ -466,6 +482,8 @@
 				F0010000000000000000002A /* LocalDataStore.swift */,
 				F0010000000000000000004C /* CurrencyService.swift */,
 				F00100000000000000000055 /* OCRTemplateStore.swift */,
+				F0010000000000000000005D /* SubscriptionInsightStore.swift */,
+				F00100000000000000000061 /* SpendingInsightModels.swift */,
 			);
 			path = Storage;
 			sourceTree = "<group>";
@@ -674,6 +692,12 @@
 				B00100000000000000000058 /* AiryActivityAttributes.swift in Sources */,
 				B0010000000000000000005D /* GPTBackgroundSession.swift in Sources */,
 				B0010000000000000000005E /* AiryAppDelegate.swift in Sources */,
+				B00100000000000000000061 /* SubscriptionInsightStore.swift in Sources */,
+				B00100000000000000000062 /* SubscriptionAnalysisService.swift in Sources */,
+				B00100000000000000000063 /* SpendingInsightModels.swift in Sources */,
+				B00100000000000000000064 /* SpendingInsightsEngine.swift in Sources */,
+				B00100000000000000000065 /* SubscriptionLabView.swift in Sources */,
+				B00100000000000000000066 /* SubscriptionLabViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -828,6 +852,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Airy;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -866,6 +891,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Airy;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -115,9 +115,11 @@ struct EditSubscriptionView: View {
                 .shadow(color: vm.iconColor.opacity(0.2), radius: 12, x: 0, y: 6)
 
             VStack(spacing: 4) {
-                Text(vm.displayName)
+                TextField("Name", text: $vm.displayName)
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(OnboardingDesign.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("\(vm.formattedMonthlyAmount)/mo \u{00B7} \(vm.billDayString)")
                     .font(.system(size: 14))
                     .foregroundColor(OnboardingDesign.textSecondary)
@@ -141,9 +143,11 @@ struct EditSubscriptionView: View {
                         Text(vm.formattedAnnualPrice)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(OnboardingDesign.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(vm.formattedMonthlySavings)
                             .font(.system(size: 14))
                             .foregroundColor(OnboardingDesign.accentGreen)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -174,9 +178,14 @@ struct EditSubscriptionView: View {
     }
 
     private var iconGrid: some View {
-        let quickIcons = [vm.iconLetter] + vm.randomLetters
+        let icons: [String] = {
+            if vm.randomLetters.contains(vm.iconLetter) {
+                return vm.randomLetters
+            }
+            return [vm.iconLetter] + Array(vm.randomLetters.prefix(3))
+        }()
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5), spacing: 12) {
-            ForEach(quickIcons, id: \.self) { icon in
+            ForEach(icons, id: \.self) { icon in
                 iconCell(icon, isSelected: vm.iconLetter == icon)
             }
             plusButton

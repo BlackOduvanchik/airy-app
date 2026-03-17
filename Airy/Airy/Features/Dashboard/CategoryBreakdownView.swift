@@ -319,8 +319,15 @@ struct CategorySegment: Identifiable {
 final class CategoryBreakdownViewModel {
     var segments: [CategorySegment] = []
     var totalSpent: Double = 0
-    var monthLabel: String = ""
-    var monthKey: String = ""
+    var monthLabel: String = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: Date())
+    }()
+    var monthKey: String = {
+        let cal = Calendar.current
+        return String(format: "%d-%02d", cal.component(.year, from: Date()), cal.component(.month, from: Date()))
+    }()
     var transactionsByCategory: [String: [Transaction]] = [:]
     var isLoading = true
 

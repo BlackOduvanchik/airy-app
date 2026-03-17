@@ -48,7 +48,10 @@ struct AiryApp: App {
             ContentView()
                 .environment(authStore)
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                    Task { @MainActor in ImportViewModel.shared.resumeIfNeeded() }
+                    Task { @MainActor in
+                        ImportViewModel.shared.resumeIfNeeded()
+                        SubscriptionAnalysisService.shared.checkAndAnalyzeIfNeeded()
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
                     ImportViewModel.shared.scheduleBackgroundProcessingIfNeeded()

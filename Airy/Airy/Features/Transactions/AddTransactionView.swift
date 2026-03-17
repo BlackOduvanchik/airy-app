@@ -163,9 +163,7 @@ struct AddTransactionView: View {
         }
         .onAppear {
             guard !viewModel.isEditMode, !viewModel.isPendingEditMode else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { showCustomKeyboard = true }
-            }
+            showCustomKeyboard = true
         }
     }
 

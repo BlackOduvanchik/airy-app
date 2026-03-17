@@ -151,6 +151,9 @@ struct MainTabView: View {
         .fullScreenCover(isPresented: $showSubscriptions) {
             SubscriptionsView(onDismiss: { showSubscriptions = false })
         }
+        .onChange(of: showSubscriptions) { _, showing in
+            if !showing { dashboardRefreshId += 1 }
+        }
         .fullScreenCover(isPresented: $showAllTransactions) {
             TransactionListView(
                 showBottomBar: true,

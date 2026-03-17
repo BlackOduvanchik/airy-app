@@ -29,6 +29,7 @@ enum OnboardingDesign {
     static let glassBg = Color.white.opacity(0.45)
     static let glassBorder = Color.white.opacity(0.6)
     static let glassHighlight = Color.white.opacity(0.9)
+    static let aiGlow = Color(red: 0.655, green: 0.545, blue: 0.980) // #A78BFA
 }
 
 // MARK: - Shared background

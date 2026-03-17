@@ -352,6 +352,49 @@ final class LocalDataStore {
 
     // MARK: - Analytics (local)
 
+    /// All expense LocalTransaction objects for the last `months` months. Single fetch for the insights engine.
+    func fetchAllExpenseTransactions(months: Int = 13) -> [LocalTransaction] {
+        guard let ctx = context else { return [] }
+        let cal = Calendar.current
+        let cutoff = cal.date(byAdding: .month, value: -months, to: Date()) ?? Date()
+        let y = cal.component(.year, from: cutoff)
+        let m = cal.component(.month, from: cutoff)
+        let cutoffStr = String(format: "%04d-%02d-01", y, m)
+        let incomeType = "income"
+        var descriptor = FetchDescriptor<LocalTransaction>(
+            predicate: #Predicate<LocalTransaction> { tx in
+                tx.type != incomeType && tx.transactionDate >= cutoffStr
+            },
+            sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = 2000
+        return (try? ctx.fetch(descriptor)) ?? []
+    }
+
+    /// Total income for a given month key (e.g. "2026-03").
+    func fetchIncomeForMonth(monthKey: String) -> Double {
+        guard let ctx = context else { return 0 }
+        let prefix = monthKey         // "2026-03"
+        let nextMonth: String = {
+            let parts = monthKey.split(separator: "-")
+            guard parts.count == 2, let y = Int(parts[0]), let m = Int(parts[1]) else { return "9999-99" }
+            if m == 12 { return String(format: "%04d-01", y + 1) }
+            return String(format: "%04d-%02d", y, m + 1)
+        }()
+        let incomeType = "income"
+        var descriptor = FetchDescriptor<LocalTransaction>(
+            predicate: #Predicate<LocalTransaction> { tx in
+                tx.type == incomeType && tx.transactionDate >= prefix && tx.transactionDate < nextMonth
+            }
+        )
+        descriptor.fetchLimit = 500
+        guard let list = try? ctx.fetch(descriptor) else { return 0 }
+        let base = BaseCurrencyStore.baseCurrency
+        return list.reduce(0) { sum, tx in
+            sum + CurrencyService.convert(amount: tx.amountOriginal, from: tx.currencyOriginal, to: base)
+        }
+    }
+
     func dashboardSummary() -> (thisMonth: MonthSummary, previousMonthSpent: Double, deltaPercent: Double) {
         let all = fetchTransactions(limit: 500)
         let cal = Calendar.current
@@ -477,13 +520,14 @@ final class LocalDataStore {
         }
     }
 
-    func updateSubscriptionTemplate(templateId: String, iconLetter: String?, colorHex: String?) {
+    func updateSubscriptionTemplate(templateId: String, iconLetter: String?, colorHex: String?, merchant: String? = nil) {
         guard let ctx = context else { return }
         var descriptor = FetchDescriptor<LocalTransaction>(predicate: #Predicate<LocalTransaction> { $0.id == templateId })
         descriptor.fetchLimit = 1
         guard let tx = try? ctx.fetch(descriptor).first else { return }
         tx.subscriptionIconLetter = iconLetter
         tx.subscriptionColorHex = colorHex
+        if let merchant { tx.merchant = merchant }
         tx.updatedAt = Date()
         try? ctx.save()
     }

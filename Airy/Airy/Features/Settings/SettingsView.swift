@@ -401,6 +401,35 @@ struct SettingsView: View {
                         } message: {
                             Text("All learned extraction templates will be deleted. New ones will be created automatically after the next GPT extraction.")
                         }
+
+                        Divider().padding(.leading, 60)
+
+                        Button {
+                            SubscriptionInsightStore.shared.resetCooldown()
+                            print("[SubsInsight] Cooldown reset — will re-analyze on next app foreground")
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(OnboardingDesign.textSecondary)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.white.opacity(0.5))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Re-analyze subscriptions")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(OnboardingDesign.textPrimary)
+                                    Text("Reset 7-day cooldown")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(OnboardingDesign.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.horizontal, 16)
+                            .frame(height: 64)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.top, 10)

@@ -25,9 +25,7 @@ final class EditSubscriptionViewModel {
     var reminderEnabled: Bool = false
     let randomLetters: [String]
 
-    var displayName: String {
-        subscription.merchant
-    }
+    var displayName: String
 
     var monthlyAmount: Double {
         let interval = subscription.interval.lowercased()
@@ -102,13 +100,14 @@ final class EditSubscriptionViewModel {
 
     init(subscription: Subscription) {
         self.subscription = subscription
+        self.displayName = subscription.merchant
         self.iconLetter = subscription.iconLetter ?? String(subscription.merchant.prefix(1)).uppercased()
         self.selectedColorHex = subscription.colorHex ?? Self.defaultColorHex(for: subscription.merchant)
 
         let current = subscription.iconLetter ?? String(subscription.merchant.prefix(1)).uppercased()
         var letters = (65...90).map { String(UnicodeScalar($0)) }.filter { $0 != current }
         letters.shuffle()
-        self.randomLetters = Array(letters.prefix(3))
+        self.randomLetters = [current] + Array(letters.prefix(3))
     }
 
     /// Fetches the template LocalTransaction and converts to Transaction for edit sheet.
@@ -120,10 +119,13 @@ final class EditSubscriptionViewModel {
 
     func save() {
         guard let templateId = subscription.templateTransactionId else { return }
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let merchantToSave = trimmedName.isEmpty ? nil : (trimmedName == subscription.merchant ? nil : trimmedName)
         LocalDataStore.shared.updateSubscriptionTemplate(
             templateId: templateId,
             iconLetter: iconLetter,
-            colorHex: selectedColorHex
+            colorHex: selectedColorHex,
+            merchant: merchantToSave
         )
     }
 

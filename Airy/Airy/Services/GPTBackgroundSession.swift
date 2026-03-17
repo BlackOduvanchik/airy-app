@@ -142,6 +142,10 @@ extension GPTBackgroundSession: URLSessionDataDelegate {
             return
         }
 
+        if data.isEmpty {
+            print("[GPTBgSession] ⚠️ Empty response data for task \(id), status \(statusCode)")
+        }
+
         if let error {
             continuation.resume(throwing: error)
         } else {
