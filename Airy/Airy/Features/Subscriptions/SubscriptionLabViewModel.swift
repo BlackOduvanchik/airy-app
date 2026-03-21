@@ -13,6 +13,7 @@ enum LabBadgeType {
     case savePercent(Int)
 }
 
+@MainActor
 struct LabSubscriptionItem: Identifiable {
     let id: String
     let subscription: Subscription
@@ -41,10 +42,11 @@ struct LabSubscriptionItem: Identifiable {
         if let insight, hasSavings {
             return insight.tip
         }
-        return "Optimal usage detected"
+        return L("sublab_optimal")
     }
 }
 
+@MainActor
 @Observable
 final class SubscriptionLabViewModel {
     var items: [LabSubscriptionItem] = []
@@ -87,9 +89,10 @@ final class SubscriptionLabViewModel {
 
         guard !withSavings.isEmpty else {
             if totalSubs > 0 {
-                return "All \(totalSubs) subscription\(totalSubs == 1 ? " is" : "s are") well-optimized. No changes needed."
+                let s = totalSubs == 1 ? "" : "s"
+                return L("sublab_all_optimized", "\(totalSubs)", s)
             }
-            return "We're analyzing your subscriptions. Check back soon."
+            return L("sublab_analyzing")
         }
 
         let fmt = currencyFormatter()
@@ -99,16 +102,17 @@ final class SubscriptionLabViewModel {
         let hasAnnual = withSavings.contains { $0.tip.lowercased().contains("annual") || $0.tip.lowercased().contains("yearly") }
 
         var parts: [String] = []
+        let s = withSavings.count == 1 ? "" : "s"
         if hasAnnual && hasUnused {
-            parts.append("Switch to annual billing and cancel unused services")
+            parts.append(L("sublab_switch_annual_cancel"))
         } else if hasAnnual {
-            parts.append("Switch \(withSavings.count) plan\(withSavings.count == 1 ? "" : "s") to annual billing")
+            parts.append(L("sublab_switch_annual", "\(withSavings.count)", s))
         } else if hasUnused {
-            parts.append("Cancel unused subscriptions")
+            parts.append(L("sublab_cancel_unused"))
         } else {
-            parts.append("Optimize \(withSavings.count) subscription\(withSavings.count == 1 ? "" : "s")")
+            parts.append(L("sublab_optimize_count", "\(withSavings.count)", s))
         }
-        parts.append("to save ~\(yearlyStr)/year.")
+        parts.append(L("sublab_to_save", yearlyStr))
 
         return parts.joined(separator: " ")
     }

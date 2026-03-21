@@ -10,6 +10,7 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Environment(AuthStore.self) private var authStore
+    @Environment(ThemeProvider.self) private var theme
     var onBackToOnboarding: () -> Void = {}
     @State private var isSigningIn = false
     @State private var errorMessage: String?
@@ -31,11 +32,11 @@ struct OnboardingView: View {
             Button(action: onBackToOnboarding) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                     .frame(width: 40, height: 40)
-                    .background(OnboardingDesign.glassBg)
+                    .background(theme.glassBg)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(OnboardingDesign.glassBorder, lineWidth: 1))
+                    .overlay(Circle().stroke(theme.glassBorder, lineWidth: 1))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.leading, 20)
@@ -56,12 +57,12 @@ struct OnboardingView: View {
                 .tracking(-1.2)
                 .lineSpacing(2)
                 .multilineTextAlignment(.center)
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .padding(.bottom, 10)
 
             Text("Breathe, reflect, and grow with intelligent guidance tailored to you")
                 .font(.system(size: 15))
-                .foregroundColor(OnboardingDesign.textSecondary)
+                .foregroundColor(theme.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
                 .frame(maxWidth: 240)
@@ -89,16 +90,16 @@ struct OnboardingView: View {
 
             Image(systemName: "cloud.fill")
                 .font(.system(size: 32))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
         }
     }
 
     private var aiBadge: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(OnboardingDesign.accentGreen)
+                .fill(theme.accentGreen)
                 .frame(width: 6, height: 6)
-                .shadow(color: OnboardingDesign.accentGreen.opacity(0.8), radius: 3)
+                .shadow(color: theme.accentGreen.opacity(0.8), radius: 3)
                 .scaleEffect(badgePulse ? 0.8 : 1)
                 .opacity(badgePulse ? 0.7 : 1)
                 .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: badgePulse)
@@ -106,7 +107,7 @@ struct OnboardingView: View {
             Text("AI-POWERED")
                 .font(.system(size: 11, weight: .semibold))
                 .tracking(0.08 * 11)
-                .foregroundColor(OnboardingDesign.accentGreen)
+                .foregroundColor(theme.accentGreen)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 5)
@@ -123,13 +124,13 @@ struct OnboardingView: View {
         VStack(spacing: 12) {
             aiFeatureRow(
                 iconName: "lightbulb.fill",
-                iconColor: OnboardingDesign.accentGreen,
+                iconColor: theme.accentGreen,
                 title: "Smart Insights",
                 desc: "Personalized recommendations every day"
             )
             aiFeatureRow(
                 iconName: "clock.fill",
-                iconColor: OnboardingDesign.accentBlue,
+                iconColor: theme.accentBlue,
                 title: "Adaptive Sessions",
                 desc: "Learns your rhythm and adjusts with you"
             )
@@ -150,10 +151,10 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                 Text(desc)
                     .font(.system(size: 12))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -184,7 +185,7 @@ struct OnboardingView: View {
 
             if isSigningIn {
                 ProgressView()
-                    .tint(OnboardingDesign.textPrimary)
+                    .tint(theme.textPrimary)
             }
 
             if let msg = errorMessage {
@@ -197,10 +198,10 @@ struct OnboardingView: View {
             Button(action: onBackToOnboarding) {
                 HStack(spacing: 4) {
                     Text("New to Airy?")
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                     Text("Create account")
                         .fontWeight(.semibold)
-                        .foregroundColor(OnboardingDesign.accentGreen)
+                        .foregroundColor(theme.accentGreen)
                 }
                 .font(.system(size: 14))
             }
@@ -211,7 +212,7 @@ struct OnboardingView: View {
                 signInDemo()
             }
             .font(.system(size: 14))
-            .foregroundColor(OnboardingDesign.textTertiary)
+            .foregroundColor(theme.textTertiary)
             .disabled(isSigningIn)
             #endif
         }

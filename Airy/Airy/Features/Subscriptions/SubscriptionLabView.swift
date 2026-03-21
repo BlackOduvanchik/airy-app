@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SubscriptionLabView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(ThemeProvider.self) private var theme
     @State private var viewModel: SubscriptionLabViewModel
 
     init(subscriptions: [Subscription], insights: [SubscriptionInsight]) {
@@ -24,7 +25,7 @@ struct SubscriptionLabView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     headerSection
-                    smartAnalysisSection
+                    savingsCard
                     optimizationOpportunitiesSection
                     bottomInsightsSection
                 }
@@ -42,13 +43,15 @@ struct SubscriptionLabView: View {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
             }
             ToolbarItem(placement: .principal) {
-                Text("OPTIMIZATION ENGINE")
+                Text(L("sublab_header"))
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(0.5)
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
             }
         }
     }
@@ -56,71 +59,63 @@ struct SubscriptionLabView: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        Text("Subscription Lab")
+        Text(L("sublab_title"))
             .font(.system(size: 34, weight: .light))
             .tracking(-0.5)
             .lineSpacing(4)
-            .foregroundColor(OnboardingDesign.textPrimary)
+            .foregroundColor(theme.textPrimary)
             .multilineTextAlignment(.center)
     }
 
-    // MARK: - Smart Analysis
+    // MARK: - Savings Card
 
-    private var smartAnalysisSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("SMART ANALYSIS")
+    private var savingsCard: some View {
+        VStack(spacing: 4) {
+            Text(L("sublab_total_savings"))
                 .font(.system(size: 12, weight: .semibold))
                 .tracking(1)
-                .foregroundColor(OnboardingDesign.textTertiary)
-                .padding(.leading, 4)
+                .foregroundColor(theme.textTertiary)
+                .padding(.bottom, 8)
 
-            VStack(spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(OnboardingDesign.aiGlow.opacity(0.15))
-                        .frame(width: 32, height: 32)
-                        .overlay(
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 16))
-                                .foregroundColor(OnboardingDesign.aiGlow)
-                        )
-                    Text(viewModel.aiSummaryText)
-                        .font(.system(size: 14, weight: .medium))
-                        .lineSpacing(4)
-                        .foregroundColor(OnboardingDesign.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                if viewModel.totalYearlySavings > 0 {
-                    Rectangle()
-                        .fill(OnboardingDesign.glassBorder)
-                        .frame(height: 1)
-
-                    HStack {
-                        Text("Yearly Total Potential Savings")
-                            .font(.system(size: 12))
-                            .foregroundColor(OnboardingDesign.textSecondary)
-                        Spacer()
-                        Text(fmtCur(viewModel.totalYearlySavings))
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(OnboardingDesign.accentGreen)
-                    }
-                }
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(fmtCur(viewModel.totalYearlySavings))
+                    .font(.system(size: 48, weight: .semibold))
+                    .tracking(-1)
+                    .foregroundColor(theme.textPrimary)
+                Text("/" + L("sublab_yr"))
+                    .font(.system(size: 20))
+                    .foregroundColor(theme.textSecondary)
             }
-            .padding(20)
-            .modifier(SubsGlassModifier())
+
+            HStack(spacing: 6) {
+                Image(systemName: "dollarsign")
+                    .font(.system(size: 12, weight: .bold))
+                Text(viewModel.optimizableCount > 0
+                     ? L("sublab_ready_optimize")
+                     : L("sublab_all_good"))
+                    .font(.system(size: 12, weight: .bold))
+            }
+            .foregroundColor(theme.accentGreen)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(theme.accentGreen.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.top, 12)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .padding(.horizontal, 24)
+        .modifier(SubsGlassModifier())
     }
 
     // MARK: - Optimization Opportunities
 
     private var optimizationOpportunitiesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("OPTIMIZATION OPPORTUNITIES")
+            Text(L("sublab_recommendations"))
                 .font(.system(size: 12, weight: .semibold))
                 .tracking(1)
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
                 .padding(.leading, 4)
 
             VStack(spacing: 8) {
@@ -157,10 +152,10 @@ struct SubscriptionLabView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(sub.merchant)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                 Text(item.secondaryText)
                     .font(.system(size: 11))
-                    .foregroundColor(item.hasSavings ? OnboardingDesign.accentAmber : OnboardingDesign.textTertiary)
+                    .foregroundColor(item.hasSavings ? theme.accentAmber : theme.textTertiary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,7 +163,7 @@ struct SubscriptionLabView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(formatAmount(sub.amount, sub.currency))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                 if item.hasSavings {
                     savingsPill(yearly: item.yearlySavings)
                 }
@@ -190,18 +185,18 @@ struct SubscriptionLabView: View {
         let (text, gradient): (String, LinearGradient) = {
             switch badge {
             case .unused:
-                return ("Unused", LinearGradient(
-                    colors: [OnboardingDesign.aiGlow, OnboardingDesign.aiGlow.opacity(0.8)],
+                return (L("sublab_unused"), LinearGradient(
+                    colors: [theme.aiGlow, theme.aiGlow.opacity(0.8)],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
             case .tierDown:
-                return ("Tier Down", LinearGradient(
-                    colors: [OnboardingDesign.aiGlow, OnboardingDesign.aiGlow.opacity(0.8)],
+                return (L("sublab_tier_down"), LinearGradient(
+                    colors: [theme.aiGlow, theme.aiGlow.opacity(0.8)],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
             case .savePercent(let pct):
-                return ("Save \(pct)%", LinearGradient(
-                    colors: [OnboardingDesign.accentGreen, OnboardingDesign.accentGreen.opacity(0.8)],
+                return (L("sublab_save_pct", "\(pct)"), LinearGradient(
+                    colors: [theme.accentGreen, theme.accentGreen.opacity(0.8)],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
             }
@@ -219,18 +214,18 @@ struct SubscriptionLabView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.white.opacity(0.4), lineWidth: 1)
             )
-            .shadow(color: OnboardingDesign.aiGlow.opacity(0.3), radius: 4, x: 0, y: 2)
+            .shadow(color: theme.aiGlow.opacity(0.3), radius: 4, x: 0, y: 2)
     }
 
     // MARK: - Savings pill
 
     private func savingsPill(yearly: Double) -> some View {
-        Text("-\(fmtCur(yearly))/yr")
+        Text(L("sublab_savings_yr", fmtCur(yearly)))
             .font(.system(size: 11, weight: .bold))
-            .foregroundColor(OnboardingDesign.accentGreen)
+            .foregroundColor(theme.accentGreen)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(OnboardingDesign.accentGreen.opacity(0.12))
+            .background(theme.accentGreen.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -244,11 +239,11 @@ struct SubscriptionLabView: View {
                     HStack(alignment: .top, spacing: 14) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 18))
-                            .foregroundColor(OnboardingDesign.aiGlow)
+                            .foregroundColor(theme.aiGlow)
                         Text(text)
                             .font(.system(size: 14))
                             .lineSpacing(4)
-                            .foregroundColor(OnboardingDesign.textPrimary)
+                            .foregroundColor(theme.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -263,20 +258,13 @@ struct SubscriptionLabView: View {
     // MARK: - Helpers
 
     private func fmtCur(_ value: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = BaseCurrencyStore.baseCurrency
-        f.maximumFractionDigits = 0
-        f.minimumFractionDigits = 0
-        return f.string(from: NSNumber(value: value)) ?? "$0"
+        AppFormatters.currency(code: BaseCurrencyStore.baseCurrency, fractionDigits: 0)
+            .string(from: NSNumber(value: value)) ?? "$0"
     }
 
     private func formatAmount(_ amount: Double, _ currency: String) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = currency
-        f.maximumFractionDigits = 2
-        return f.string(from: NSNumber(value: amount)) ?? "\(amount) \(currency)"
+        AppFormatters.currency(code: currency, fractionDigits: 2)
+            .string(from: NSNumber(value: amount)) ?? "\(amount) \(currency)"
     }
 
     private func merchantColor(_ merchant: String) -> Color {
@@ -287,7 +275,7 @@ struct SubscriptionLabView: View {
         if m.contains("headspace") { return Color(red: 0.98, green: 0.365, blue: 0.365) }
         if m.contains("adobe") { return Color(red: 0.176, green: 0.243, blue: 0.314) }
         if m.contains("nyt") || m.contains("new york") { return Color(red: 0.071, green: 0.071, blue: 0.071) }
-        return OnboardingDesign.accentBlue
+        return theme.accentBlue
     }
 }
 

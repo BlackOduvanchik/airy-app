@@ -8,17 +8,19 @@
 import SwiftUI
 
 struct IconLibraryView: View {
+    @Environment(ThemeProvider.self) private var theme
     @Binding var selectedIcon: String
     var onDismiss: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
+    @State private var debouncedSearch = ""
     @State private var selectedTab = "All"
 
     private let tabIds = ["All"] + SFSymbolsCatalog.categoryOrder
 
     private var filteredBySearch: [String: [String]] {
-        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        let q = debouncedSearch.trimmingCharacters(in: .whitespaces).lowercased()
         if q.isEmpty {
             return SFSymbolsCatalog.byCategory
         }
@@ -65,12 +67,12 @@ struct IconLibraryView: View {
                     onDismiss()
                     dismiss()
                 } label: {
-                    Text("Select Icon")
+                    Text(L("iconlib_select"))
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 18)
-                        .background(OnboardingDesign.textPrimary)
+                        .background(theme.isDark ? Color.white.opacity(0.15) : theme.textPrimary)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                 }
                 .buttonStyle(.plain)
@@ -79,7 +81,7 @@ struct IconLibraryView: View {
                 .padding(.bottom, 24)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(red: 0.956, green: 0.969, blue: 0.961).ignoresSafeArea())
+            .background { OnboardingGradientBackground().ignoresSafeArea() }
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -91,34 +93,40 @@ struct IconLibraryView: View {
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("ICON LIBRARY")
+                    Text(L("iconlib_title"))
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.5)
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
             }
         }
         .presentationDragIndicator(.visible)
+        .task(id: searchText) {
+            try? await Task.sleep(for: .milliseconds(300))
+            debouncedSearch = searchText
+        }
     }
 
     private var searchSection: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 18, weight: .medium))
-                .foregroundColor(OnboardingDesign.textTertiary)
-            TextField("Search 500+ icons...", text: $searchText)
+                .foregroundColor(theme.textTertiary)
+            TextField("", text: $searchText, prompt: Text(L("iconlib_search")).foregroundStyle(theme.textTertiary))
                 .font(.system(size: 16))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
         }
         .padding(14)
         .padding(.leading, 14)
-        .background(Color.white.opacity(0.6))
+        .background(Color.white.opacity(theme.isDark ? 0.08 : 0.6))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.white.opacity(0.8), lineWidth: 1)
+                .stroke(Color.white.opacity(theme.isDark ? 0.12 : 0.8), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .shadow(color: .black.opacity(0.02), radius: 12, x: 0, y: 4)
@@ -135,12 +143,12 @@ struct IconLibraryView: View {
                     } label: {
                         Text(tab)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(selectedTab == tab ? .white : OnboardingDesign.textSecondary)
+                            .foregroundColor(selectedTab == tab ? .white : theme.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .fill(selectedTab == tab ? OnboardingDesign.textPrimary : Color.black.opacity(0.04))
+                                    .fill(selectedTab == tab ? theme.accentGreen : (theme.isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)))
                             )
                     }
                     .buttonStyle(.plain)
@@ -156,7 +164,7 @@ struct IconLibraryView: View {
             Text(title.uppercased())
                 .font(.system(size: 12, weight: .heavy))
                 .tracking(0.1)
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
                 .padding(.leading, 4)
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5), spacing: 12) {
@@ -181,19 +189,19 @@ struct IconLibraryView: View {
                         .font(.system(size: 24, weight: .medium))
                 }
             }
-            .foregroundColor(isSelected ? OnboardingDesign.accentGreen : OnboardingDesign.textPrimary)
+            .foregroundColor(isSelected ? theme.accentGreen : theme.textPrimary)
             .frame(maxWidth: .infinity)
             .aspectRatio(1, contentMode: .fit)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(isSelected ? Color.white : Color.white.opacity(0.5))
+                    .fill(isSelected ? Color.white.opacity(theme.isDark ? 0.15 : 1) : Color.white.opacity(theme.isDark ? 0.06 : 0.5))
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? OnboardingDesign.accentGreen : Color.white.opacity(0.8), lineWidth: 1)
+                    .stroke(isSelected ? theme.accentGreen : Color.white.opacity(theme.isDark ? 0.10 : 0.8), lineWidth: 1)
             )
-            .shadow(color: isSelected ? OnboardingDesign.accentGreen.opacity(0.1) : .clear, radius: 16, x: 0, y: 4)
+            .shadow(color: isSelected ? theme.accentGreen.opacity(0.1) : .clear, radius: 16, x: 0, y: 4)
         }
         .buttonStyle(.plain)
     }

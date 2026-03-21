@@ -141,7 +141,7 @@ enum SFSymbolsCatalog {
         "Health", "Shopping", "Work", "Nature", "Education",
     ]
 
-    static var allSymbols: [String] {
-        categoryOrder.flatMap { byCategory[$0] ?? [] }
-    }
+    static let allSymbols: [String] = categoryOrder.flatMap { byCategory[$0] ?? [] }
+    private static let _allSymbolsSet: Set<String> = Set(allSymbols)
+    static func contains(_ symbol: String) -> Bool { _allSymbolsSet.contains(symbol) }
 }

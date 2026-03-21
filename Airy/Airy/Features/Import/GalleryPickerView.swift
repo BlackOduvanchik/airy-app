@@ -15,6 +15,8 @@ import PhotosUI
 struct GalleryPickerView: UIViewControllerRepresentable {
     var onImagesPicked: ([UIImage]) -> Void
     var onCancel: () -> Void
+    /// Fires immediately when user confirms selection — use to dismiss gallery before images load.
+    var onPickConfirmed: (() -> Void)? = nil
 
     func makeUIViewController(context: Context) -> UIViewController {
         var config = PHPickerConfiguration()
@@ -28,16 +30,18 @@ struct GalleryPickerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onImagesPicked: onImagesPicked, onCancel: onCancel)
+        Coordinator(onImagesPicked: onImagesPicked, onCancel: onCancel, onPickConfirmed: onPickConfirmed)
     }
 
     class Coordinator: NSObject, PHPickerViewControllerDelegate {
         var onImagesPicked: ([UIImage]) -> Void
         var onCancel: () -> Void
+        var onPickConfirmed: (() -> Void)?
 
-        init(onImagesPicked: @escaping ([UIImage]) -> Void, onCancel: @escaping () -> Void) {
+        init(onImagesPicked: @escaping ([UIImage]) -> Void, onCancel: @escaping () -> Void, onPickConfirmed: (() -> Void)?) {
             self.onImagesPicked = onImagesPicked
             self.onCancel = onCancel
+            self.onPickConfirmed = onPickConfirmed
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
@@ -45,6 +49,11 @@ struct GalleryPickerView: UIViewControllerRepresentable {
                 onCancel()
                 return
             }
+            // Dismiss gallery immediately — don't wait for image loading
+            DispatchQueue.main.async { [weak self] in
+                self?.onPickConfirmed?()
+            }
+            // Load images in parallel on background queue
             let group = DispatchGroup()
             var images: [UIImage] = []
             let lock = NSLock()
@@ -61,9 +70,7 @@ struct GalleryPickerView: UIViewControllerRepresentable {
             }
             group.notify(queue: .main) { [weak self] in
                 guard let self = self else { return }
-                if images.isEmpty {
-                    self.onCancel()
-                } else {
+                if !images.isEmpty {
                     self.onImagesPicked(images)
                 }
             }

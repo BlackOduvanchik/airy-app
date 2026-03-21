@@ -48,12 +48,16 @@ final class PaywallViewModel {
     }
 
     func purchase() async {
+        await purchaseById(StoreKitService.productId)
+    }
+
+    func purchaseById(_ productId: String) async {
         isPurchasing = true
         errorMessage = nil
         defer { Task { @MainActor in isPurchasing = false } }
         do {
-            let list = try await storeKit.loadProducts()
-            guard let product = list.first else {
+            let list = try await storeKit.loadAllProProducts()
+            guard let product = list.first(where: { $0.id == productId }) ?? list.first else {
                 await MainActor.run { errorMessage = "Product not available" }
                 return
             }

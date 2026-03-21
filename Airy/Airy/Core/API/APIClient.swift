@@ -310,23 +310,50 @@ struct TransactionsListResponse: Codable {
     let hasMore: Bool?
 }
 
-struct PendingTransaction: Codable, Identifiable {
+struct PendingTransaction: Codable, Identifiable, Equatable {
     let id: String
     let payload: [String: AnyCodable]?
     let confidence: Double?
     let reason: String?
+    /// Pre-decoded payload; populated at construction time to avoid repeated JSON decode.
+    let cachedPayload: PendingTransactionPayload?
 
-    /// Decoded payload for display and edit; nil if payload is missing or malformed.
-    var decodedPayload: PendingTransactionPayload? {
-        guard let p = payload else { return nil }
-        let dict = p.mapValues(\.value)
-        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return nil }
-        return try? JSONDecoder().decode(PendingTransactionPayload.self, from: data)
+    var decodedPayload: PendingTransactionPayload? { cachedPayload }
+
+    // Exclude cachedPayload from Codable so existing JSON decoding paths are unaffected.
+    enum CodingKeys: String, CodingKey {
+        case id, payload, confidence, reason
     }
+
+    init(id: String, payload: [String: AnyCodable]?, confidence: Double?, reason: String?, cachedPayload: PendingTransactionPayload? = nil) {
+        self.id = id
+        self.payload = payload
+        self.confidence = confidence
+        self.reason = reason
+        self.cachedPayload = cachedPayload
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        payload = try c.decodeIfPresent([String: AnyCodable].self, forKey: .payload)
+        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence)
+        reason = try c.decodeIfPresent(String.self, forKey: .reason)
+        // Decode payload lazily for API path (rare); local path uses cachedPayload directly.
+        if let p = payload {
+            let dict = p.mapValues(\.value)
+            if let data = try? JSONSerialization.data(withJSONObject: dict) {
+                cachedPayload = try? JSONDecoder().decode(PendingTransactionPayload.self, from: data)
+            } else { cachedPayload = nil }
+        } else { cachedPayload = nil }
+    }
+
+    // Payload is immutable once created; id equality is sufficient.
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
 /// Typed shape of pending transaction payload from backend (all optional for robustness).
-struct PendingTransactionPayload: Codable {
+struct PendingTransactionPayload: Codable, Equatable {
     let type: String?
     let amountOriginal: Double?
     let currencyOriginal: String?
@@ -340,8 +367,6 @@ struct PendingTransactionPayload: Codable {
     let subcategory: String?
     /// When set, show "Possible duplicate of …" in review (probable duplicate of saved transaction).
     let probableDuplicateOfId: String?
-    /// When set, this transaction was extracted using a saved OCR template (not GPT).
-    let extractedByTemplateId: String?
 
     init(
         type: String? = nil,
@@ -355,8 +380,7 @@ struct PendingTransactionPayload: Codable {
         transactionTime: String? = nil,
         category: String? = nil,
         subcategory: String? = nil,
-        probableDuplicateOfId: String? = nil,
-        extractedByTemplateId: String? = nil
+        probableDuplicateOfId: String? = nil
     ) {
         self.type = type
         self.amountOriginal = amountOriginal
@@ -370,7 +394,6 @@ struct PendingTransactionPayload: Codable {
         self.category = category
         self.subcategory = subcategory
         self.probableDuplicateOfId = probableDuplicateOfId
-        self.extractedByTemplateId = extractedByTemplateId
     }
 }
 

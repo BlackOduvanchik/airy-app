@@ -10,16 +10,41 @@ import StoreKit
 
 struct ContentView: View {
     @Environment(AuthStore.self) private var authStore
+    @Environment(AppLockManager.self) private var appLockManager
     @AppStorage("AiryHasSeenOnboarding") private var hasSeenOnboarding = false
+    @State private var showSplash = true
 
     var body: some View {
-        Group {
+        ZStack {
+            Group {
+                if authStore.isLoggedIn {
+                    MainTabView()
+                } else if hasSeenOnboarding {
+                    OnboardingView(onBackToOnboarding: { hasSeenOnboarding = false })
+                } else {
+                    OnboardingFlowView(onFinish: { hasSeenOnboarding = true })
+                }
+            }
+
+            if showSplash {
+                SplashView()
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+
+            if appLockManager.isLocked {
+                AppLockView()
+                    .transition(.opacity)
+                    .zIndex(2)
+            }
+        }
+        .task {
             if authStore.isLoggedIn {
-                MainTabView()
-            } else if hasSeenOnboarding {
-                OnboardingView(onBackToOnboarding: { hasSeenOnboarding = false })
-            } else {
-                OnboardingFlowView(onFinish: { hasSeenOnboarding = true })
+                await DashboardViewModel.shared.load()
+            }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            withAnimation(.easeOut(duration: 0.6)) {
+                showSplash = false
             }
         }
         .task(id: authStore.userId) {
@@ -36,4 +61,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environment(AuthStore())
+        .environment(AppLockManager.shared)
 }

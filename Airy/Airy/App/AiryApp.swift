@@ -13,6 +13,8 @@ import BackgroundTasks
 struct AiryApp: App {
     @UIApplicationDelegateAdaptor(AiryAppDelegate.self) var appDelegate
     @State private var authStore = AuthStore()
+    @State private var themeProvider = ThemeProvider()
+    @State private var appLockManager = AppLockManager.shared
     private let modelContainer: ModelContainer = {
         let schema = Schema([LocalTransaction.self, LocalPendingTransaction.self])
         // Ensure Application Support exists before SwiftData creates the store (avoids CoreData 512 / "parent directory path reported as missing").
@@ -22,6 +24,9 @@ struct AiryApp: App {
         if !dirExistsBefore {
             try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         }
+        // SAFETY: Never remove or rename @Model stored properties without a SchemaMigrationPlan.
+        // SwiftData defaults to shouldDeleteIfMigrationFails: true — schema mismatch silently
+        // wipes the entire database. Adding new optional properties is safe (lightweight migration).
         let config = ModelConfiguration(url: storeURL)
         let container = try! ModelContainer(for: schema, configurations: [config])
         return container
@@ -47,14 +52,24 @@ struct AiryApp: App {
         WindowGroup {
             ContentView()
                 .environment(authStore)
+                .environment(themeProvider)
+                .environment(appLockManager)
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                     Task { @MainActor in
                         ImportViewModel.shared.resumeIfNeeded()
                         SubscriptionAnalysisService.shared.checkAndAnalyzeIfNeeded()
+                        if appLockManager.isLocked {
+                            appLockManager.authenticate()
+                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+                    appLockManager.lockIfNeeded()
                     ImportViewModel.shared.scheduleBackgroundProcessingIfNeeded()
+                    try? LocalDataStore.shared.context?.save()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
+                    try? LocalDataStore.shared.context?.save()
                 }
         }
         .modelContainer(modelContainer)

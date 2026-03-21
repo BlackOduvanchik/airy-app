@@ -8,28 +8,34 @@
 import SwiftUI
 
 private let designColors: [String] = [
-    // Row 1: bright
-    "#E50914", "#1DB954", "#0061FF", "#FF9900",
-    "#9B51E0", "#00A67E", "#E07A5F", "#000000",
-    // Row 2: muted analogues
-    "#C4956A", "#67A082", "#3D5A80", "#E8A838",
-    "#9B7EC8", "#7B9DAB", "#E07A7A", "#5E7A6B",
+    // Pastel
+    "#BFE8D2", "#C9D8C5", "#BFE7E3", "#C7DBF7", "#D1D7FA", "#DCCEF8",
+    "#F6D1DC", "#F8D6BF", "#F6E7B8", "#EBC9B8", "#D8D2E8", "#E7D1C8",
+    // Vivid
+    "#34C27A", "#4D8F63", "#22B8B0", "#4A90E2", "#6C7CF0", "#9B6DF2",
+    "#EC6FA9", "#F28A6A", "#E9B949", "#D9825B", "#B85FD6", "#D97C8E",
+    // Bold
+    "#111111", "#FF3B30", "#2F80FF", "#7ED957", "#FF4FA3", "#FF7A1A",
 ]
 
 struct NewCategorySheetView: View {
+    @Environment(ThemeProvider.self) private var theme
     var existing: Category? = nil
     var onCreate: (Category) -> Void
     var onCreateSubcategory: ((Subcategory) -> Void)?
     var onUpdate: ((Category) -> Void)?
+    var onDelete: ((Category) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var shortDescription = ""
     @State private var selectedIcon = "creditcard.fill"
-    @State private var selectedColorHex = "#1DB954"
+    @State private var selectedColorHex = "#34C27A"
     @State private var parentCategoryId: String? = nil
     @State private var showParentPicker = false
     @State private var showIconLibrary = false
+    @State private var showDeleteConfirm = false
     @State private var quickPickIcons: [String] = []
+    @State private var didAppear = false
 
     private var parentCategory: Category? {
         guard let id = parentCategoryId else { return nil }
@@ -42,7 +48,7 @@ struct NewCategorySheetView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ScrollView(.vertical, showsIndicators: false) {
+                ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 0) {
                         CategoryPreviewCard(
                             name: name,
@@ -52,13 +58,13 @@ struct NewCategorySheetView: View {
                         )
                         .padding(.bottom, 24)
 
-                        sectionLabel("Name")
-                        inputField(placeholder: "e.g. Subscriptions", text: $name)
+                        sectionLabel(L("newcat_name"))
+                        inputField(placeholder: L("newcat_name_placeholder"), text: $name)
 
-                        sectionLabel("Short description")
-                        inputField(placeholder: "e.g. Netflix, Spotify, iCloud", text: $shortDescription)
+                        sectionLabel(L("newcat_description"))
+                        inputField(placeholder: L("newcat_desc_placeholder"), text: $shortDescription)
 
-                        sectionLabel("Icon")
+                        sectionLabel(L("newcat_icon"))
                         CategoryIconGrid(
                             selectedIcon: $selectedIcon,
                             quickPickIcons: quickPickIcons,
@@ -66,58 +72,80 @@ struct NewCategorySheetView: View {
                         )
 
                         if !isEditMode {
-                            sectionLabel("Parent category")
+                            sectionLabel(L("newcat_parent"))
                             parentSelectButton
                         }
 
-                        sectionLabel("Icon color")
+                        sectionLabel(L("newcat_color"))
                         CategoryColorRow(selectedColorHex: $selectedColorHex)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                 }
+                .scrollIndicators(.hidden)
                 .scrollDismissesKeyboard(.interactively)
+                if isEditMode {
+                    deleteCategoryButton
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+                }
                 createButton
                     .padding(.horizontal, 20)
                     .padding(.bottom, 24)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(red: 0.956, green: 0.969, blue: 0.961).ignoresSafeArea())
+            .background { OnboardingGradientBackground().ignoresSafeArea() }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text(isEditMode ? "EDIT CATEGORY" : "NEW CATEGORY")
+                    Text(isEditMode ? L("newcat_edit") : L("newcat_new"))
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.5)
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
             }
         }
         .presentationDragIndicator(.visible)
+        .alert(L("newcat_delete_title"), isPresented: $showDeleteConfirm) {
+            Button(L("newcat_delete_confirm"), role: .destructive) {
+                guard let cat = existing else { return }
+                onDelete?(cat)
+                dismiss()
+            }
+            Button(L("cancel"), role: .cancel) {}
+        } message: {
+            Text(L("newcat_delete_message"))
+        }
         .sheet(isPresented: $showParentPicker) {
             parentPickerSheet
+                .environment(theme)
         }
         .sheet(isPresented: $showIconLibrary) {
             IconLibraryView(selectedIcon: $selectedIcon) {
                 showIconLibrary = false
             }
+            .environment(theme)
         }
         .onAppear {
+            guard !didAppear else { return }
+            didAppear = true
             if quickPickIcons.isEmpty {
                 quickPickIcons = Array(SFSymbolsCatalog.allSymbols.filter { !SFSymbolsCatalog.isLetter($0) }.shuffled().prefix(5))
             }
             if let e = existing {
                 name = e.name
                 let icon = e.iconName ?? defaultIconForCategoryId(e.id)
-                selectedIcon = SFSymbolsCatalog.allSymbols.contains(icon) ? icon : "tag.fill"
+                selectedIcon = SFSymbolsCatalog.contains(icon) ? icon : "tag.fill"
                 selectedColorHex = e.colorHex
             }
         }
@@ -126,22 +154,22 @@ struct NewCategorySheetView: View {
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
             .font(.system(size: 12, weight: .bold))
-            .foregroundColor(OnboardingDesign.textTertiary)
+            .foregroundColor(theme.textTertiary)
             .tracking(0.5)
             .padding(.leading, 4)
             .padding(.bottom, 10)
     }
 
     private func inputField(placeholder: String, text: Binding<String>) -> some View {
-        TextField(placeholder, text: text)
+        TextField("", text: text, prompt: Text(placeholder).foregroundStyle(theme.textTertiary))
             .font(.system(size: 15))
-            .foregroundColor(OnboardingDesign.textPrimary)
+            .foregroundColor(theme.textPrimary)
             .padding(14)
             .padding(.horizontal, 2)
-            .background(Color.white.opacity(0.6))
+            .background(Color.white.opacity(theme.isDark ? 0.08 : 0.6))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.8), lineWidth: 1)
+                    .stroke(Color.white.opacity(theme.isDark ? 0.12 : 0.8), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .padding(.bottom, 22)
@@ -158,20 +186,20 @@ struct NewCategorySheetView: View {
                         .frame(width: 30, height: 30)
                     Image(systemName: parentCategory.map { iconForCategory($0) } ?? "folder")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(parentCategory?.color ?? OnboardingDesign.textTertiary)
+                        .foregroundColor(parentCategory?.color ?? theme.textTertiary)
                 }
-                Text(parentCategory?.name ?? "None (top-level)")
+                Text(parentCategory?.name ?? L("newcat_parent_none"))
                     .font(.system(size: 15, weight: parentCategory != nil ? .medium : .regular))
-                    .foregroundColor(parentCategory != nil ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                    .foregroundColor(parentCategory != nil ? theme.textPrimary : theme.textTertiary)
                 Spacer()
                 Image(systemName: "chevron.down")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
             }
             .padding(13)
             .padding(.horizontal, 3)
-            .background(Color.white.opacity(0.4))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.7), lineWidth: 1))
+            .background(Color.white.opacity(theme.isDark ? 0.06 : 0.4))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(theme.isDark ? 0.10 : 0.7), lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
@@ -201,16 +229,40 @@ struct NewCategorySheetView: View {
         Button {
             submit()
         } label: {
-            Text(isEditMode ? "Save Changes" : "Create Category")
+            Text(isEditMode ? L("newcat_save") : L("newcat_create"))
                 .font(.system(size: 16, weight: .bold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(16)
+                .background(theme.isDark ? Color.white.opacity(0.15) : theme.textPrimary)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
         }
-        .background(OnboardingDesign.textPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 18))
         .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         .opacity(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1)
+    }
+
+    private var deleteCategoryButton: some View {
+        Button {
+            showDeleteConfirm = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "trash")
+                    .font(.system(size: 15, weight: .medium))
+                Text(L("newcat_delete"))
+                    .font(.system(size: 16, weight: .medium))
+            }
+            .foregroundColor(theme.textDanger)
+            .frame(maxWidth: .infinity)
+            .padding(16)
+            .background(theme.textDanger.opacity(0.07))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(theme.textDanger.opacity(0.15), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+        }
         .buttonStyle(.plain)
     }
 
@@ -236,6 +288,7 @@ struct NewCategorySheetView: View {
 
 /// Preview card — only re-renders when its inputs change, not on focusedField changes.
 private struct CategoryPreviewCard: View {
+    @Environment(ThemeProvider.self) private var theme
     let name: String
     let shortDescription: String
     let selectedIcon: String
@@ -244,7 +297,7 @@ private struct CategoryPreviewCard: View {
     var body: some View {
         let displayName = name.isEmpty ? "Category name" : name
         let displaySub = shortDescription.isEmpty ? "Short description" : shortDescription
-        let color = Color(hex: selectedColorHex) ?? OnboardingDesign.accentGreen
+        let color = Color(hex: selectedColorHex) ?? theme.accentGreen
 
         HStack(spacing: 16) {
             ZStack {
@@ -264,21 +317,21 @@ private struct CategoryPreviewCard: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(displayName)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                 Text(displaySub)
                     .font(.system(size: 12))
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Circle()
-                .fill(Color(red: 0.956, green: 0.969, blue: 0.961))
+                .fill(theme.bgTop.opacity(0.5))
                 .frame(width: 20, height: 20)
-                .overlay(Circle().stroke(Color(red: 0.89, green: 0.91, blue: 0.90), lineWidth: 1.5))
+                .overlay(Circle().stroke(theme.glassBorder, lineWidth: 1.5))
         }
         .padding(14)
         .padding(.horizontal, 2)
-        .background(Color.white)
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(OnboardingDesign.accentGreen.opacity(0.2), lineWidth: 1))
+        .background(Color.white.opacity(theme.isDark ? 0.08 : 1))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.accentGreen.opacity(0.2), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.04), radius: 16, x: 0, y: 4)
     }
@@ -286,6 +339,7 @@ private struct CategoryPreviewCard: View {
 
 /// Icon grid — only re-renders when selectedIcon or quickPickIcons change, not on text/focus changes.
 private struct CategoryIconGrid: View {
+    @Environment(ThemeProvider.self) private var theme
     @Binding var selectedIcon: String
     let quickPickIcons: [String]
     var onShowLibrary: () -> Void
@@ -313,13 +367,13 @@ private struct CategoryIconGrid: View {
                                 .font(.system(size: 20, weight: .medium))
                         }
                     }
-                    .foregroundColor(isSelected ? OnboardingDesign.accentGreen : OnboardingDesign.textSecondary)
+                    .foregroundColor(isSelected ? theme.accentGreen : theme.textSecondary)
                     .frame(maxWidth: .infinity)
                     .aspectRatio(1, contentMode: .fit)
-                    .background(isSelected ? Color.white : Color.white.opacity(0.4))
+                    .background(isSelected ? Color.white.opacity(theme.isDark ? 0.15 : 1) : Color.white.opacity(theme.isDark ? 0.06 : 0.4))
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
-                            .stroke(isSelected ? OnboardingDesign.accentGreen : Color.white.opacity(0.6), lineWidth: isSelected ? 1.5 : 1)
+                            .stroke(isSelected ? theme.accentGreen : Color.white.opacity(theme.isDark ? 0.08 : 0.6), lineWidth: isSelected ? 1.5 : 1)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
@@ -330,13 +384,13 @@ private struct CategoryIconGrid: View {
             } label: {
                 Image(systemName: "square.grid.2x2")
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
                     .frame(maxWidth: .infinity)
                     .aspectRatio(1, contentMode: .fit)
-                    .background(Color.white.opacity(0.4))
+                    .background(Color.white.opacity(theme.isDark ? 0.06 : 0.4))
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                            .stroke(Color.white.opacity(theme.isDark ? 0.08 : 0.6), lineWidth: 1)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
@@ -348,10 +402,11 @@ private struct CategoryIconGrid: View {
 
 /// Color row — only re-renders when selectedColorHex changes, not on text/focus/icon changes.
 private struct CategoryColorRow: View {
+    @Environment(ThemeProvider.self) private var theme
     @Binding var selectedColorHex: String
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 8), spacing: 10) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 10) {
             ForEach(designColors, id: \.self) { hex in
                 let isSelected = selectedColorHex == hex
                 let color = Color(hex: hex) ?? .gray
@@ -367,7 +422,7 @@ private struct CategoryColorRow: View {
                         .overlay(
                             isSelected ?
                                 Circle()
-                                    .stroke(OnboardingDesign.textPrimary, lineWidth: 2)
+                                    .stroke(theme.textPrimary, lineWidth: 2)
                                     .scaleEffect(1.35)
                                 : nil
                         )
@@ -383,6 +438,7 @@ private struct CategoryColorRow: View {
 // MARK: - Parent Category Picker
 
 struct ParentCategoryPickerSheet: View {
+    @Environment(ThemeProvider.self) private var theme
     @Binding var selectedParentId: String?
     @Environment(\.dismiss) private var dismiss
 
@@ -395,11 +451,11 @@ struct ParentCategoryPickerSheet: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 4) {
-                        parentOption(id: nil, name: "None", sub: "Top-level category", color: nil, icon: "minus.circle")
+                        parentOption(id: nil, name: L("common_none"), sub: L("categories_top_level"), color: nil, icon: "minus.circle")
                             .padding(.bottom, 6)
 
                         Rectangle()
-                            .fill(Color.black.opacity(0.06))
+                            .fill(theme.isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.06))
                             .frame(height: 1)
                             .padding(.vertical, 6)
 
@@ -410,37 +466,41 @@ struct ParentCategoryPickerSheet: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                 }
+                .scrollIndicators(.hidden)
 
                 Button {
                     dismiss()
                 } label: {
-                    Text("Confirm")
+                    Text(L("common_confirm"))
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(16)
+                        .background(theme.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
                 }
-                .background(OnboardingDesign.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 18))
                 .buttonStyle(.plain)
+                .contentShape(RoundedRectangle(cornerRadius: 18))
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(red: 0.956, green: 0.969, blue: 0.961).ignoresSafeArea())
+            .background { OnboardingGradientBackground().ignoresSafeArea() }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("PARENT CATEGORY")
+                    Text(L("categories_parent"))
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.5)
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
             }
@@ -460,21 +520,21 @@ struct ParentCategoryPickerSheet: View {
                         .frame(width: 40, height: 40)
                     Image(systemName: icon)
                         .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(color ?? OnboardingDesign.textTertiary)
+                        .foregroundColor(color ?? theme.textTertiary)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(name)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                     Text(sub)
                         .font(.system(size: 12))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if isSelected {
                     ZStack {
                         Circle()
-                            .fill(color ?? OnboardingDesign.accentGreen)
+                            .fill(color ?? theme.accentGreen)
                             .frame(width: 22, height: 22)
                         Image(systemName: "checkmark")
                             .font(.system(size: 10, weight: .bold))
@@ -484,10 +544,10 @@ struct ParentCategoryPickerSheet: View {
             }
             .padding(12)
             .padding(.horizontal, 2)
-            .background(isSelected ? Color.white : Color.clear)
+            .background(isSelected ? Color.white.opacity(theme.isDark ? 0.12 : 1) : Color.clear)
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
-                    .stroke(isSelected ? OnboardingDesign.accentGreen.opacity(0.25) : Color.clear, lineWidth: 1.5)
+                    .stroke(isSelected ? theme.accentGreen.opacity(0.25) : Color.clear, lineWidth: 1.5)
             )
             .clipShape(RoundedRectangle(cornerRadius: 18))
             .shadow(color: isSelected ? Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.06) : .clear, radius: 8, x: 0, y: 2)

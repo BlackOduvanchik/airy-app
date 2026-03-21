@@ -80,6 +80,13 @@ final class MerchantAliasStore {
         }
     }
 
+    func clearAll() {
+        queue.sync(flags: .barrier) {
+            entries.removeAll()
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
     private func persist() {
         if let data = try? JSONEncoder().encode(entries) {
             UserDefaults.standard.set(data, forKey: key)
@@ -92,9 +99,14 @@ final class MerchantAliasStore {
         entries = decoded
     }
 
-    /// One-time: copy MerchantCorrectionStore corrections into confirmed aliases.
+    /// One-time: copy legacy merchant corrections into confirmed aliases.
     private func migrateFromMerchantCorrectionStore() {
-        let corrections = MerchantCorrectionStore.shared.loadAllForMigration()
+        struct LegacyCorrection: Codable {
+            let originalMerchant: String
+            let correctedMerchant: String
+        }
+        guard let data = UserDefaults.standard.data(forKey: "merchantCorrections"),
+              let corrections = try? JSONDecoder().decode([LegacyCorrection].self, from: data) else { return }
         queue.sync {
             var seen = Set<String>()
             for c in corrections {

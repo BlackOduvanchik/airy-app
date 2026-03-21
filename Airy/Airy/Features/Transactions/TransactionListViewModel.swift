@@ -30,12 +30,17 @@ final class TransactionListViewModel {
     var isLoading = false
     var errorMessage: String?
 
-    var searchText = ""
-    var selectedFilterId: String? = nil // nil = "All"
+    var searchText = "" { didSet { rebuildDerivedData() } }
+    var selectedFilterId: String? = nil { didSet { rebuildDerivedData() } }
     var categoryFilters: [CategoryFilterItem] = [CategoryFilterItem(id: "all", label: "All")]
     var refreshTrigger = 0
-    var pinnedIds: Set<String> = []
+    var pinnedIds: Set<String> = [] { didSet { rebuildDerivedData() } }
     private let pageSize = 50
+
+    // Cached derived data — rebuilt only when inputs change
+    private(set) var filteredTransactions: [Transaction] = []
+    private(set) var pinnedTransactions: [Transaction] = []
+    private(set) var groupedByMonth: [TransactionMonthGroup] = []
 
     private let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -50,8 +55,10 @@ final class TransactionListViewModel {
         return f
     }()
 
-    /// Filtered list by search and category.
-    var filteredTransactions: [Transaction] {
+    // MARK: - Derived data rebuild
+
+    private func rebuildDerivedData() {
+        // 1. Filter
         var list = transactions
         if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
             let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -68,20 +75,14 @@ final class TransactionListViewModel {
                 list = list.filter { $0.category == filterId }
             }
         }
-        return list.sorted { (a, b) in
-            (a.transactionDate, a.transactionTime ?? "") > (b.transactionDate, b.transactionTime ?? "")
-        }
-    }
+        list.sort { ($0.transactionDate, $0.transactionTime ?? "") > ($1.transactionDate, $1.transactionTime ?? "") }
+        filteredTransactions = list
 
-    /// Pinned transactions only (for Pinned Items section).
-    var pinnedTransactions: [Transaction] {
-        return filteredTransactions.filter { pinnedIds.contains($0.id) }
-            .sorted { (a, b) in (a.transactionDate, a.transactionTime ?? "") > (b.transactionDate, b.transactionTime ?? "") }
-    }
+        // 2. Pinned
+        pinnedTransactions = list.filter { pinnedIds.contains($0.id) }
 
-    /// Groups filtered transactions by month, excluding pinned; each group has total (expenses only).
-    var groupedByMonth: [TransactionMonthGroup] {
-        let nonPinned = filteredTransactions.filter { !pinnedIds.contains($0.id) }
+        // 3. Grouped (non-pinned only)
+        let nonPinned = list.filter { !pinnedIds.contains($0.id) }
         var groupDict: [String: (monthLabel: String, total: Double, list: [Transaction])] = [:]
         for tx in nonPinned {
             let dateStr = String(tx.transactionDate.prefix(10))
@@ -96,14 +97,31 @@ final class TransactionListViewModel {
             var existing = groupDict[key] ?? (monthLabel, 0, [Transaction]())
             existing.list.append(tx)
             if tx.type.lowercased() != "income" {
-                existing.total += CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
+                existing.total += CurrencyService.amountInBase(
+                    amountOriginal: abs(tx.amountOriginal),
+                    currencyOriginal: tx.currencyOriginal,
+                    amountBase: tx.amountBase,
+                    baseCurrency: tx.baseCurrency
+                )
             }
             groupDict[key] = existing
         }
-        return groupDict.sorted { $0.key > $1.key }.map { key, value in
+        groupedByMonth = groupDict.sorted { $0.key > $1.key }.map { key, value in
             TransactionMonthGroup(id: key, monthLabel: value.monthLabel, total: value.total, transactions: value.list)
         }
     }
+
+    // MARK: - Mutations
+
+    /// Remove a deleted transaction from the in-memory list without reloading from DB.
+    /// Prevents the list from resetting to page 1 and losing scroll position.
+    func removeLocally(id: String) {
+        transactions.removeAll { $0.id == id }
+        pinnedIds.remove(id)
+        rebuildDerivedData()
+    }
+
+    // MARK: - Queries
 
     func isPinned(_ tx: Transaction) -> Bool {
         pinnedIds.contains(tx.id)
@@ -126,6 +144,7 @@ final class TransactionListViewModel {
                 hasMore = page.count == pageSize
             }
         }
+        rebuildDerivedData()
     }
 
     func load(append: Bool = false) async {
@@ -144,6 +163,7 @@ final class TransactionListViewModel {
                 hasMore = page.count == pageSize
                 buildCategoryFilters()
             }
+            rebuildDerivedData()
         }
     }
 

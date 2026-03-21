@@ -49,6 +49,10 @@ final class MerchantCategoryRuleStore {
         return loadAll()[normalized]?.subcategoryId
     }
 
+    func clearAll() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
     private func loadAll() -> [String: MerchantCategoryRule] {
         guard let data = UserDefaults.standard.data(forKey: key) else { return [:] }
         let decoded = try? JSONDecoder().decode([String: MerchantCategoryRule].self, from: data)

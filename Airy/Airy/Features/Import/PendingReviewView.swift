@@ -9,6 +9,7 @@ import SwiftUI
 
 struct PendingReviewView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(ThemeProvider.self) private var theme
     @State private var viewModel = PendingReviewViewModel()
     @State private var editPending: PendingTransaction?
     @State private var rememberRules: [String: Bool] = [:]
@@ -33,46 +34,48 @@ struct PendingReviewView: View {
                     .padding(20)
                     .padding(.bottom, 140)
                 }
+                .scrollIndicators(.hidden)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     headerSection
                     List {
-                        ForEach(viewModel.pending) { item in
-                            cardFor(item)
+                        ForEach(viewModel.cardDataList) { card in
+                            cardFor(card)
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                                 .listRowBackground(Color.clear)
                                 .listRowSpacing(8)
-                        }
-                        .onDelete { indexSet in
-                            let ids = indexSet.map { viewModel.pending[$0].id }
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-                                viewModel.removePendingLocally(ids: ids)
-                            }
-                            Task {
-                                for id in ids {
-                                    await viewModel.persistReject(id: id)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        withAnimation(.smooth(duration: 0.35)) {
+                                            viewModel.removePendingLocally(ids: [card.id])
+                                        }
+                                        Task { await viewModel.persistReject(id: card.id) }
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
-                            }
                         }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.86), value: viewModel.pending.count)
+                    .animation(.smooth(duration: 0.35), value: viewModel.cardDataList.map(\.id))
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 140)
             }
             stickyBottom
         }
-        .navigationTitle("Review Transactions")
+        .navigationTitle(L("pending_title"))
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.success, trigger: isSaving) { _, new in new }
         .task { await viewModel.load() }
         .sheet(item: $editPending) { pending in
+            let matchedInterval = viewModel.cardDataList.first { $0.id == pending.id }?.matchedSubscriptionInterval
             AddTransactionView(
                 pendingTransaction: pending,
                 rememberMerchant: rememberRules[pending.id] ?? true,
+                matchedSubscriptionInterval: matchedInterval,
                 onConfirm: { overrides, remember in
                     Task {
                         rememberRules[pending.id] = remember
@@ -82,27 +85,28 @@ struct PendingReviewView: View {
                 },
                 onCancel: { editPending = nil }
             )
+            .environment(theme)
         }
     }
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
-                Text("Review Transactions")
+                Text(L("pending_title"))
                     .font(.system(size: 24, weight: .bold))
                     .tracking(-0.5)
-                    .foregroundColor(OnboardingDesign.textPrimary)
-                Text("\(viewModel.pending.count) found")
+                    .foregroundColor(theme.textPrimary)
+                Text("\(viewModel.pending.count) \(L("pending_found"))")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(OnboardingDesign.accentGreen)
+                    .background(theme.accentGreen)
                     .clipShape(Capsule())
             }
-            Text("Tap to edit before saving")
+            Text(L("pending_subtitle"))
                 .font(.system(size: 14))
-                .foregroundColor(OnboardingDesign.textSecondary)
+                .foregroundColor(theme.textSecondary)
         }
         .padding(.vertical, 10)
     }
@@ -111,51 +115,40 @@ struct PendingReviewView: View {
         VStack(spacing: 12) {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 48))
-                .foregroundColor(OnboardingDesign.accentGreen)
-            Text("No pending transactions")
+                .foregroundColor(theme.accentGreen)
+            Text(L("pending_empty"))
                 .font(.system(size: 17, weight: .medium))
-                .foregroundColor(OnboardingDesign.textSecondary)
+                .foregroundColor(theme.textSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
     }
 
-    private func cardFor(_ item: PendingTransaction) -> some View {
-        guard let p = item.decodedPayload else { return AnyView(EmptyView()) }
-        let merchant = p.merchant ?? "Transaction"
-        let effectiveCategoryId = MerchantCategoryRuleStore.shared.categoryId(for: merchant) ?? p.category
-        let effectiveIcon: String = {
-            if let cid = effectiveCategoryId, !cid.isEmpty, cid != "other" {
-                return CategoryIconHelper.iconName(categoryId: cid)
-            }
-            return categoryIcon(for: merchant)
-        }()
-        let isLowConfidence = isLowConfidenceMerchant(merchant) || (item.confidence ?? 1) < 0.6
-        let dupText = viewModel.duplicateSeenText(for: p, excludePendingId: item.id)
+    @ViewBuilder
+    private func cardFor(_ card: ReviewCardData) -> some View {
         let binding = Binding(
-            get: { rememberRules[item.id] ?? true },
-            set: { rememberRules[item.id] = $0 }
+            get: { rememberRules[card.id] ?? true },
+            set: { rememberRules[card.id] = $0 }
         )
-        let isIncome = (p.type ?? "expense").lowercased() == "income"
-        let isViaTemplate = p.extractedByTemplateId != nil
-        return AnyView(
-            TransactionReviewCard(
-                merchant: merchant,
-                amount: p.amountOriginal ?? 0,
-                currency: p.currencyOriginal ?? "USD",
-                date: p.transactionDate ?? "",
-                time: p.transactionTime,
-                isIncome: isIncome,
-                categoryLabel: categoryLabel(for: merchant, categoryId: effectiveCategoryId),
-                categoryIcon: effectiveIcon,
-                isLowConfidence: isLowConfidence,
-                confidencePercent: isLowConfidence ? (item.confidence ?? 0.45) * 100 : nil,
-                isDuplicate: dupText != nil,
-                duplicateSeenText: dupText,
-                isViaTemplate: isViaTemplate,
-                rememberRule: binding,
-                onTap: { editPending = item }
-            )
+        TransactionReviewCard(
+            merchant: card.merchant,
+            amount: card.amount,
+            currency: card.currency,
+            date: card.date,
+            time: card.time,
+            isIncome: card.isIncome,
+            categoryLabel: card.categoryLabel,
+            subcategoryLabel: card.subcategoryLabel,
+            categoryIcon: card.categoryIcon,
+            isLowConfidence: card.isLowConfidence,
+            confidencePercent: card.confidencePercent,
+            isDuplicate: card.duplicateSeenText != nil,
+            duplicateSeenText: card.duplicateSeenText,
+            matchedSubscriptionInterval: card.matchedSubscriptionInterval,
+            rememberRule: binding,
+            onTap: {
+                editPending = viewModel.pending.first { $0.id == card.id }
+            }
         )
     }
 
@@ -164,7 +157,7 @@ struct PendingReviewView: View {
             Button {
                 Task { await saveAll() }
             } label: {
-                Text("Save All Transactions")
+                Text(L("pending_save_all"))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
@@ -172,7 +165,7 @@ struct PendingReviewView: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 24)
-                    .fill(OnboardingDesign.textPrimary)
+                    .fill(theme.textPrimary)
                     .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 8)
             )
             .disabled(viewModel.pending.isEmpty || isSaving)
@@ -181,9 +174,9 @@ struct PendingReviewView: View {
             Button {
                 Task { await skipBatch() }
             } label: {
-                Text("Skip this batch")
+                Text(L("pending_skip"))
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
             }
             .disabled(viewModel.pending.isEmpty || isSkipping)
         }
@@ -193,7 +186,7 @@ struct PendingReviewView: View {
         .frame(maxWidth: .infinity)
         .background(
             LinearGradient(
-                colors: [.clear, OnboardingDesign.bgBottomRight],
+                colors: [.clear, theme.bgBottomRight],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -214,31 +207,6 @@ struct PendingReviewView: View {
         await viewModel.rejectAll()
         isSkipping = false
         dismiss()
-    }
-
-    private func isLowConfidenceMerchant(_ merchant: String) -> Bool {
-        merchant.contains("_") || merchant.count < 3 || merchant == "Transaction"
-    }
-
-    private func categoryLabel(for merchant: String, categoryId: String?) -> String {
-        if let cat = categoryId, !cat.isEmpty, cat != "other" {
-            if let c = CategoryStore.byId(cat) { return c.name }
-        }
-        let m = merchant.lowercased()
-        if m.contains("coffee") || m.contains("food") || m.contains("restaurant") || m.contains("grocery") { return "Food & Drink" }
-        if m.contains("gas") || m.contains("shell") || m.contains("uber") || m.contains("taxi") || m.contains("transit") { return "Transportation" }
-        if m.contains("grocery") || m.contains("whole foods") || m.contains("market") { return "Groceries" }
-        if m.contains("netflix") || m.contains("spotify") || m.contains("hulu") || m.contains("entertainment") { return "Entertainment" }
-        return "Other"
-    }
-
-    private func categoryIcon(for merchant: String) -> String {
-        let m = merchant.lowercased()
-        if m.contains("coffee") || m.contains("food") || m.contains("restaurant") { return "cup.and.saucer.fill" }
-        if m.contains("gas") || m.contains("shell") || m.contains("uber") || m.contains("taxi") || m.contains("transit") { return "car.fill" }
-        if m.contains("grocery") || m.contains("whole foods") || m.contains("market") { return "bag.fill" }
-        if m.contains("netflix") || m.contains("spotify") || m.contains("hulu") { return "rectangle.grid.1x2.fill" }
-        return "creditcard.fill"
     }
 
 }

@@ -35,29 +35,31 @@ enum OnboardingDesign {
 // MARK: - Shared background
 
 struct OnboardingGradientBackground: View {
+    @Environment(ThemeProvider.self) private var theme
+
     var body: some View {
         ZStack {
-            OnboardingDesign.bgTop
+            theme.bgTop
             RadialGradient(
-                gradient: Gradient(colors: [OnboardingDesign.bgTop, .clear]),
+                gradient: Gradient(colors: [theme.bgTop, .clear]),
                 center: UnitPoint(x: 0.2, y: -0.1),
                 startRadius: 0,
                 endRadius: 400
             )
             RadialGradient(
-                gradient: Gradient(colors: [OnboardingDesign.bgBottomLeft, .clear]),
+                gradient: Gradient(colors: [theme.bgBottomLeft, .clear]),
                 center: UnitPoint(x: 0.1, y: 1.1),
                 startRadius: 0,
                 endRadius: 450
             )
             RadialGradient(
-                gradient: Gradient(colors: [OnboardingDesign.bgBottomRight, .clear]),
+                gradient: Gradient(colors: [theme.bgBottomRight, .clear]),
                 center: UnitPoint(x: 0.9, y: 1.1),
                 startRadius: 0,
                 endRadius: 400
             )
             RadialGradient(
-                gradient: Gradient(colors: [OnboardingDesign.glowCenter, .clear]),
+                gradient: Gradient(colors: [theme.glowCenter, .clear]),
                 center: UnitPoint(x: 0.5, y: 0.4),
                 startRadius: 0,
                 endRadius: 350
@@ -132,6 +134,7 @@ private extension View {
 // Design: inactive 6pt, active 18pt width, text-primary / rgba(30,45,36,0.15)
 
 struct OnboardingProgressDots: View {
+    @Environment(ThemeProvider.self) private var theme
     let currentPage: Int
     /// When true, active dot has stretching animation (page 0 only).
     var animateActiveDot: Bool = false
@@ -140,7 +143,7 @@ struct OnboardingProgressDots: View {
         HStack(spacing: 8) {
             ForEach(0..<6, id: \.self) { index in
                 Capsule()
-                    .fill(index == currentPage ? OnboardingDesign.textPrimary : OnboardingDesign.textPrimary.opacity(0.15))
+                    .fill(index == currentPage ? theme.textPrimary : theme.textPrimary.opacity(0.15))
                     .frame(width: dotWidth(for: index), height: 6)
             }
         }
@@ -157,16 +160,17 @@ struct OnboardingProgressDots: View {
 
 /// Progress dots with stretching animation on active (for page 0).
 struct OnboardingProgressDotsAnimated: View {
+    @Environment(ThemeProvider.self) private var theme
     @State private var activeWidth: CGFloat = 18
 
     var body: some View {
         HStack(spacing: 8) {
             Capsule()
-                .fill(OnboardingDesign.textPrimary)
+                .fill(theme.textPrimary)
                 .frame(width: activeWidth, height: 6)
             ForEach(1..<6, id: \.self) { _ in
                 Capsule()
-                    .fill(OnboardingDesign.textPrimary.opacity(0.15))
+                    .fill(theme.textPrimary.opacity(0.15))
                     .frame(width: 6, height: 6)
             }
         }
@@ -212,6 +216,7 @@ struct OnboardingPageLayout<Content: View, Bottom: View>: View {
 // MARK: - Flow container
 
 struct OnboardingFlowView: View {
+    @Environment(ThemeProvider.self) private var theme
     var onFinish: () -> Void
     @State private var currentPage = 0
 
@@ -241,6 +246,7 @@ struct OnboardingFlowView: View {
 // MARK: - Page 1: Welcome
 
 struct OnboardingWelcomePage: View {
+    @Environment(ThemeProvider.self) private var theme
     var onNext: () -> Void
     var onSkipToSignIn: () -> Void
 
@@ -260,7 +266,7 @@ struct OnboardingWelcomePage: View {
                     .font(.system(size: 13, weight: .medium))
                     .tracking(2.6)
                     .textCase(.uppercase)
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
                     .padding(.bottom, 24)
 
                 VStack(spacing: 8) {
@@ -269,10 +275,10 @@ struct OnboardingWelcomePage: View {
                         .tracking(-1)
                         .lineSpacing(2)
                         .multilineTextAlignment(.center)
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                     Text("A calm, intelligent space for your finances.")
                         .font(.system(size: 15, weight: .regular))
-                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .foregroundColor(theme.textSecondary)
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .frame(maxWidth: 300)
@@ -295,14 +301,14 @@ struct OnboardingWelcomePage: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                     }
-                    .background(OnboardingDesign.accentGreen)
+                    .background(theme.accentGreen)
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
-                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+                    .shadow(color: theme.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
                     Button(action: onSkipToSignIn) {
                         Text("I already have an account")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textTertiary)
+                            .foregroundColor(theme.textTertiary)
                             .frame(height: 44)
                     }
                 }
@@ -330,12 +336,12 @@ struct OnboardingWelcomePage: View {
     private var topSection: some View {
         ZStack {
             Circle()
-                .stroke(OnboardingDesign.accentBlue.opacity(0.05), lineWidth: 1)
+                .stroke(theme.accentBlue.opacity(0.05), lineWidth: 1)
                 .frame(width: 200, height: 200)
                 .scaleEffect(haloOuterScale)
                 .opacity(haloOuterOpacity)
             Circle()
-                .stroke(OnboardingDesign.accentBlue.opacity(0.1), lineWidth: 1)
+                .stroke(theme.accentBlue.opacity(0.1), lineWidth: 1)
                 .frame(width: 140, height: 140)
                 .scaleEffect(haloMidScale)
                 .opacity(haloMidOpacity)
@@ -368,7 +374,7 @@ struct OnboardingWelcomePage: View {
                 .offset(y: mascotOffset)
             Image(systemName: "cloud")
                 .font(.system(size: 48, weight: .regular))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .offset(y: mascotOffset)
         }
     }
@@ -377,6 +383,7 @@ struct OnboardingWelcomePage: View {
 // MARK: - Page 2: Screenshots
 
 struct OnboardingScreenshotsPage: View {
+    @Environment(ThemeProvider.self) private var theme
     var onNext: () -> Void
     var onSkip: () -> Void
 
@@ -392,11 +399,11 @@ struct OnboardingScreenshotsPage: View {
                         .tracking(-1)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
 
                     Text("Point your camera at any receipt or bank statement. Airy reads it instantly.")
                         .font(.system(size: 15))
-                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .foregroundColor(theme.textSecondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 300)
 
@@ -422,15 +429,15 @@ struct OnboardingScreenshotsPage: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                     }
-                    .background(OnboardingDesign.accentGreen)
+                    .background(theme.accentGreen)
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
-                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+                    .shadow(color: theme.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
 
                     Button(action: onSkip) {
                         Text("Skip")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textTertiary)
+                            .foregroundColor(theme.textTertiary)
                             .frame(height: 44)
                     }
                 }
@@ -461,13 +468,13 @@ struct OnboardingScreenshotsPage: View {
             .padding(12)
             .frame(width: 140, height: 260)
             .background(.ultraThinMaterial)
-            .overlay(OnboardingDesign.glassBg.opacity(0.5))
+            .overlay(theme.glassBg.opacity(0.5))
             .clipShape(RoundedRectangle(cornerRadius: 28))
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                    .stroke(theme.glassBorder, lineWidth: 1)
             )
-            .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+            .shadow(color: theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
         }
         .frame(width: 300, height: 320)
     }
@@ -489,7 +496,7 @@ struct OnboardingScreenshotsPage: View {
             }
             .trim(from: 0, to: 1)
             .stroke(
-                OnboardingDesign.accentBlue.opacity(0.4),
+                theme.accentBlue.opacity(0.4),
                 style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [8, 8], dashPhase: phase)
             )
             .frame(width: 300, height: 320)
@@ -499,13 +506,13 @@ struct OnboardingScreenshotsPage: View {
     private var cameraIconView: some View {
         ZStack {
             Circle()
-                .fill(OnboardingDesign.glassBg)
-                .overlay(Circle().stroke(OnboardingDesign.glassBorder, lineWidth: 1))
+                .fill(theme.glassBg)
+                .overlay(Circle().stroke(theme.glassBorder, lineWidth: 1))
                 .frame(width: 44, height: 44)
 
             Image(systemName: "camera.fill")
                 .font(.system(size: 20))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
         }
         .frame(width: 44, height: 44)
         .clipShape(Circle())
@@ -514,12 +521,12 @@ struct OnboardingScreenshotsPage: View {
     private func screenshotThumb(line1: CGFloat, line2: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(OnboardingDesign.textPrimary.opacity(0.1))
+                .fill(theme.textPrimary.opacity(0.1))
                 .frame(height: 4)
                 .frame(maxWidth: .infinity)
                 .scaleEffect(x: line1, y: 1, anchor: .leading)
             RoundedRectangle(cornerRadius: 2)
-                .fill(OnboardingDesign.textPrimary.opacity(0.1))
+                .fill(theme.textPrimary.opacity(0.1))
                 .frame(height: 4)
                 .frame(maxWidth: .infinity)
                 .scaleEffect(x: line2, y: 1, anchor: .leading)
@@ -538,13 +545,13 @@ struct OnboardingScreenshotsPage: View {
             Text("Powered by on-device AI")
                 .font(.system(size: 13, weight: .bold))
         }
-        .foregroundColor(OnboardingDesign.accentBlue)
+        .foregroundColor(theme.accentBlue)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(OnboardingDesign.glassBg)
+        .background(theme.glassBg)
         .clipShape(Capsule())
-        .overlay(Capsule().stroke(OnboardingDesign.glassBorder, lineWidth: 1))
-        .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 8, x: 0, y: 4)
+        .overlay(Capsule().stroke(theme.glassBorder, lineWidth: 1))
+        .shadow(color: theme.textPrimary.opacity(0.06), radius: 8, x: 0, y: 4)
         .padding(.top, 16)
     }
 }
@@ -552,6 +559,7 @@ struct OnboardingScreenshotsPage: View {
 // MARK: - Page 3: See where it all goes (spending viz + insight chips)
 
 struct OnboardingSpendingPage: View {
+    @Environment(ThemeProvider.self) private var theme
     var onNext: () -> Void
     var onSkip: () -> Void
     var isActive: Bool = true
@@ -564,7 +572,7 @@ struct OnboardingSpendingPage: View {
                     .tracking(-1)
                     .lineSpacing(2)
                     .multilineTextAlignment(.center)
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                     .padding(.bottom, 32)
 
                 spendingGlassPanel
@@ -573,7 +581,7 @@ struct OnboardingSpendingPage: View {
                 Text("AI reads your spending and explains it in plain language — no spreadsheets.")
                     .font(.system(size: 15))
                     .lineSpacing(2)
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 300)
 
@@ -596,15 +604,15 @@ struct OnboardingSpendingPage: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                     }
-                    .background(OnboardingDesign.accentGreen)
+                    .background(theme.accentGreen)
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
-                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+                    .shadow(color: theme.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
 
                     Button(action: onSkip) {
                         Text("Skip")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textTertiary)
+                            .foregroundColor(theme.textTertiary)
                             .frame(height: 44)
                     }
                 }
@@ -627,13 +635,13 @@ struct OnboardingSpendingPage: View {
         .padding(24)
         .frame(maxWidth: .infinity)
         .background(.ultraThinMaterial)
-        .overlay(OnboardingDesign.glassBg.opacity(0.6))
+        .overlay(theme.glassBg.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 28))
         .overlay(
             RoundedRectangle(cornerRadius: 28)
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .stroke(theme.glassBorder, lineWidth: 1)
         )
-        .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+        .shadow(color: theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
     }
 
     private var vizBar: some View {
@@ -641,13 +649,13 @@ struct OnboardingSpendingPage: View {
             let w = geo.size.width
             HStack(spacing: 0) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(OnboardingDesign.accentGreen.opacity(0.8))
+                    .fill(theme.accentGreen.opacity(0.8))
                     .frame(width: w * 0.45, height: 8)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(OnboardingDesign.accentBlue.opacity(0.8))
+                    .fill(theme.accentBlue.opacity(0.8))
                     .frame(width: w * 0.30, height: 8)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(OnboardingDesign.bgBottomRight.opacity(0.8))
+                    .fill(theme.bgBottomRight.opacity(0.8))
                     .frame(width: w * 0.25, height: 8)
             }
         }
@@ -659,9 +667,9 @@ struct OnboardingSpendingPage: View {
 
     private var vizLegend: some View {
         HStack(spacing: 12) {
-            legendItem(color: OnboardingDesign.accentGreen, label: "Food")
-            legendItem(color: OnboardingDesign.accentBlue, label: "Transport")
-            legendItem(color: OnboardingDesign.bgBottomRight, label: "Other")
+            legendItem(color: theme.accentGreen, label: "Food")
+            legendItem(color: theme.accentBlue, label: "Transport")
+            legendItem(color: theme.bgBottomRight, label: "Other")
         }
         .frame(maxWidth: .infinity)
         .padding(.top, -8)
@@ -675,7 +683,7 @@ struct OnboardingSpendingPage: View {
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
                 .textCase(.uppercase)
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
         }
     }
 
@@ -683,10 +691,10 @@ struct OnboardingSpendingPage: View {
         HStack(spacing: 12) {
             Image(systemName: "sparkles")
                 .font(.system(size: 18))
-                .foregroundColor(OnboardingDesign.accentBlue)
+                .foregroundColor(theme.accentBlue)
             Text(text)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
         }
@@ -705,6 +713,7 @@ struct OnboardingSpendingPage: View {
 // MARK: - Page 4: Never pay twice (subscription cards stack)
 
 struct OnboardingSubscriptionsPage: View {
+    @Environment(ThemeProvider.self) private var theme
     var onNext: () -> Void
     var onSkip: () -> Void
 
@@ -743,15 +752,15 @@ struct OnboardingSubscriptionsPage: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                     }
-                    .background(OnboardingDesign.accentGreen)
+                    .background(theme.accentGreen)
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
-                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+                    .shadow(color: theme.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
 
                     Button(action: onSkip) {
                         Text("Skip")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textTertiary)
+                            .foregroundColor(theme.textTertiary)
                             .frame(height: 44)
                     }
                 }
@@ -764,14 +773,14 @@ struct OnboardingSubscriptionsPage: View {
             Text("Never pay twice.")
                 .font(.system(size: 38, weight: .light))
                 .tracking(-1)
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 16)
 
             Text("Airy finds duplicate charges, forgotten trials, and quietly expensive subscriptions.")
                 .font(.system(size: 15))
                 .lineSpacing(1.5)
-                .foregroundColor(OnboardingDesign.textSecondary)
+                .foregroundColor(theme.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 280)
         }
@@ -790,7 +799,7 @@ struct OnboardingSubscriptionsPage: View {
                 price: "$52.99",
                 badge: nil,
                 badgeBottom: false,
-                cardBackground: OnboardingDesign.accentGreen.opacity(0.15)
+                cardBackground: theme.accentGreen.opacity(0.15)
             )
             .scaleEffect(0.92)
             .offset(y: card3Offset)
@@ -876,12 +885,12 @@ struct OnboardingSubscriptionsPage: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                 Text(pill)
                     .font(.system(size: 10, weight: .bold))
                     .textCase(.uppercase)
                     .tracking(0.5)
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
                     .background(Color.white.opacity(0.4))
@@ -891,18 +900,18 @@ struct OnboardingSubscriptionsPage: View {
 
             Text(price)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
         }
         .padding(16)
         .frame(maxWidth: cardMaxWidth)
-        .background(cardBackground ?? OnboardingDesign.glassBg)
+        .background(cardBackground ?? theme.glassBg)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .stroke(theme.glassBorder, lineWidth: 1)
         )
-        .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+        .shadow(color: theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
         .overlay(alignment: .topTrailing) {
             if let badge = badge, !badgeBottom {
                 badgeLabel(badge)
@@ -936,6 +945,7 @@ struct OnboardingSubscriptionsPage: View {
 // MARK: - Page 5: Your money has patterns (Money Mirror)
 
 struct OnboardingMirrorPage: View {
+    @Environment(ThemeProvider.self) private var theme
     var onNext: () -> Void
     var onSkip: () -> Void
 
@@ -948,12 +958,12 @@ struct OnboardingMirrorPage: View {
                         .tracking(-1)
                         .lineSpacing(2)
                         .multilineTextAlignment(.center)
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
 
                     Text("Money Mirror reflects your habits back to you — gently, honestly, and clearly.")
                         .font(.system(size: 15))
                         .lineSpacing(1.5)
-                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .foregroundColor(theme.textSecondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 300)
                 }
@@ -981,15 +991,15 @@ struct OnboardingMirrorPage: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                     }
-                    .background(OnboardingDesign.accentGreen)
+                    .background(theme.accentGreen)
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
-                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+                    .shadow(color: theme.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
 
                     Button(action: onSkip) {
                         Text("Skip for now")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textSecondary)
+                            .foregroundColor(theme.textSecondary)
                             .frame(height: 44)
                     }
                 }
@@ -1003,17 +1013,17 @@ struct OnboardingMirrorPage: View {
                 Text("MONEY MIRROR")
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(0.5)
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
                 Spacer()
                 Image(systemName: "sparkles")
                     .font(.system(size: 20))
-                    .foregroundColor(OnboardingDesign.accentBlue)
+                    .foregroundColor(theme.accentBlue)
             }
 
             VStack(spacing: 12) {
-                insightRow(accentColor: OnboardingDesign.accentGreen, emoji: "🗓️", text: "You tend to overspend on Fridays")
+                insightRow(accentColor: theme.accentGreen, emoji: "🗓️", text: "You tend to overspend on Fridays")
                 insightRow(accentColor: OnboardingDesign.accentAmber, emoji: "📈", text: "Subscriptions grew 18% this quarter")
-                insightRow(accentColor: OnboardingDesign.accentGreen, emoji: "🥗", text: "Your food budget has been consistent for 3 months ✓")
+                insightRow(accentColor: theme.accentGreen, emoji: "🥗", text: "Your food budget has been consistent for 3 months ✓")
             }
 
             sparklineView
@@ -1022,13 +1032,13 @@ struct OnboardingMirrorPage: View {
         }
         .padding(24)
         .background(.ultraThinMaterial)
-        .overlay(OnboardingDesign.glassBg.opacity(0.6))
+        .overlay(theme.glassBg.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 28))
         .overlay(
             RoundedRectangle(cornerRadius: 28)
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .stroke(theme.glassBorder, lineWidth: 1)
         )
-        .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+        .shadow(color: theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
     }
 
     private func insightRow(accentColor: Color, emoji: String, text: String) -> some View {
@@ -1039,7 +1049,7 @@ struct OnboardingMirrorPage: View {
             Text(text)
                 .font(.system(size: 14))
                 .lineSpacing(2)
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -1079,7 +1089,7 @@ struct OnboardingMirrorPage: View {
                 p.addLine(to: pt(0, 60))
                 p.closeSubpath()
             }
-            .fill(OnboardingDesign.accentGreen.opacity(0.05))
+            .fill(theme.accentGreen.opacity(0.05))
 
             Path { p in
                 p.move(to: pt(0, 50))
@@ -1087,12 +1097,13 @@ struct OnboardingMirrorPage: View {
                 p.addQuadCurve(to: pt(200, 15), control: pt(150, 70))
                 p.addQuadCurve(to: pt(300, 40), control: pt(250, -40))
             }
-            .stroke(OnboardingDesign.accentGreen, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+            .stroke(theme.accentGreen, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
         }
     }
 }
 
 struct OnboardingGenericPage: View {
+    @Environment(ThemeProvider.self) private var theme
     let title: String
     let subtitle: String
     let pageIndex: Int
@@ -1109,11 +1120,11 @@ struct OnboardingGenericPage: View {
                     .font(.system(size: 38, weight: .light))
                     .tracking(-1)
                     .multilineTextAlignment(.center)
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
 
                 Text(subtitle)
                     .font(.system(size: 15))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 300)
             }
@@ -1126,22 +1137,22 @@ struct OnboardingGenericPage: View {
                 Button(action: onNext) {
                     Text("Continue")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                         .frame(width: 310, height: 60)
                 }
                 .background(.ultraThinMaterial)
-                .overlay(OnboardingDesign.glassBg.opacity(0.6))
+                .overlay(theme.glassBg.opacity(0.6))
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
-                        .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                        .stroke(theme.glassBorder, lineWidth: 1)
                 )
-                .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+                .shadow(color: theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
 
                 Button(action: onSkip) {
                     Text("Skip")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
             }
             .padding(.bottom, 50)
@@ -1155,6 +1166,7 @@ private let deviceIdKey = "airy_device_id"
 
 struct OnboardingProOfferPage: View {
     @Environment(AuthStore.self) private var authStore
+    @Environment(ThemeProvider.self) private var theme
     var onFinish: () -> Void
 
     enum Plan: String, CaseIterable {
@@ -1182,7 +1194,7 @@ struct OnboardingProOfferPage: View {
 
                 Text("No charge today · Cancel anytime")
                     .font(.system(size: 13))
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
                     .padding(.bottom, 4)
 
                 if let err = errorMessage {
@@ -1196,7 +1208,7 @@ struct OnboardingProOfferPage: View {
                 HStack(spacing: 40) {
                     Button("Restore Purchase") { Task { await restore() } }
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                         .disabled(isRestoring)
                 }
                 .padding(.bottom, 16)
@@ -1222,10 +1234,10 @@ struct OnboardingProOfferPage: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                     }
-                    .background(OnboardingDesign.accentGreen)
+                    .background(theme.accentGreen)
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
-                    .shadow(color: OnboardingDesign.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
+                    .shadow(color: theme.accentGreen.opacity(0.2), radius: 12, x: 0, y: 8)
                     .disabled(isPurchasing)
                     .overlay {
                         if isPurchasing {
@@ -1236,7 +1248,7 @@ struct OnboardingProOfferPage: View {
 
                     Button("Maybe later") { onFinish() }
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                         .frame(height: 44)
                 }
             }
@@ -1254,25 +1266,25 @@ struct OnboardingProOfferPage: View {
                 .tracking(-1)
                 .lineSpacing(2)
                 .multilineTextAlignment(.center)
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .padding(.bottom, 8)
 
             Text("Unlock everything Airy has to offer.")
                 .font(.system(size: 15))
-                .foregroundColor(OnboardingDesign.textSecondary)
+                .foregroundColor(theme.textSecondary)
         }
     }
 
     private var featuresCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             proFeatureRow(
-                iconBg: OnboardingDesign.accentGreen.opacity(0.15),
+                iconBg: theme.accentGreen.opacity(0.15),
                 iconName: "calendar",
                 name: "Unlimited Screenshot Analysis",
                 benefit: "Import data just by snapping photos"
             )
             proFeatureRow(
-                iconBg: OnboardingDesign.accentBlue.opacity(0.15),
+                iconBg: theme.accentBlue.opacity(0.15),
                 iconName: "sparkles",
                 name: "AI Money Mirror",
                 benefit: "Daily reflections on your spending"
@@ -1290,7 +1302,7 @@ struct OnboardingProOfferPage: View {
                 benefit: "Deep trends and forecasting"
             )
             proFeatureRow(
-                iconBg: OnboardingDesign.textTertiary.opacity(0.15),
+                iconBg: theme.textTertiary.opacity(0.15),
                 iconName: "clock",
                 name: "Yearly Review",
                 benefit: "Comprehensive annual net worth recap"
@@ -1304,13 +1316,13 @@ struct OnboardingProOfferPage: View {
         }
         .padding(16)
         .background(.ultraThinMaterial)
-        .overlay(OnboardingDesign.glassBg.opacity(0.6))
+        .overlay(theme.glassBg.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 28))
         .overlay(
             RoundedRectangle(cornerRadius: 28)
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .stroke(theme.glassBorder, lineWidth: 1)
         )
-        .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+        .shadow(color: theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
     }
 
     private func proFeatureRow(iconBg: Color, iconName: String, name: String, benefit: String) -> some View {
@@ -1321,22 +1333,22 @@ struct OnboardingProOfferPage: View {
                 .overlay(
                     Image(systemName: iconName)
                         .font(.system(size: 14))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                 )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                 Text(benefit)
                     .font(.system(size: 11))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Image(systemName: "checkmark")
                 .font(.system(size: 16, weight: .bold))
-                .foregroundColor(OnboardingDesign.accentGreen)
+                .foregroundColor(theme.accentGreen)
         }
     }
 
@@ -1359,7 +1371,7 @@ struct OnboardingProOfferPage: View {
                 HStack(spacing: 8) {
                     Text(label)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                     if let badge = badge {
                         Text(badge)
                             .font(.system(size: 10, weight: .bold))
@@ -1373,7 +1385,7 @@ struct OnboardingProOfferPage: View {
                 Spacer()
                 Text(price)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -1384,10 +1396,10 @@ struct OnboardingProOfferPage: View {
         .background(isSelected ? Color.white.opacity(0.6) : Color.white.opacity(0.3))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(isSelected ? OnboardingDesign.accentGreen : Color.white.opacity(0.5), lineWidth: isSelected ? 1.5 : 1)
+                .stroke(isSelected ? theme.accentGreen : Color.white.opacity(0.5), lineWidth: isSelected ? 1.5 : 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .shadow(color: isSelected ? OnboardingDesign.accentGreen.opacity(0.2) : .clear, radius: 15, x: 0, y: 0)
+        .shadow(color: isSelected ? theme.accentGreen.opacity(0.2) : .clear, radius: 15, x: 0, y: 0)
         .disabled(isPurchasing)
     }
 

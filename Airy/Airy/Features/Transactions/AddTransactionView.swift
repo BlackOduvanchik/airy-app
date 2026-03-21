@@ -34,6 +34,7 @@ struct AddTransactionView: View {
     var pendingRememberMerchant: Bool = true
     var onConfirmPending: ((ConfirmPendingOverrides, Bool) -> Void)?
     var onCancelPending: (() -> Void)?
+    @Environment(ThemeProvider.self) private var theme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: AddTransactionViewModel
@@ -42,6 +43,7 @@ struct AddTransactionView: View {
     @State private var showCustomKeyboard = false
     @State private var calculatorExpression = ""
     @State private var showCategoriesSheet = false
+    @State private var showCurrencySheet = false
     @State private var rememberRule: Bool = true
     @State private var isDeleting = false
     @State private var frozenQuickPickOrder: [String] = []
@@ -61,7 +63,7 @@ struct AddTransactionView: View {
         _frozenQuickPickOrder = State(initialValue: (initialQuickPickOrder?.isEmpty == false) ? initialQuickPickOrder! : LastUsedCategoriesStore.forQuickPick())
     }
 
-    init(pendingTransaction: PendingTransaction, rememberMerchant: Bool, onConfirm: @escaping (ConfirmPendingOverrides, Bool) -> Void, onCancel: @escaping () -> Void, initialQuickPickOrder: [String]? = nil) {
+    init(pendingTransaction: PendingTransaction, rememberMerchant: Bool, matchedSubscriptionInterval: String? = nil, onConfirm: @escaping (ConfirmPendingOverrides, Bool) -> Void, onCancel: @escaping () -> Void, initialQuickPickOrder: [String]? = nil) {
         self.transaction = nil
         self.initialType = nil
         self.initialQuickPickOrder = initialQuickPickOrder
@@ -71,7 +73,7 @@ struct AddTransactionView: View {
         self.onConfirmPending = onConfirm
         self.onCancelPending = onCancel
         let payload = pendingTransaction.decodedPayload
-        _viewModel = State(initialValue: AddTransactionViewModel(existing: nil, initialType: nil, fromPayload: payload))
+        _viewModel = State(initialValue: AddTransactionViewModel(existing: nil, initialType: nil, fromPayload: payload, prefillSubscriptionInterval: matchedSubscriptionInterval))
         _rememberRule = State(initialValue: rememberMerchant)
         _frozenQuickPickOrder = State(initialValue: (initialQuickPickOrder?.isEmpty == false) ? initialQuickPickOrder! : LastUsedCategoriesStore.forQuickPick())
     }
@@ -95,7 +97,6 @@ struct AddTransactionView: View {
                         amountText: $viewModel.amountText,
                         transactionType: $viewModel.transactionType,
                         selectedCurrency: $viewModel.selectedCurrency,
-                        currencies: AddTransactionViewModel.currencies,
                         onDismiss: {
                             if !calculatorExpression.isEmpty {
                                 viewModel.amountText = displayAmountResult
@@ -117,20 +118,23 @@ struct AddTransactionView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    if viewModel.sheetTitle != "New Entry" {
+                    if viewModel.sheetTitle != L("addtx_new_entry") {
                         Text(viewModel.sheetTitle)
                             .font(.system(size: 12, weight: .semibold))
                             .tracking(0.5)
-                            .foregroundColor(OnboardingDesign.textTertiary)
+                            .foregroundColor(theme.textTertiary)
                     } else {
-                        Menu {
-                            ForEach(AddTransactionViewModel.currencies, id: \.self) { code in
-                                Button("\(code) ($)") { viewModel.selectedCurrency = code }
-                            }
+                        Button {
+                            showCurrencySheet = true
                         } label: {
-                            Text("\(viewModel.selectedCurrency) ($)")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(OnboardingDesign.textSecondary)
+                            HStack(spacing: 4) {
+                                Text("\(viewModel.selectedCurrency) (\(AddTransactionViewModel.currencySymbol(for: viewModel.selectedCurrency)))")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(theme.textSecondary)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(theme.textTertiary)
+                            }
                         }
                         .disabled(viewModel.isEditMode)
                     }
@@ -146,6 +150,8 @@ struct AddTransactionView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
             }
@@ -169,24 +175,32 @@ struct AddTransactionView: View {
 
     private var sheetContent: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
                     VStack(spacing: 0) {
-                        amountSection
-                        typeToggle
+                        VStack(spacing: 0) {
+                            amountSection
+                            typeToggle
+                        }
+                        subscriptionSection
+                        categorySection
+                        formFields
+                        if pendingTransaction != nil {
+                            rememberRuleRow
+                        }
+                        Spacer(minLength: 24)
                     }
-                    subscriptionSection
-                    categorySection
-                    formFields
-                    if pendingTransaction != nil {
-                        rememberRuleRow
-                    }
-                    Spacer(minLength: 24)
                 }
-                .offset(y: viewModel.isSubscription && isNoteFocused ? -56 : 0)
-                .animation(.spring(response: 0.4, dampingFraction: 0.82), value: viewModel.isSubscription && isNoteFocused)
+                .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: isNoteFocused) { _, focused in
+                    if focused {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo("noteInput", anchor: .bottom)
+                        }
+                    }
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
             actionBar
         }
         .padding(.horizontal, 20)
@@ -241,15 +255,15 @@ struct AddTransactionView: View {
                         Text(displayAmountResult)
                             .font(.system(size: 56, weight: .light))
                             .tracking(-2)
-                            .foregroundColor(OnboardingDesign.textPrimary)
+                            .foregroundColor(theme.textPrimary)
                         Text(calculatorExpression)
                             .font(.system(size: 15))
-                            .foregroundColor(OnboardingDesign.textSecondary)
+                            .foregroundColor(theme.textSecondary)
                     } else {
                         Text(viewModel.amountText.isEmpty ? "0.00" : viewModel.amountText)
                             .font(.system(size: 56, weight: .light))
                             .tracking(-2)
-                            .foregroundColor(OnboardingDesign.textPrimary)
+                            .foregroundColor(theme.textPrimary)
                     }
                 }
             }
@@ -264,14 +278,14 @@ struct AddTransactionView: View {
                 Button {
                     viewModel.transactionType = type
                 } label: {
-                    Text(type == "expense" ? "Expense" : "Income")
+                    Text(type == "expense" ? L("common_expense") : L("common_income"))
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(viewModel.transactionType == type ? OnboardingDesign.textPrimary : OnboardingDesign.textSecondary)
+                        .foregroundColor(viewModel.transactionType == type ? theme.textPrimary : theme.textSecondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(
                             RoundedRectangle(cornerRadius: 11)
-                                .fill(viewModel.transactionType == type ? Color.white : Color.clear)
+                                .fill(viewModel.transactionType == type ? Color.white.opacity(theme.isDark ? 0.15 : 1) : Color.clear)
                                 .shadow(color: viewModel.transactionType == type ? Color.black.opacity(0.05) : .clear, radius: 4, x: 0, y: 2)
                         )
                         .contentShape(Rectangle())
@@ -280,7 +294,7 @@ struct AddTransactionView: View {
             }
         }
         .padding(3)
-        .background(Color.black.opacity(0.04))
+        .background(theme.isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .padding(.bottom, 16)
     }
@@ -293,20 +307,20 @@ struct AddTransactionView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(viewModel.isSubscription ? OnboardingDesign.accentGreen.opacity(0.15) : Color.white.opacity(0.5))
+                    .fill(viewModel.isSubscription ? theme.accentGreen.opacity(0.15) : Color.white.opacity(theme.isDark ? 0.08 : 0.5))
                     .frame(width: 34, height: 34)
                     .overlay(
                         Image(systemName: "arrow.triangle.2.circlepath")
                             .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textSecondary)
+                            .foregroundColor(theme.textSecondary)
                     )
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Monthly Subscription")
+                    Text(L("addtx_monthly_sub"))
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
-                    Text("Track as recurring payment")
+                        .foregroundColor(theme.textPrimary)
+                    Text(L("addtx_recurring_hint"))
                         .font(.system(size: 12))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
                 Spacer()
                 Toggle("", isOn: Binding(
@@ -318,14 +332,14 @@ struct AddTransactionView: View {
                     }
                 ))
                     .labelsHidden()
-                    .tint(OnboardingDesign.accentGreen)
+                    .tint(theme.accentGreen)
             }
             .padding(14)
-            .background(viewModel.isSubscription ? Color.white.opacity(0.55) : Color.white.opacity(0.3))
+            .background(viewModel.isSubscription ? Color.white.opacity(theme.isDark ? 0.10 : 0.55) : Color.white.opacity(theme.isDark ? 0.06 : 0.3))
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
-                    .stroke(viewModel.isSubscription ? OnboardingDesign.accentGreen.opacity(0.35) : Color.white.opacity(0.4), lineWidth: 1)
+                    .stroke(viewModel.isSubscription ? theme.accentGreen.opacity(0.35) : Color.white.opacity(theme.isDark ? 0.08 : 0.4), lineWidth: 1)
             )
             .contentShape(Rectangle())
             .onTapGesture {
@@ -340,19 +354,19 @@ struct AddTransactionView: View {
                         Button {
                             viewModel.subscriptionInterval = interval
                         } label: {
-                            Text(interval.capitalized)
+                            Text(interval == "weekly" ? L("addtx_weekly") : interval == "monthly" ? L("addtx_monthly") : L("addtx_yearly"))
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(viewModel.subscriptionInterval == interval ? OnboardingDesign.textPrimary : OnboardingDesign.textSecondary)
+                                .foregroundColor(viewModel.subscriptionInterval == interval ? theme.textPrimary : theme.textSecondary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
                                 .background(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .fill(viewModel.subscriptionInterval == interval ? Color.white : Color.white.opacity(0.3))
+                                        .fill(viewModel.subscriptionInterval == interval ? Color.white.opacity(theme.isDark ? 0.15 : 1) : Color.white.opacity(theme.isDark ? 0.06 : 0.3))
                                         .shadow(color: viewModel.subscriptionInterval == interval ? Color.black.opacity(0.05) : .clear, radius: 4, x: 0, y: 2)
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .stroke(viewModel.subscriptionInterval == interval ? OnboardingDesign.accentGreen.opacity(0.3) : Color.white.opacity(0.4), lineWidth: 1)
+                                        .stroke(viewModel.subscriptionInterval == interval ? theme.accentGreen.opacity(0.3) : Color.white.opacity(theme.isDark ? 0.08 : 0.4), lineWidth: 1)
                                 )
                         }
                         .buttonStyle(.plain)
@@ -372,10 +386,10 @@ struct AddTransactionView: View {
 
     private var categorySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("CATEGORY")
+            Text(L("addtx_category"))
                 .font(.system(size: 12, weight: .semibold))
                 .tracking(0.5)
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
                 .padding(.leading, 4)
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
@@ -389,15 +403,7 @@ struct AddTransactionView: View {
                     return Array(frozenQuickPickOrder)
                 }()
                 ForEach(displayedIds, id: \.self) { catId in
-                    if let sel = viewModel.selectedCategoryId, sel == catId,
-                       let subId = viewModel.selectedSubcategoryId,
-                       let sub = SubcategoryStore.forParent(catId).first(where: { $0.id == subId }) {
-                        categoryPillForSubcategory(categoryId: catId, subcategoryName: sub.name)
-                    } else if viewModel.selectedCategoryId == catId && viewModel.selectedSubcategoryId == nil {
-                        categoryPillForCategory(categoryId: catId)
-                    } else {
-                        categoryPill(categoryId: catId, isOther: false)
-                    }
+                    categoryPill(categoryId: catId, isOther: false)
                 }
                 categoryPill(categoryId: "other", isOther: true)
             }
@@ -416,70 +422,21 @@ struct AddTransactionView: View {
                 initialSubcategoryId: viewModel.selectedSubcategoryId,
                 showHandle: false
             )
+            .environment(theme)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
-            .presentationBackground(Color(red: 0.956, green: 0.969, blue: 0.961))
+            .presentationBackground(theme.bgTop)
+        }
+        .sheet(isPresented: $showCurrencySheet) {
+            TransactionCurrencyPickerSheet(
+                selectedCurrency: $viewModel.selectedCurrency
+            )
+            .environment(theme)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.bgTop)
         }
         .padding(.bottom, 24)
-    }
-
-    private func categoryPillForCategory(categoryId: String) -> some View {
-        let displayName = CategoryStore.byId(categoryId)?.name ?? quickPickLabel(for: categoryId)
-        let icon = CategoryIconHelper.iconName(categoryId: categoryId)
-        let color = CategoryIconHelper.color(categoryId: categoryId)
-        return Button {
-            showCategoriesSheet = true
-        } label: {
-            VStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.5))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: icon)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(color)
-                }
-                Text(displayName)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textSecondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .padding(.horizontal, 4)
-            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(OnboardingDesign.accentGreen, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func categoryPillForSubcategory(categoryId: String, subcategoryName: String) -> some View {
-        let icon = CategoryIconHelper.iconName(categoryId: categoryId)
-        let color = CategoryIconHelper.color(categoryId: categoryId)
-        return Button {
-            showCategoriesSheet = true
-        } label: {
-            VStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.5))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: icon)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(color)
-                }
-                Text(subcategoryName)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textSecondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .padding(.horizontal, 4)
-            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(OnboardingDesign.accentGreen, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 
     private func categoryPill(categoryId: String, isOther: Bool) -> some View {
@@ -487,12 +444,14 @@ struct AddTransactionView: View {
         let icon = CategoryIconHelper.iconName(categoryId: categoryId)
         let color = CategoryIconHelper.color(categoryId: categoryId)
         let isSelected: Bool = {
-            if isOther { return viewModel.selectedCategoryId == "other" && viewModel.selectedSubcategoryId == nil }
-            return viewModel.selectedCategoryId == categoryId && viewModel.selectedSubcategoryId == nil
+            if isOther { return viewModel.selectedCategoryId == "other" }
+            return viewModel.selectedCategoryId == categoryId
         }()
 
         return Button {
             if isOther {
+                showCategoriesSheet = true
+            } else if isSelected {
                 showCategoriesSheet = true
             } else {
                 viewModel.selectCategory(categoryId: categoryId, subcategoryId: nil)
@@ -501,7 +460,7 @@ struct AddTransactionView: View {
             VStack(spacing: 8) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.5))
+                        .fill(Color.white.opacity(theme.isDark ? 0.08 : 0.5))
                         .frame(width: 32, height: 32)
                     Image(systemName: icon)
                         .font(.system(size: 16, weight: .medium))
@@ -509,31 +468,38 @@ struct AddTransactionView: View {
                 }
                 Text(displayName)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .padding(.horizontal, 4)
             .background(
                 RoundedRectangle(cornerRadius: 18)
-                    .fill(isSelected ? Color.white : Color.white.opacity(0.3))
+                    .fill(isSelected ? Color.white.opacity(theme.isDark ? 0.15 : 1) : Color.white.opacity(theme.isDark ? 0.06 : 0.3))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
-                    .stroke(isSelected ? OnboardingDesign.accentGreen : Color.white.opacity(0.4), lineWidth: 1)
+                    .stroke(isSelected ? theme.accentGreen : Color.white.opacity(theme.isDark ? 0.08 : 0.4), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
     }
 
     private func quickPickLabel(for categoryId: String) -> String {
-        CategoryStore.byId(categoryId)?.name ?? CategoryIconHelper.displayName(categoryId: categoryId)
+        if viewModel.selectedCategoryId == categoryId,
+           let subId = viewModel.selectedSubcategoryId,
+           let subName = SubcategoryStore.forParent(categoryId).first(where: { $0.id == subId })?.name {
+            return subName
+        }
+        return CategoryStore.byId(categoryId)?.name ?? CategoryIconHelper.displayName(categoryId: categoryId)
     }
 
     private var formFields: some View {
         VStack(alignment: .leading, spacing: 12) {
             if pendingTransaction != nil {
-                inputRow(icon: "building.2", placeholder: "Merchant", text: Binding(
+                inputRow(icon: "building.2", placeholder: L("addtx_merchant"), text: Binding(
                     get: { viewModel.merchant },
                     set: { viewModel.merchant = $0 }
                 ))
@@ -548,7 +514,7 @@ struct AddTransactionView: View {
                 .frame(maxWidth: .infinity)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(showDatePicker ? OnboardingDesign.accentGreen : Color.clear, lineWidth: 1)
+                        .stroke(showDatePicker ? theme.accentGreen : Color.clear, lineWidth: 1)
                 )
                 .anchorPreference(key: DateButtonAnchorKey.self, value: .bounds) { $0 }
 
@@ -561,7 +527,7 @@ struct AddTransactionView: View {
                 .frame(maxWidth: .infinity)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(showTimePicker ? OnboardingDesign.accentGreen : Color.clear, lineWidth: 1)
+                        .stroke(showTimePicker ? theme.accentGreen : Color.clear, lineWidth: 1)
                 )
                 .anchorPreference(key: TimeButtonAnchorKey.self, value: .bounds) { $0 }
             }
@@ -575,24 +541,22 @@ struct AddTransactionView: View {
         HStack(spacing: 12) {
             Image(systemName: "pencil")
                 .font(.system(size: 18))
-                .foregroundColor(OnboardingDesign.textTertiary)
-            TextField("Add a note...", text: $viewModel.note)
+                .foregroundColor(theme.textTertiary)
+            TextField("", text: $viewModel.note, prompt: Text(L("addtx_note")).foregroundStyle(theme.textTertiary))
                 .font(.system(size: 15))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .focused($isNoteFocused)
         }
         .padding(16)
         .contentShape(Rectangle())
-        .background(Color.white.opacity(0.3))
+        .background(Color.white.opacity(theme.isDark ? 0.06 : 0.3))
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.4), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(theme.isDark ? 0.08 : 0.4), lineWidth: 1))
         .id("noteInput")
     }
 
     private var dateFormatted: String {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d, yyyy"
-        return f.string(from: viewModel.dateTime)
+        AppFormatters.monthDayYear.string(from: viewModel.dateTime)
     }
 
     private var timeFormatted: String {
@@ -605,44 +569,48 @@ struct AddTransactionView: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 18))
-                .foregroundColor(OnboardingDesign.textTertiary)
-            TextField(placeholder, text: text)
+                .foregroundColor(theme.textTertiary)
+            TextField("", text: text, prompt: Text(placeholder).foregroundStyle(theme.textTertiary))
                 .font(.system(size: 15))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
         }
         .padding(16)
-        .background(Color.white.opacity(0.3))
+        .background(Color.white.opacity(theme.isDark ? 0.06 : 0.3))
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.4), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(theme.isDark ? 0.08 : 0.4), lineWidth: 1))
     }
 
     private func inputRowDisplay(icon: String, text: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 18))
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
             Text(text)
                 .font(.system(size: 15))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
             Spacer()
         }
         .padding(16)
-        .background(Color.white.opacity(0.3))
+        .background(Color.white.opacity(theme.isDark ? 0.06 : 0.3))
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.4), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(theme.isDark ? 0.08 : 0.4), lineWidth: 1))
     }
 
     private var rememberRuleRow: some View {
-        HStack {
-            Text("Remember rule for \(viewModel.merchant.isEmpty ? "this merchant" : viewModel.merchant)")
+        HStack(spacing: 12) {
+            Text(L("addtx_remember_rule", viewModel.merchant.isEmpty ? L("addtx_this_merchant") : viewModel.merchant))
                 .font(.system(size: 12))
-                .foregroundColor(OnboardingDesign.textTertiary)
-            Spacer()
+                .foregroundColor(theme.textTertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Spacer(minLength: 0)
             Toggle("", isOn: $rememberRule)
                 .labelsHidden()
-                .tint(OnboardingDesign.accentGreen)
+                .tint(theme.accentGreen)
+                .fixedSize()
         }
         .padding(.vertical, 12)
+        .padding(.horizontal, 14)
         .padding(.bottom, 8)
     }
 
@@ -659,7 +627,7 @@ struct AddTransactionView: View {
             Button {
                 if viewModel.isPendingEditMode, let onConfirm = onConfirmPending {
                     guard let amt = viewModel.amount, amt > 0 else {
-                        viewModel.errorMessage = "Enter a valid amount"
+                        viewModel.errorMessage = L("addtx_invalid_amount")
                         return
                     }
                     viewModel.errorMessage = nil
@@ -675,7 +643,7 @@ struct AddTransactionView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
-                    .background(OnboardingDesign.textPrimary)
+                    .background(theme.isDark ? Color.white.opacity(0.15) : theme.textPrimary)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 10)
             }
@@ -693,18 +661,18 @@ struct AddTransactionView: View {
             HStack(spacing: 8) {
                 Image(systemName: "trash")
                     .font(.system(size: 16, weight: .medium))
-                Text("Delete Transaction")
+                Text(L("addtx_delete"))
                     .font(.system(size: 15, weight: .medium))
             }
-            .foregroundColor(OnboardingDesign.textDanger)
+            .foregroundColor(theme.textDanger)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
             .background(
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(OnboardingDesign.textDanger.opacity(0.07))
+                    .fill(theme.textDanger.opacity(0.07))
                     .overlay(
                         RoundedRectangle(cornerRadius: 20)
-                            .stroke(OnboardingDesign.textDanger.opacity(0.15), lineWidth: 1)
+                            .stroke(theme.textDanger.opacity(0.15), lineWidth: 1)
                     )
             )
         }
@@ -730,6 +698,97 @@ struct AddTransactionView: View {
     }
 }
 
+// MARK: - Currency picker sheet
+
+struct TransactionCurrencyPickerSheet: View {
+    @Binding var selectedCurrency: String
+    @Environment(\.dismiss) private var dismiss
+    @Environment(ThemeProvider.self) private var theme
+    @State private var searchText = ""
+
+    private var filteredCurrencies: [(code: String, name: String, symbol: String)] {
+        guard !searchText.isEmpty else { return AddTransactionViewModel.currencies }
+        let q = searchText.lowercased()
+        return AddTransactionViewModel.currencies.filter {
+            $0.code.lowercased().contains(q) || $0.name.lowercased().contains(q) || $0.symbol.contains(q)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Search
+            ZStack(alignment: .leading) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16))
+                    .foregroundColor(theme.textTertiary)
+                    .padding(.leading, 14)
+                TextField("", text: $searchText, prompt: Text(L("currency_search")).foregroundStyle(theme.textTertiary))
+                    .font(.system(size: 15))
+                    .foregroundColor(theme.textPrimary)
+                    .padding(.leading, 40)
+                    .padding(.trailing, 14)
+                    .padding(.vertical, 12)
+            }
+            .background(Color.white.opacity(theme.isDark ? 0.05 : 0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(theme.glassBorder, lineWidth: 1)
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+
+            ScrollView {
+                VStack(spacing: 4) {
+                    ForEach(filteredCurrencies, id: \.code) { currency in
+                        let isSelected = currency.code == selectedCurrency
+                        Button {
+                            selectedCurrency = currency.code
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(currency.symbol)
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundColor(isSelected ? .white : theme.accentGreen)
+                                    .frame(width: 34, height: 34)
+                                    .background(isSelected ? theme.accentGreen : theme.accentGreen.opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(currency.code)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(theme.textPrimary)
+                                    Text(currency.name)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(theme.textTertiary)
+                                }
+                                Spacer()
+                                if isSelected {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(theme.accentGreen)
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(isSelected ? Color.white.opacity(theme.isDark ? 0.12 : 0.9) : Color.white.opacity(theme.isDark ? 0.04 : 0.4))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(isSelected ? theme.accentGreen.opacity(0.3) : Color.clear, lineWidth: 1.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 40)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+}
+
 // MARK: - Date/Time picker sheet
 
 private struct DateTimePickerSheetView: View {
@@ -749,7 +808,7 @@ private struct DateTimePickerSheetView: View {
         .presentationDragIndicator(.hidden)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }
+                Button(L("common_done")) { dismiss() }
             }
         }
     }

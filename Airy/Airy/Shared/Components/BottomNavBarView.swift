@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct BottomNavBarView: View {
+    @Environment(ThemeProvider.self) private var theme
     var onInsights: () -> Void
     var onFab: () -> Void
     var onSettings: () -> Void
@@ -37,13 +38,13 @@ struct BottomNavBarView: View {
                 .fill(.ultraThinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 36)
-                        .fill(Color.white.opacity(0.5))
+                        .fill(theme.isDark ? theme.bgTop.opacity(0.85) : Color.white.opacity(0.5))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 36)
-                        .stroke(Color.white.opacity(0.8), lineWidth: 1)
+                        .stroke(theme.isDark ? Color.white.opacity(0.08) : Color.white.opacity(0.8), lineWidth: 1)
                 )
-                .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 24, x: 0, y: 8)
+                .shadow(color: theme.isDark ? Color.black.opacity(0.3) : Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 24, x: 0, y: 8)
         )
         .padding(.horizontal, 20)
         .padding(.bottom, 30)
@@ -53,7 +54,7 @@ struct BottomNavBarView: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 24, weight: .medium))
-                .foregroundColor(isActive ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                .foregroundColor(isActive ? theme.textPrimary : theme.textTertiary)
                 .frame(width: 48, height: 48)
                 .contentShape(Rectangle())
         }
@@ -71,17 +72,19 @@ struct BottomNavBarView: View {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [Color.white, Color.white.opacity(0.7)],
+                                colors: theme.isDark
+                                    ? [theme.bgBottomRight, theme.bgTop]
+                                    : [Color.white, Color.white.opacity(0.7)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .overlay(Circle().stroke(Color.white, lineWidth: 1))
-                        .shadow(color: OnboardingDesign.accentGreen.opacity(0.25), radius: 12, x: 0, y: 6)
-                        .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 3)
+                        .overlay(Circle().stroke(theme.isDark ? Color.white.opacity(0.1) : Color.white, lineWidth: 1))
+                        .shadow(color: theme.isDark ? Color.black.opacity(0.3) : theme.accentGreen.opacity(0.25), radius: 12, x: 0, y: 6)
+                        .shadow(color: .black.opacity(theme.isDark ? 0.2 : 0.06), radius: 6, x: 0, y: 3)
                     Image(systemName: "plus")
                         .font(.system(size: 28, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.isDark ? Color.white : theme.textPrimary)
                 }
                 .frame(width: 68, height: 68)
             }

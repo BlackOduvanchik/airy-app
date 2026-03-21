@@ -52,36 +52,46 @@ extension Color {
 
 enum CategoryStore {
     private static let key = "airy.categories"
+    private static var _cached: [Category]?
+    private static var _byId: [String: Category]?
 
-    static let defaultColorGreen = "#67A082"
-    static let defaultColorBlue = "#7B9DAB"
-    static let defaultColorAmber = "#C4956A"
-    static let defaultColorRed = "#E07A7A"
-    static let defaultColorPurple = "#9B7EC8"
-    static let defaultColorGray = "#8AA396"
+    static let defaultColorGreen  = "#34C27A"
+    static let defaultColorBlue   = "#4A90E2"
+    static let defaultColorAmber  = "#E9B949"
+    static let defaultColorRed    = "#D97C8E"
+    static let defaultColorPurple = "#9B6DF2"
+    static let defaultColorGray   = "#C9D8C5"
 
     static let presetColors: [String] = [
-        defaultColorGreen,
-        defaultColorBlue,
-        defaultColorAmber,
-        defaultColorRed,
-        defaultColorPurple,
-        "#5B8A9E",
-        "#6B9B7A",
-        "#B87D5B",
+        // Pastel
+        "#BFE8D2", "#C9D8C5", "#BFE7E3", "#C7DBF7", "#D1D7FA", "#DCCEF8",
+        "#F6D1DC", "#F8D6BF", "#F6E7B8", "#EBC9B8", "#D8D2E8", "#E7D1C8",
+        // Vivid
+        "#34C27A", "#4D8F63", "#22B8B0", "#4A90E2", "#6C7CF0", "#9B6DF2",
+        "#EC6FA9", "#F28A6A", "#E9B949", "#D9825B", "#B85FD6", "#D97C8E",
+        // Bold
+        "#111111", "#FF3B30", "#2F80FF", "#7ED957", "#FF4FA3", "#FF7A1A",
     ]
 
     static func load() -> [Category] {
+        if let cached = _cached { return cached }
         guard let data = UserDefaults.standard.data(forKey: key),
               let decoded = try? JSONDecoder().decode([Category].self, from: data) else {
-            return defaultCategories()
+            let defaults = defaultCategories()
+            _cached = defaults
+            _byId = Dictionary(uniqueKeysWithValues: defaults.map { ($0.id, $0) })
+            return defaults
         }
+        _cached = decoded
+        _byId = Dictionary(uniqueKeysWithValues: decoded.map { ($0.id, $0) })
         return decoded
     }
 
     static func save(_ categories: [Category]) {
         guard let data = try? JSONEncoder().encode(categories) else { return }
         UserDefaults.standard.set(data, forKey: key)
+        _cached = categories
+        _byId = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
     }
 
     static func defaultCategories() -> [Category] {
@@ -158,7 +168,9 @@ enum CategoryStore {
     }
 
     static func byId(_ id: String) -> Category? {
-        load().first { $0.id == id }
+        if let dict = _byId { return dict[id] }
+        _ = load()
+        return _byId?[id]
     }
 }
 
@@ -210,8 +222,11 @@ enum CategoryIconHelper {
     static func transactionDisplayName(merchant: String?, subcategory: String?, categoryId: String) -> String {
         let m = merchant?.trimmingCharacters(in: .whitespaces)
         if let x = m, !x.isEmpty, x.lowercased() != "unknown" { return x }
-        let s = subcategory?.trimmingCharacters(in: .whitespaces)
-        if let x = s, !x.isEmpty { return x }
+        if let s = subcategory?.trimmingCharacters(in: .whitespaces), !s.isEmpty {
+            // Resolve UUID to display name if needed
+            if let sub = SubcategoryStore.load().first(where: { $0.id == s }) { return sub.name }
+            return s
+        }
         let cat = displayName(categoryId: categoryId)
         if !cat.isEmpty { return cat }
         return "Unknown"
@@ -221,6 +236,10 @@ enum CategoryIconHelper {
     static func displayName(categoryId: String) -> String {
         if categoryId.isEmpty { return "Unknown" }
         if let cat = CategoryStore.byId(categoryId) { return cat.name }
+        // Try resolving as a subcategory ID (UUID)
+        if let sub = SubcategoryStore.load().first(where: { $0.id == categoryId }) {
+            return sub.name
+        }
         let c = categoryId.lowercased()
         if c.contains("food") || c.contains("dining") { return "Dining" }
         if c.contains("transport") || c.contains("transit") { return "Transit" }
@@ -228,7 +247,7 @@ enum CategoryIconHelper {
         if c.contains("health") { return "Health" }
         if c.contains("housing") { return "Housing" }
         if c.contains("bills") { return "Bills" }
-        return categoryId.prefix(1).uppercased() + categoryId.dropFirst().lowercased()
+        return categoryId.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     /// Background and foreground colors for icon circle. Use for subscription = true for subscription styling.

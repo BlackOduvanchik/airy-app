@@ -24,6 +24,8 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Airy uses Face ID to secure your financial data and lock the app.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Airy needs access to your photo library to import screenshots of transactions.</string>
 	<key>NSSupportsLiveActivities</key>

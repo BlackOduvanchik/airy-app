@@ -7,18 +7,19 @@ import SwiftUI
 
 struct TransactionDetailView: View {
     let transaction: Transaction
+    @Environment(ThemeProvider.self) private var theme
     @Environment(\.dismiss) private var dismiss
     @State private var errorMessage: String?
     @State private var showEditSheet = false
 
     var body: some View {
         List {
-            Section("Details") {
-                LabeledContent("Merchant", value: transaction.merchant ?? "—")
-                LabeledContent("Amount", value: "\(transaction.amountOriginal) \(transaction.currencyOriginal)")
-                LabeledContent("Category", value: transaction.category)
-                LabeledContent("Date", value: transaction.transactionDate)
-                LabeledContent("Type", value: transaction.type)
+            Section(L("txdetail_details")) {
+                LabeledContent(L("txdetail_merchant"), value: transaction.merchant ?? "—")
+                LabeledContent(L("txdetail_amount"), value: "\(transaction.amountOriginal) \(transaction.currencyOriginal)")
+                LabeledContent(L("txdetail_category"), value: transaction.category)
+                LabeledContent(L("txdetail_date"), value: transaction.transactionDate)
+                LabeledContent(L("txdetail_type"), value: transaction.type)
             }
             if let err = errorMessage {
                 Section {
@@ -31,16 +32,17 @@ struct TransactionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Edit") { showEditSheet = true }
+                Button(L("common_edit")) { showEditSheet = true }
             }
             ToolbarItem(placement: .destructiveAction) {
-                Button("Delete", role: .destructive) {
+                Button(L("common_delete"), role: .destructive) {
                     Task { await deleteTransaction() }
                 }
             }
         }
         .sheet(isPresented: $showEditSheet) {
             AddTransactionView(transaction: transaction, onSuccess: { dismiss() })
+                .environment(theme)
         }
     }
 

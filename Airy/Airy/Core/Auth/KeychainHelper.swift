@@ -12,6 +12,7 @@ enum KeychainHelper {
     private static let service = "com.airy.app"
     private static let userIdentifierKey = "airy_apple_user_id"
     private static let openAIKeyKey = "airy_openai_api_key"
+    private static let passcodeKey = "airy_app_passcode"
 
     static func saveUserIdentifier(_ id: String) {
         guard let data = id.data(using: .utf8) else { return }
@@ -87,6 +88,47 @@ enum KeychainHelper {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: openAIKeyKey,
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    // MARK: - App Passcode (stored in Keychain, protected by Secure Enclave)
+
+    static func savePasscode(_ code: String) {
+        guard let data = code.data(using: .utf8) else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: passcodeKey,
+        ]
+        SecItemDelete(query as CFDictionary)
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        SecItemAdd(addQuery as CFDictionary, nil)
+    }
+
+    static func loadPasscode() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: passcodeKey,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let code = String(data: data, encoding: .utf8) else { return nil }
+        return code
+    }
+
+    static func deletePasscode() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: passcodeKey,
         ]
         SecItemDelete(query as CFDictionary)
     }

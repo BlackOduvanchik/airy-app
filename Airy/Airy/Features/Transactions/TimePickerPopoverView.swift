@@ -18,6 +18,7 @@ private struct WheelRowSnapBehavior: ScrollTargetBehavior {
 }
 
 struct TimePickerPopoverView: View {
+    @Environment(ThemeProvider.self) private var theme
     @Binding var dateTime: Date
     var onDismiss: () -> Void
 
@@ -56,9 +57,9 @@ struct TimePickerPopoverView: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: 24)
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .stroke(theme.glassBorder, lineWidth: 1)
         )
-        .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 16, x: 0, y: 8)
+        .shadow(color: theme.textPrimary.opacity(0.08), radius: 16, x: 0, y: 8)
         .transition(.asymmetric(
             insertion: .opacity.combined(with: .scale(scale: 0.9)).combined(with: .offset(y: 10)),
             removal: .opacity
@@ -119,7 +120,7 @@ struct TimePickerPopoverView: View {
                 ForEach(0..<values.count, id: \.self) { i in
                     Text(String(format: "%02d", values[i]))
                         .font(.system(size: selectedIndex.wrappedValue == i ? 18 : 16, weight: selectedIndex.wrappedValue == i ? .bold : .medium))
-                        .foregroundColor(selectedIndex.wrappedValue == i ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                        .foregroundColor(selectedIndex.wrappedValue == i ? theme.textPrimary : theme.textTertiary)
                         .frame(height: rowHeight)
                         .frame(maxWidth: .infinity)
                         .id(i)

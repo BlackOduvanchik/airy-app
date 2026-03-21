@@ -24,6 +24,7 @@ struct CategoryDetailDestination: Hashable, Identifiable {
 }
 
 struct CategoryDetailView: View {
+    @Environment(ThemeProvider.self) private var theme
     let destination: CategoryDetailDestination
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel = CategoryDetailViewModel()
@@ -54,13 +55,15 @@ struct CategoryDetailView: View {
                     Button { dismiss() } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("Category Details")
+                    Text(L("catdetail_title"))
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.5)
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
             }
             .sheet(item: $selectedTransactionForEdit) { tx in
@@ -76,6 +79,7 @@ struct CategoryDetailView: View {
                         }
                     }
                 )
+                .environment(theme)
             }
             .task {
                 await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey)
@@ -90,11 +94,11 @@ struct CategoryDetailView: View {
             Text(destination.label)
                 .font(.system(size: 12, weight: .semibold))
                 .tracking(0.5)
-                .foregroundColor(OnboardingDesign.textTertiary)
-            Text(formatAmount(viewModel.totalAmount > 0 ? viewModel.totalAmount : destination.amount, "USD"))
+                .foregroundColor(theme.textTertiary)
+            Text(formatAmount(viewModel.totalAmount > 0 ? viewModel.totalAmount : destination.amount, BaseCurrencyStore.baseCurrency))
                 .font(.system(size: 32, weight: .light))
                 .tracking(-1)
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
@@ -105,9 +109,9 @@ struct CategoryDetailView: View {
     private var transactionsByDay: some View {
         VStack(alignment: .leading, spacing: 0) {
             if viewModel.groupedByDay.isEmpty {
-                Text("No transactions in this category")
+                Text(L("catdetail_empty"))
                     .font(.system(size: 14))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
             } else {
@@ -123,7 +127,7 @@ struct CategoryDetailView: View {
         HStack(spacing: 8) {
             Text(label)
                 .font(.system(size: 13, weight: .bold))
-                .foregroundColor(OnboardingDesign.textSecondary)
+                .foregroundColor(theme.textSecondary)
             Rectangle()
                 .fill(Color.white.opacity(0.2))
                 .frame(height: 1)
@@ -144,15 +148,15 @@ struct CategoryDetailView: View {
                 .buttonStyle(.plain)
             }
         }
-        .background(.ultraThinMaterial)
-        .overlay(OnboardingDesign.glassBg.opacity(0.5).allowsHitTesting(false))
+        .background(theme.isDark ? AnyShapeStyle(theme.glassBg) : AnyShapeStyle(.ultraThinMaterial))
+        .overlay(theme.isDark ? nil : theme.glassBg.opacity(0.5).allowsHitTesting(false))
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(
             RoundedRectangle(cornerRadius: 24)
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .stroke(theme.glassBorder, lineWidth: 1)
                 .allowsHitTesting(false)
         )
-        .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+        .shadow(color: theme.isDark ? Color.black.opacity(0.4) : theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
     }
 
     private func transactionItem(_ tx: Transaction) -> some View {
@@ -177,27 +181,28 @@ struct CategoryDetailView: View {
                 HStack {
                     Text(CategoryIconHelper.transactionDisplayName(merchant: tx.merchant, subcategory: tx.subcategory, categoryId: tx.category))
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                     Spacer()
                     Text(formatAmount(tx.amountOriginal, tx.currencyOriginal))
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                 }
                 HStack(spacing: 6) {
-                    if let sub = tx.subcategory, !sub.isEmpty {
-                        Text(sub)
+                    if let subId = tx.subcategory, !subId.isEmpty,
+                       let subName = SubcategoryStore.forParent(tx.category).first(where: { $0.id == subId })?.name {
+                        Text(subName)
                             .font(.system(size: 10, weight: .bold))
                             .textCase(.uppercase)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(Color.white.opacity(0.4))
-                            .foregroundColor(OnboardingDesign.textSecondary)
+                            .foregroundColor(theme.textSecondary)
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                     if let title = tx.title, !title.isEmpty {
                         Text(title)
                             .font(.system(size: 12))
-                            .foregroundColor(OnboardingDesign.textTertiary)
+                            .foregroundColor(theme.textTertiary)
                             .italic()
                     }
                 }
@@ -218,11 +223,7 @@ struct CategoryDetailView: View {
     // MARK: - Helpers
 
     private func formatAmount(_ amount: Double, _ currency: String) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = currency
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: amount)) ?? "\(amount) \(currency)"
+        AppFormatters.formatTotal(amount: amount, currency: currency)
     }
 }
 
@@ -257,11 +258,8 @@ final class CategoryDetailViewModel {
             let sorted = filtered.sorted { $0.transactionDate > $1.transactionDate }
 
             var byDay: [String: [Transaction]] = [:]
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd"
-            dateFormatter.timeZone = TimeZone(identifier: "UTC")
-            let outFormatter = DateFormatter()
-            outFormatter.dateFormat = "MMM d"
+            let dateFormatter = AppFormatters.inputDate
+            let outFormatter = AppFormatters.shortMonthDay
 
             for tx in sorted {
                 let dateStr = String(tx.transactionDate.prefix(10))

@@ -2,141 +2,118 @@
 //  ExtractionPipeline.swift
 //  Airy
 //
-//  Deterministic order: OCR → normalize → local rules → cache → single-image GPT fallback.
-//  One image per run; no batch GPT.
+//  OCR → number check → image hash cache → GPT Vision → cache result.
+//  One image per run; always GPT, no local parsing.
 //
 
 import Foundation
 import UIKit
 
+// MARK: - Shared transaction model
+
+struct ParsedTransactionItem: Equatable, Codable {
+    var amount: Double
+    var isCredit: Bool
+    var currency: String
+    var date: String
+    var time: String?
+    var merchant: String?
+    var categoryId: String?
+    var subcategoryId: String?
+    var isSubscription: Bool?
+    var subscriptionInterval: String?
+}
+
+// MARK: - Pipeline result
+
 struct ExtractionPipelineResult {
     let items: [ParsedTransactionItem]
     let imageHash: String
-    let normalizedOCRText: String
-    let ocrFingerprint: String
-    let screenFingerprint: String
     let ocrTextRaw: String
 }
 
+// MARK: - Pipeline
+
 final class ExtractionPipeline {
     private let ocrService = OCRService()
-    private let parser = LocalOCRParser()
     private let gptService = GPTRulesService()
     private let aliasStore = MerchantAliasStore.shared
 
-    /// Run full pipeline for one image. Returns items (empty if no numbers in image); throws on OCR/network errors.
+    /// Run full pipeline for one image. Throws on OCR/network errors.
     func run(image: UIImage, baseCurrency: String = "USD") async throws -> ExtractionPipelineResult {
+        // 1. Image hash
         let imageHash = ocrService.imageHash(for: image)
+
+        // 2. OCR
         let ocrTextRaw = try await ocrService.recognizeText(from: image)
         guard OCRService.containsDecimalDigits(ocrTextRaw) else {
             throw OCRServiceError.noNumbersInImage
         }
 
-        let normalizedOCRText = OCRNormalizer.normalizedOCRText(ocrTextRaw)
-        let ocrFingerprint = OCRNormalizer.ocrFingerprint(normalizedText: normalizedOCRText)
-        let screenFingerprint = OCRNormalizer.screenFingerprint(normalizedText: normalizedOCRText)
-
-        if let cached = ParsingRulesStore.shared.cachedResult(forImageHash: imageHash), !cached.isEmpty {
-            let result = ExtractionRulesMatcher.tryStructuredThenLegacyWithOutcome(ocrText: normalizedOCRText, parser: parser, baseCurrency: baseCurrency, transactionLikeRowEstimate: nil, strongAmountRowCount: nil, repeatedRowClusterCount: nil)
-            let fromLocal = result.items ?? []
-            let merged = mergeParsedItems(base: cached, additional: fromLocal)
-            let normalized = ImportViewModel.normalizeMerchantsInItems(merged)
-            return ExtractionPipelineResult(
-                items: normalized,
-                imageHash: imageHash,
-                normalizedOCRText: normalizedOCRText,
-                ocrFingerprint: ocrFingerprint,
-                screenFingerprint: screenFingerprint,
-                ocrTextRaw: ocrTextRaw
-            )
+        // 3. Cache hit → return immediately
+        if let cached = ImageHashCacheStore.shared.cachedResult(forImageHash: imageHash), !cached.isEmpty {
+            print("[Extraction] ✅ Cache hit for hash \(imageHash.prefix(8))… → \(cached.count) item(s)")
+            return ExtractionPipelineResult(items: cached, imageHash: imageHash, ocrTextRaw: ocrTextRaw)
         }
 
-        let localResult = ExtractionRulesMatcher.tryStructuredThenLegacyWithOutcome(ocrText: normalizedOCRText, parser: parser, baseCurrency: baseCurrency, transactionLikeRowEstimate: nil, strongAmountRowCount: nil, repeatedRowClusterCount: nil)
-        if case .confidentParse = localResult.outcome, let localItems = localResult.items, !localItems.isEmpty {
-            let normalized = ImportViewModel.normalizeMerchantsInItems(localItems)
-            ParsingRulesStore.shared.recordSuccessfulLocalUse(ruleId: localResult.matchedRuleId, imageHash: imageHash)
-            ParsingRulesStore.shared.cacheResult(normalized, forImageHash: imageHash)
-            return ExtractionPipelineResult(
-                items: normalized,
-                imageHash: imageHash,
-                normalizedOCRText: normalizedOCRText,
-                ocrFingerprint: ocrFingerprint,
-                screenFingerprint: screenFingerprint,
-                ocrTextRaw: ocrTextRaw
-            )
-        }
+        // 4. Send to GPT (cap categories to prevent prompt bloat)
+        let categories = CategoryStore.load().prefix(50).map { (id: $0.id, name: $0.name) }
+        let subcategories = SubcategoryStore.load().prefix(150).map { (id: $0.id, name: $0.name, parentCategoryId: $0.parentCategoryId) }
+        let imageBase64 = await Task.detached { image.jpegData(compressionQuality: 0.7)?.base64EncodedString() ?? "" }.value
 
-        let categories = CategoryStore.load().map { (id: $0.id, name: $0.name) }
-        let subcategories = SubcategoryStore.load().map { (id: $0.id, name: $0.name, parentCategoryId: $0.parentCategoryId) }
-        let imageBase64 = image.jpegData(compressionQuality: 0.7).map { $0.base64EncodedString() } ?? ""
-        let response: GPTExtractionResponse
-        if !imageBase64.isEmpty {
-            response = try await gptService.extractAndGetRulesFromImage(
-                imageBase64: imageBase64,
-                categories: categories,
-                subcategories: subcategories,
-                baseCurrency: baseCurrency
-            )
-        } else {
-            response = try await gptService.extractAndGetRules(
-                ocrText: ocrTextRaw,
-                categories: categories,
-                subcategories: subcategories,
-                baseCurrency: baseCurrency
-            )
-        }
+        let response = try await gptService.extractTransactionsFromImage(
+            imageBase64: imageBase64,
+            ocrText: ocrTextRaw,
+            categories: categories,
+            subcategories: subcategories,
+            baseCurrency: baseCurrency
+        )
 
-        if let rules = response.rules {
-            ParsingRulesStore.shared.appendRuleSet(rules: rules, forOcrText: normalizedOCRText)
-        } else {
-            do {
-                let rules = try await gptService.generateRules(ocrText: normalizedOCRText)
-                ParsingRulesStore.shared.appendRuleSet(rules: rules, forOcrText: normalizedOCRText)
-            } catch { }
-        }
-
+        // 5. Map → dedup → normalize merchants → alias corrections
+        print("[Extraction] GPT returned \(response.transactions.count) transaction(s)")
         let deduped = deduplicateGPTTransactions(response.transactions)
         let successOnly = deduped.filter { $0.isSuccessStatus }
+        if deduped.count != response.transactions.count || successOnly.count != deduped.count {
+            print("[Extraction] After dedup: \(deduped.count), after status filter: \(successOnly.count)")
+        }
+        if successOnly.count < deduped.count {
+            let rejected = deduped.filter { !$0.isSuccessStatus }
+            let statuses = rejected.map { $0.transactionStatus ?? "nil" }
+            print("[Extraction] ❌ Rejected statuses: \(statuses)")
+        }
         var items = successOnly.map { tx in
             ParsedTransactionItem(
                 amount: tx.amount,
                 isCredit: tx.isCredit ?? false,
-                currency: tx.currency ?? "USD",
+                currency: tx.currency ?? baseCurrency,
                 date: tx.date,
                 time: tx.time,
                 merchant: ImportViewModel.normalizeMerchant(tx.merchant),
                 categoryId: tx.categoryId,
                 subcategoryId: tx.subcategoryId,
-                isSubscription: tx.isSubscription
+                isSubscription: tx.isSubscription,
+                subscriptionInterval: tx.subscriptionInterval
             )
         }
-        let postGptLocal = ExtractionRulesMatcher.tryStructuredThenLegacy(ocrText: normalizedOCRText, parser: parser, baseCurrency: baseCurrency) ?? []
-        items = mergeParsedItems(base: items, additional: postGptLocal)
         items = ImportViewModel.normalizeMerchantsInItems(items)
         for i in items.indices {
-            if let corrected = aliasStore.resolveToNormalizedMerchant(raw: items[i].merchant) ?? MerchantCorrectionStore.shared.lookup(amount: items[i].amount, date: items[i].date, originalMerchant: items[i].merchant) {
+            if let corrected = aliasStore.resolveToNormalizedMerchant(raw: items[i].merchant) {
                 items[i].merchant = corrected
             }
         }
-        ParsingRulesStore.shared.cacheResult(items, forImageHash: imageHash)
-        return ExtractionPipelineResult(
-            items: items,
-            imageHash: imageHash,
-            normalizedOCRText: normalizedOCRText,
-            ocrFingerprint: ocrFingerprint,
-            screenFingerprint: screenFingerprint,
-            ocrTextRaw: ocrTextRaw
-        )
-    }
 
-    private func mergeParsedItems(base: [ParsedTransactionItem], additional: [ParsedTransactionItem]) -> [ParsedTransactionItem] {
-        let baseKeys = Set(base.map { "\($0.date)|\(abs($0.amount))|\($0.merchant ?? "")" })
-        var out = base
-        for item in additional {
-            let key = "\(item.date)|\(abs(item.amount))|\(item.merchant ?? "")"
-            if !baseKeys.contains(key) { out.append(item) }
+        // 6. Cache (skip if any item has zero amount — likely a GPT extraction error)
+        let hasZeroAmount = items.contains { $0.amount == 0 }
+        if !hasZeroAmount {
+            ImageHashCacheStore.shared.cacheResult(items, forImageHash: imageHash)
         }
-        return out
+        if items.isEmpty {
+            print("[Extraction] ⚠️ Pipeline produced 0 items from GPT response of \(response.transactions.count) transaction(s)")
+        } else {
+            print("[Extraction] ✅ Pipeline done: \(items.count) item(s), cached: \(!hasZeroAmount)")
+        }
+
+        return ExtractionPipelineResult(items: items, imageHash: imageHash, ocrTextRaw: ocrTextRaw)
     }
 
     private func deduplicateGPTTransactions(_ transactions: [GPTExtractionTransaction]) -> [GPTExtractionTransaction] {

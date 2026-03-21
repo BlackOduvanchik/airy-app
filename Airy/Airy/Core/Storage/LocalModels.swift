@@ -76,8 +76,7 @@ final class LocalTransaction {
     }
 
     func toTransaction() -> Transaction {
-        let df = ISO8601DateFormatter()
-        df.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let df = AppFormatters.iso8601
         return Transaction(
             id: id,
             type: type,
@@ -106,10 +105,11 @@ final class LocalPendingTransaction {
     var payloadData: Data?
     var ocrText: String?
     var sourceImageHash: String?
-    /// Layout family id active when this pending transaction was extracted. Used to feed user
-    /// feedback (confirm / correct) back to LayoutFamilyLearningStore.
+    /// Deprecated — kept for schema compatibility. Removing @Model properties causes SwiftData
+    /// to wipe the entire database if no migration plan is configured. Never remove @Model
+    /// stored properties without implementing VersionedSchema + SchemaMigrationPlan.
     var sourceFamilyId: String?
-    /// OCR template id used to extract this transaction. Non-nil → show "via template" badge.
+    /// Deprecated — kept for schema compatibility. See note above.
     var sourceTemplateId: String?
     var createdAt: Date
 
@@ -137,8 +137,9 @@ final class LocalPendingTransaction {
     }
 
     func toPendingTransaction() -> PendingTransaction {
+        let decoded = decodedPayload  // decode once from stored Data
         var payloadDict: [String: AnyCodable]?
-        if let p = decodedPayload {
+        if let p = decoded {
             var d: [String: AnyCodable] = [:]
             if let v = p.type { d["type"] = AnyCodable(v) }
             if let v = p.amountOriginal { d["amountOriginal"] = AnyCodable(v) }
@@ -151,9 +152,8 @@ final class LocalPendingTransaction {
             if let v = p.category { d["category"] = AnyCodable(v) }
             if let v = p.subcategory { d["subcategory"] = AnyCodable(v) }
             if let v = p.probableDuplicateOfId { d["probableDuplicateOfId"] = AnyCodable(v) }
-            if let v = p.extractedByTemplateId { d["extractedByTemplateId"] = AnyCodable(v) }
             payloadDict = d
         }
-        return PendingTransaction(id: id, payload: payloadDict, confidence: nil, reason: nil)
+        return PendingTransaction(id: id, payload: payloadDict, confidence: nil, reason: nil, cachedPayload: decoded)
     }
 }

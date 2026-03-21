@@ -21,18 +21,27 @@ struct Subcategory: Identifiable, Codable, Equatable {
 
 enum SubcategoryStore {
     private static let key = "airy.subcategories"
+    private static var _cached: [Subcategory]?
+    private static var _byParent: [String: [Subcategory]]?
 
     static func load() -> [Subcategory] {
+        if let cached = _cached { return cached }
         guard let data = UserDefaults.standard.data(forKey: key),
               let decoded = try? JSONDecoder().decode([Subcategory].self, from: data) else {
+            _cached = []
+            _byParent = [:]
             return []
         }
+        _cached = decoded
+        _byParent = Dictionary(grouping: decoded, by: \.parentCategoryId)
         return decoded
     }
 
     static func save(_ subcategories: [Subcategory]) {
         guard let data = try? JSONEncoder().encode(subcategories) else { return }
         UserDefaults.standard.set(data, forKey: key)
+        _cached = subcategories
+        _byParent = Dictionary(grouping: subcategories, by: \.parentCategoryId)
     }
 
     static func add(_ subcategory: Subcategory) {
@@ -56,7 +65,9 @@ enum SubcategoryStore {
     }
 
     static func forParent(_ parentCategoryId: String) -> [Subcategory] {
-        load().filter { $0.parentCategoryId == parentCategoryId }
+        if let dict = _byParent { return dict[parentCategoryId] ?? [] }
+        _ = load()
+        return _byParent?[parentCategoryId] ?? []
     }
 
     static func deleteByParent(parentCategoryId: String) {

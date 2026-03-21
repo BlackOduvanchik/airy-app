@@ -13,6 +13,7 @@ struct AnalyzingTransactionsView: View {
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
+    @Environment(ThemeProvider.self) private var theme
     @State private var extractedItems: [ParsedTransactionItem] = []
     @State private var visibleItemCount = 0
     @State private var statusPhraseIndex = 0
@@ -20,12 +21,12 @@ struct AnalyzingTransactionsView: View {
     @Namespace private var thumbNS
 
     private let statusPhrases = [
-        "Reading amounts...",
-        "Checking dates...",
-        "Looking for duplicates...",
-        "Matching categories...",
-        "Saving new rules...",
-        "Almost done..."
+        L("analyzing_reading"),
+        L("analyzing_dates"),
+        L("analyzing_duplicates"),
+        L("analyzing_categories"),
+        L("analyzing_rules"),
+        L("analyzing_almost")
     ]
 
     var body: some View {
@@ -38,8 +39,9 @@ struct AnalyzingTransactionsView: View {
                     Button { onCancel() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textSecondary)
-                            .frame(width: 40, height: 40)
+                            .foregroundColor(theme.textSecondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -88,7 +90,7 @@ struct AnalyzingTransactionsView: View {
                             .scaledToFill()
                             .frame(width: thumbWidth, height: thumbHeight)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(OnboardingDesign.glassBorder, lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(theme.glassBorder, lineWidth: 1))
                     } else {
                         thumbnailPlaceholder(opacity: opacity)
                     }
@@ -107,8 +109,8 @@ struct AnalyzingTransactionsView: View {
                 colors: [Color.white.opacity(opacity * 0.9), Color.white.opacity(opacity * 0.4)],
                 startPoint: .top, endPoint: .bottom
             ))
-            .overlay(Image(systemName: "photo").font(.system(size: 24)).foregroundColor(OnboardingDesign.textTertiary))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(OnboardingDesign.glassBorder, lineWidth: 1))
+            .overlay(Image(systemName: "photo").font(.system(size: 24)).foregroundColor(theme.textTertiary))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(theme.glassBorder, lineWidth: 1))
             .frame(width: 60, height: 80)
     }
 
@@ -122,7 +124,7 @@ struct AnalyzingTransactionsView: View {
             ZStack {
                 Circle()
                     .fill(RadialGradient(
-                        colors: [OnboardingDesign.accentBlue.opacity(0.4), Color.clear],
+                        colors: [theme.accentBlue.opacity(0.4), Color.clear],
                         center: .center, startRadius: 0, endRadius: 60
                     ))
                     .frame(width: 120, height: 120)
@@ -142,14 +144,14 @@ struct AnalyzingTransactionsView: View {
             if importViewModel.isAnalyzing && total > 0 {
                 Text("\(done) / \(total) processed")
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .frame(height: 20)
                     .animation(.easeInOut(duration: 0.2), value: done)
             } else {
-                Text(importViewModel.isAnalyzing ? statusPhrases[statusPhraseIndex] : "Ready")
+                Text(importViewModel.isAnalyzing ? statusPhrases[statusPhraseIndex] : L("analyzing_ready"))
                     .id(statusPhraseIndex)
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .frame(height: 20)
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
                     .animation(.easeInOut(duration: 0.35), value: statusPhraseIndex)
@@ -163,11 +165,11 @@ struct AnalyzingTransactionsView: View {
 
     private var progressStepper: some View {
         HStack {
-            stepView(label: "Upload", isCompleted: true, isActive: false)
+            stepView(label: L("analyzing_upload"), isCompleted: true, isActive: false)
             progressLine
-            stepView(label: "Extract", isCompleted: !importViewModel.isAnalyzing, isActive: importViewModel.isAnalyzing)
+            stepView(label: L("analyzing_extract"), isCompleted: !importViewModel.isAnalyzing, isActive: importViewModel.isAnalyzing)
             progressLine
-            stepView(label: "Review", isCompleted: false, isActive: false)
+            stepView(label: L("analyzing_review"), isCompleted: false, isActive: false)
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 24)
@@ -176,15 +178,17 @@ struct AnalyzingTransactionsView: View {
     private func stepView(label: String, isCompleted: Bool, isActive: Bool) -> some View {
         VStack(spacing: 8) {
             Circle()
-                .fill(isCompleted || isActive ? OnboardingDesign.accentGreen : Color.white.opacity(0.5))
+                .fill(isCompleted || isActive ? theme.accentGreen : Color.white.opacity(0.5))
                 .frame(width: 10, height: 10)
-                .overlay(Circle().stroke(isActive ? Color.white : OnboardingDesign.glassBorder, lineWidth: 2))
+                .overlay(Circle().stroke(isActive ? Color.white : theme.glassBorder, lineWidth: 2))
                 .scaleEffect(isActive ? 1.2 : 1)
-                .shadow(color: isActive ? OnboardingDesign.accentGreen.opacity(0.5) : .clear, radius: 6)
+                .shadow(color: isActive ? theme.accentGreen.opacity(0.5) : .clear, radius: 6)
                 .animation(.easeInOut(duration: 0.3), value: isActive)
             Text(label)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(isActive || isCompleted ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                .foregroundColor(isActive || isCompleted ? theme.textPrimary : theme.textTertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
     }
 
@@ -199,9 +203,9 @@ struct AnalyzingTransactionsView: View {
 
     private var extractionList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("LIVE EXTRACTION")
+            Text(L("analyzing_live"))
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
                 .tracking(0.5)
                 .padding(.bottom, 12)
 
@@ -219,15 +223,29 @@ struct AnalyzingTransactionsView: View {
                             .padding(.vertical, 14)
                     }
                     if !importViewModel.isAnalyzing && extractedItems.isEmpty {
-                        if let err = importViewModel.errorMessage {
+                        if importViewModel.duplicatesSkippedCount > 0 {
+                            VStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(theme.accentGreen)
+                                Text(L("analyzing_all_duplicates"))
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(theme.textSecondary)
+                                Text("\(importViewModel.duplicatesSkippedCount) \(L("analyzing_duplicates_skipped"))")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(theme.textTertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                        } else if let err = importViewModel.errorMessage {
                             Text(err)
                                 .font(.system(size: 13))
-                                .foregroundColor(OnboardingDesign.textSecondary)
+                                .foregroundColor(theme.textSecondary)
                                 .padding()
                         } else if let msg = importViewModel.resultMessage {
                             Text(msg)
                                 .font(.system(size: 13))
-                                .foregroundColor(OnboardingDesign.textSecondary)
+                                .foregroundColor(theme.textSecondary)
                                 .padding()
                         }
                     }
@@ -239,8 +257,8 @@ struct AnalyzingTransactionsView: View {
         .padding(.horizontal, 20)
         .background(
             RoundedRectangle(cornerRadius: 28)
-                .fill(OnboardingDesign.glassBg)
-                .overlay(RoundedRectangle(cornerRadius: 28).stroke(OnboardingDesign.glassBorder, lineWidth: 1))
+                .fill(theme.glassBg)
+                .overlay(RoundedRectangle(cornerRadius: 28).stroke(theme.glassBorder, lineWidth: 1))
                 .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.06), radius: 32, x: 0, y: 8)
         )
     }
@@ -249,24 +267,24 @@ struct AnalyzingTransactionsView: View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.white.opacity(0.6))
+                    .fill(categoryColor(for: item).opacity(0.18))
                     .frame(width: 44, height: 44)
-                    .overlay(Image(systemName: categoryIcon(for: item.merchant)).font(.system(size: 20)).foregroundColor(categoryColor(for: item.merchant)))
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(OnboardingDesign.glassHighlight, lineWidth: 1))
+                    .overlay(Image(systemName: categoryIcon(for: item)).font(.system(size: 20)).foregroundColor(categoryColor(for: item)))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.glassHighlight, lineWidth: 1))
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         Text(item.merchant ?? "Transaction")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textPrimary)
+                            .foregroundColor(theme.textPrimary)
                         Spacer()
                         Text(formatAmount(item.amount, item.currency))
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(OnboardingDesign.textPrimary)
+                            .foregroundColor(theme.textPrimary)
                     }
-                    Text(categoryLabel(for: item.merchant))
+                    Text(categoryLabel(for: item))
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
             }
             .padding(.vertical, 14)
@@ -287,14 +305,14 @@ struct AnalyzingTransactionsView: View {
                 if importViewModel.isAnalyzing {
                     ProgressView()
                         .scaleEffect(0.8)
-                        .tint(OnboardingDesign.textTertiary)
+                        .tint(theme.textTertiary)
                 }
-                Text(importViewModel.isAnalyzing ? "Processing…" : "Confirm Transactions")
+                Text(importViewModel.isAnalyzing ? L("analyzing_processing") : L("analyzing_confirm"))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(
                         (importViewModel.isAnalyzing || extractedItems.isEmpty)
-                            ? OnboardingDesign.textTertiary
-                            : OnboardingDesign.textPrimary
+                            ? theme.textTertiary
+                            : theme.textPrimary
                     )
             }
             .frame(maxWidth: .infinity)
@@ -353,38 +371,38 @@ struct AnalyzingTransactionsView: View {
         }
     }
 
-    private func categoryIcon(for merchant: String?) -> String {
-        let m = (merchant ?? "").lowercased()
-        if m.contains("coffee") || m.contains("food") || m.contains("restaurant") || m.contains("grocery") { return "cup.and.saucer.fill" }
-        if m.contains("gas") || m.contains("shell") || m.contains("uber") || m.contains("taxi") { return "car.fill" }
+    private func categoryIcon(for item: ParsedTransactionItem) -> String {
+        if let cid = item.categoryId, !cid.isEmpty, cid != "other" {
+            return CategoryIconHelper.iconName(categoryId: cid)
+        }
         return "creditcard.fill"
     }
 
-    private func categoryColor(for merchant: String?) -> Color {
-        let m = (merchant ?? "").lowercased()
-        if m.contains("coffee") || m.contains("food") || m.contains("restaurant") { return OnboardingDesign.accentGreen }
-        if m.contains("gas") || m.contains("uber") || m.contains("taxi") { return OnboardingDesign.accentBlue }
-        return OnboardingDesign.textSecondary
+    private func categoryColor(for item: ParsedTransactionItem) -> Color {
+        if let cid = item.categoryId, !cid.isEmpty, cid != "other",
+           let cat = CategoryStore.byId(cid) {
+            return cat.color
+        }
+        return theme.textSecondary
     }
 
-    private func categoryLabel(for merchant: String?) -> String {
-        let m = (merchant ?? "").lowercased()
-        if m.contains("coffee") || m.contains("food") || m.contains("restaurant") { return "Food & Drink" }
-        if m.contains("gas") || m.contains("uber") || m.contains("taxi") { return "Transportation" }
+    private func categoryLabel(for item: ParsedTransactionItem) -> String {
+        if let cid = item.categoryId, !cid.isEmpty, cid != "other",
+           let cat = CategoryStore.byId(cid) {
+            return cat.name
+        }
         return "Other"
     }
 
     private func formatAmount(_ amount: Double, _ currency: String) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = currency
-        return f.string(from: NSNumber(value: amount)) ?? "\(amount) \(currency)"
+        AppFormatters.currency(code: currency).string(from: NSNumber(value: amount)) ?? "\(amount) \(currency)"
     }
 }
 
 // MARK: - Supporting views
 
 private struct CloudFloatView: View {
+    @Environment(ThemeProvider.self) private var theme
     @State private var offset: CGFloat = 0
 
     var body: some View {
@@ -399,7 +417,7 @@ private struct CloudFloatView: View {
                 .shadow(color: .black.opacity(0.05), radius: 24, x: 0, y: 8)
             Image(systemName: "cloud.fill")
                 .font(.system(size: 40))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
         }
         .offset(y: offset)
         .onAppear {

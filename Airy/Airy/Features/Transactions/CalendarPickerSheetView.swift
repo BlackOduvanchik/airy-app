@@ -22,6 +22,7 @@ private let calMonthNames = ["January", "February", "March", "April", "May", "Ju
                               "July", "August", "September", "October", "November", "December"]
 
 struct CalendarPickerSheetView: View {
+    @Environment(ThemeProvider.self) private var theme
     let initialMonthKey: String
     let initialMonthLabel: String
     let onSelect: (MonthDetailDestination, Int?, Int?) -> Void   // (dest, startDay, endDay)
@@ -114,15 +115,15 @@ struct CalendarPickerSheetView: View {
             calendarGrid
         }
         .padding(24)
-        .background(.ultraThinMaterial)
-        .overlay(OnboardingDesign.glassBg.opacity(0.5).allowsHitTesting(false))
+        .background(theme.isDark ? AnyShapeStyle(theme.glassBg) : AnyShapeStyle(.ultraThinMaterial))
+        .overlay(theme.isDark ? nil : theme.glassBg.opacity(0.5).allowsHitTesting(false))
         .clipShape(RoundedRectangle(cornerRadius: 28))
         .overlay(
             RoundedRectangle(cornerRadius: 28)
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .stroke(theme.glassBorder, lineWidth: 1)
                 .allowsHitTesting(false)
         )
-        .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+        .shadow(color: theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
     }
 
     // MARK: - Header
@@ -132,9 +133,9 @@ struct CalendarPickerSheetView: View {
             Button { prevMonth() } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.3))
+                    .background(Color.white.opacity(theme.isDark ? 0.08 : 0.3))
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
@@ -152,10 +153,10 @@ struct CalendarPickerSheetView: View {
                 HStack(spacing: 4) {
                     Text(currentMonthLabel)
                         .font(.system(size: 22, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
             }
             .buttonStyle(.plain)
@@ -165,9 +166,9 @@ struct CalendarPickerSheetView: View {
             Button { nextMonth() } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.3))
+                    .background(Color.white.opacity(theme.isDark ? 0.08 : 0.3))
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
@@ -187,7 +188,7 @@ struct CalendarPickerSheetView: View {
             ForEach(["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"], id: \.self) { label in
                 Text(label)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
                     .frame(maxWidth: .infinity)
                     .padding(.bottom, 4)
             }
@@ -249,12 +250,15 @@ struct CalendarPickerSheetView: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
-                            .stroke(isToday && !isEndpoint ? OnboardingDesign.accentGreen : Color.clear, lineWidth: 1.5)
+                            .stroke(isToday && !isEndpoint ? theme.accentGreen : Color.clear, lineWidth: 1.5)
                     )
-                    .shadow(color: isEndpoint ? OnboardingDesign.accentGreen.opacity(0.3) : .clear, radius: 6, x: 0, y: 4)
+                    .shadow(color: isEndpoint ? theme.accentGreen.opacity(0.3) : .clear, radius: 6, x: 0, y: 4)
                 if hasActivity && !isEndpoint {
+                    let dotColor = isDayInFuture(day: day)
+                        ? theme.accentAmber
+                        : theme.accentGreen
                     Circle()
-                        .fill(OnboardingDesign.accentGreen)
+                        .fill(dotColor)
                         .frame(width: 4, height: 4)
                         .padding(.bottom, 4)
                 }
@@ -266,15 +270,15 @@ struct CalendarPickerSheetView: View {
 
     private func dayForeground(isPrevNext: Bool, isEndpoint: Bool, isInRange: Bool, isToday: Bool) -> Color {
         if isEndpoint { return .white }
-        if isInRange { return OnboardingDesign.accentGreen }
-        if isPrevNext { return OnboardingDesign.textTertiary.opacity(0.5) }
-        if isToday { return OnboardingDesign.accentGreen }
-        return OnboardingDesign.textPrimary
+        if isInRange { return theme.accentGreen }
+        if isPrevNext { return theme.textTertiary.opacity(0.5) }
+        if isToday { return theme.accentGreen }
+        return theme.textPrimary
     }
 
     private func dayBackground(isEndpoint: Bool, isInRange: Bool, isToday: Bool) -> Color {
-        if isEndpoint { return OnboardingDesign.accentGreen }
-        if isInRange { return OnboardingDesign.accentGreen.opacity(0.12) }
+        if isEndpoint { return theme.accentGreen }
+        if isInRange { return theme.accentGreen.opacity(0.12) }
         return Color.clear
     }
 
@@ -311,7 +315,7 @@ struct CalendarPickerSheetView: View {
             } label: {
                 Text("Select whole month")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.accentGreen)
+                    .foregroundColor(theme.accentGreen)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
             }
@@ -321,10 +325,10 @@ struct CalendarPickerSheetView: View {
                 Button { onCancel() } label: {
                     Text("Cancel")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .foregroundColor(theme.textSecondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 48)
-                        .background(Color.white.opacity(0.4))
+                        .background(Color.white.opacity(theme.isDark ? 0.08 : 0.4))
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
                 .buttonStyle(.plain)
@@ -335,7 +339,7 @@ struct CalendarPickerSheetView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 48)
-                        .background(OnboardingDesign.accentGreen)
+                        .background(theme.isDark ? Color.white.opacity(0.15) : theme.accentGreen)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
                 .buttonStyle(.plain)
@@ -360,10 +364,10 @@ struct CalendarPickerSheetView: View {
             ZStack(alignment: .center) {
                 // Selection highlight
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.white.opacity(0.4))
+                    .fill(Color.white.opacity(theme.isDark ? 0.08 : 0.4))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                            .stroke(Color.white.opacity(theme.isDark ? 0.10 : 0.5), lineWidth: 1)
                     )
                     .frame(height: 34)
                     .allowsHitTesting(false)
@@ -372,7 +376,7 @@ struct CalendarPickerSheetView: View {
                     // Month wheel
                     monthWheel
                     Rectangle()
-                        .fill(Color.black.opacity(0.05))
+                        .fill(theme.isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.05))
                         .frame(width: 1)
                         .frame(maxHeight: .infinity)
                     // Year wheel
@@ -389,7 +393,7 @@ struct CalendarPickerSheetView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 36)
-                    .background(OnboardingDesign.accentGreen)
+                    .background(theme.isDark ? Color.white.opacity(0.15) : theme.accentGreen)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
@@ -399,14 +403,16 @@ struct CalendarPickerSheetView: View {
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 24)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color.white.opacity(0.5))
+                    .fill(theme.isDark ? AnyShapeStyle(theme.glassBg) : AnyShapeStyle(.ultraThinMaterial))
+                if !theme.isDark {
+                    RoundedRectangle(cornerRadius: 24)
+                        .fill(Color.white.opacity(0.5))
+                }
             }
         }
         .overlay(
             RoundedRectangle(cornerRadius: 24)
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .stroke(theme.glassBorder, lineWidth: 1)
         )
         .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 16, x: 0, y: 8)
     }
@@ -417,7 +423,7 @@ struct CalendarPickerSheetView: View {
                 ForEach(0..<12, id: \.self) { i in
                     Text(calMonthNames[i])
                         .font(.system(size: pickerMonthIndex == i ? 18 : 16, weight: pickerMonthIndex == i ? .bold : .medium))
-                        .foregroundColor(pickerMonthIndex == i ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                        .foregroundColor(pickerMonthIndex == i ? theme.textPrimary : theme.textTertiary)
                         .frame(height: wheelRowHeight)
                         .frame(maxWidth: .infinity)
                         .id(i)
@@ -460,7 +466,7 @@ struct CalendarPickerSheetView: View {
                 ForEach(0..<years.count, id: \.self) { i in
                     Text(String(years[i]))
                         .font(.system(size: pickerYearIndex == i ? 18 : 16, weight: pickerYearIndex == i ? .bold : .medium))
-                        .foregroundColor(pickerYearIndex == i ? OnboardingDesign.textPrimary : OnboardingDesign.textTertiary)
+                        .foregroundColor(pickerYearIndex == i ? theme.textPrimary : theme.textTertiary)
                         .frame(height: wheelRowHeight)
                         .frame(maxWidth: .infinity)
                         .id(i)
@@ -558,6 +564,17 @@ struct CalendarPickerSheetView: View {
             set.insert(day)
         }
         await MainActor.run { daysWithTransactions = set }
+    }
+
+    private func isDayInFuture(day: Int) -> Bool {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        var comp = DateComponents()
+        comp.year = currentYear
+        comp.month = currentMonth
+        comp.day = day
+        guard let cellDate = cal.date(from: comp) else { return false }
+        return cellDate > today
     }
 
     // MARK: - Calendar builder

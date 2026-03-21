@@ -14,6 +14,7 @@ struct MonthDetailDestination: Hashable {
 }
 
 struct TransactionListView: View {
+    @Environment(ThemeProvider.self) private var theme
     var showBottomBar: Bool = false
     var onDismiss: (() -> Void)? = nil
     var onInsights: (() -> Void)? = nil
@@ -23,112 +24,147 @@ struct TransactionListView: View {
     @State private var addSheetQuickPickOrder: [String] = []
     @State private var selectedTransactionForEdit: Transaction? = nil
     @State private var monthPath: [MonthDetailDestination] = []
+    @State private var selectedMonth: MonthDetailDestination?
     @FocusState private var isSearchFocused: Bool
     @State private var deletingTransactionIds: Set<String> = []
+    @State private var localSearchText = ""
     @GestureState private var dragOffset: CGFloat = 0
 
     var body: some View {
-        NavigationStack(path: $monthPath) {
-            ZStack(alignment: .top) {
-                OnboardingGradientBackground()
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        titleSection
-                        if !viewModel.pinnedTransactions.isEmpty {
-                            pinnedSection
-                                .transition(.asymmetric(
-                                    insertion: .opacity
-                                        .combined(with: .scale(scale: 0.88, anchor: .top))
-                                        .combined(with: .offset(y: -36)),
-                                    removal: .opacity
-                                        .combined(with: .scale(scale: 0.92, anchor: .top))
-                                        .combined(with: .offset(y: -16))
-                                ))
-                        }
-                        searchSection
-                        filterPillsSection
-                        transactionsContent
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 120)
-                }
-                .scrollIndicators(.hidden)
+        if showBottomBar {
+            NavigationStack(path: $monthPath) {
+                innerContent
             }
-            .overlay(alignment: .bottom) {
-                if showBottomBar {
-                    transactionsBottomBar
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .ignoresSafeArea(edges: showBottomBar ? .bottom : [])
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true)
-            .toolbar {
-                if showBottomBar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { onDismiss?() } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 12, weight: .semibold))
+            .offset(x: dragOffset)
+            .simultaneousGesture(
+                DragGesture()
+                    .updating($dragOffset) { value, state, _ in
+                        if value.startLocation.x < 40 && value.translation.width > 0 {
+                            state = value.translation.width
                         }
                     }
-                }
-                ToolbarItem(placement: .principal) {
-                    Text("TRANSACTIONS")
-                        .font(.system(size: 12, weight: .semibold))
-                        .tracking(0.5)
-                        .foregroundColor(OnboardingDesign.textTertiary)
-                }
-                if !showBottomBar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(action: {
-                            addSheetQuickPickOrder = LastUsedCategoriesStore.forQuickPick()
-                            showAddTransaction = true
-                        }) {
-                            Image(systemName: "plus")
+                    .onEnded { value in
+                        if value.startLocation.x < 40 && value.translation.width > 100 {
+                            onDismiss?()
                         }
                     }
-                }
-            }
-            .navigationDestination(for: MonthDetailDestination.self) { dest in
-                MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel, monthPath: $monthPath)
-            }
-            .sheet(isPresented: $showAddTransaction, onDismiss: {
-                Task { await viewModel.load() }
-            }) {
-                AddTransactionView(initialQuickPickOrder: addSheetQuickPickOrder)
-            }
-            .sheet(item: $selectedTransactionForEdit) { tx in
-                AddTransactionView(transaction: tx, onSuccess: {
-                    selectedTransactionForEdit = nil
-                    Task { await viewModel.load() }
-                })
-            }
-            .task { await viewModel.load() }
-            .onChange(of: viewModel.selectedFilterId) { _, newValue in
-                if newValue != nil && viewModel.hasMore {
-                    Task { await viewModel.loadRemaining() }
-                }
-            }
-            .sensoryFeedback(.warning, trigger: deletingTransactionIds.count)
+            )
+            .animation(.interactiveSpring, value: dragOffset)
+        } else {
+            innerContent
         }
-        .offset(x: showBottomBar ? dragOffset : 0)
-        .simultaneousGesture(
-            showBottomBar ?
-            DragGesture()
-                .updating($dragOffset) { value, state, _ in
-                    if value.startLocation.x < 40 && value.translation.width > 0 {
-                        state = value.translation.width
+    }
+
+    private var innerContent: some View {
+        ZStack(alignment: .top) {
+            OnboardingGradientBackground()
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    titleSection
+                    if !viewModel.pinnedTransactions.isEmpty {
+                        pinnedSection
+                            .transition(.asymmetric(
+                                insertion: .opacity
+                                    .combined(with: .scale(scale: 0.88, anchor: .top))
+                                    .combined(with: .offset(y: -36)),
+                                removal: .opacity
+                                    .combined(with: .scale(scale: 0.92, anchor: .top))
+                                    .combined(with: .offset(y: -16))
+                            ))
+                    }
+                    searchSection
+                    filterPillsSection
+                    transactionsContent
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 120)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .overlay(alignment: .bottom) {
+            if showBottomBar && AppearanceStore.navigationType == .airyBar {
+                transactionsBottomBar
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .ignoresSafeArea(edges: showBottomBar ? .bottom : [])
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(showBottomBar)
+        .toolbar {
+            if showBottomBar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { onDismiss?() } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
-                .onEnded { value in
-                    if value.startLocation.x < 40 && value.translation.width > 100 {
-                        onDismiss?()
+            }
+            ToolbarItem(placement: .principal) {
+                Text(L("txlist_title"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(theme.textTertiary)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    let now = Date()
+                    let cal = Calendar.current
+                    let y = cal.component(.year, from: now)
+                    let m = cal.component(.month, from: now)
+                    let key = String(format: "%04d-%02d", y, m)
+                    let label = AppFormatters.monthYear.string(from: now)
+                    let dest = MonthDetailDestination(monthKey: key, monthLabel: label)
+                    if showBottomBar {
+                        monthPath = [dest]
+                    } else {
+                        selectedMonth = dest
                     }
+                } label: {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-            : nil
-        )
-        .animation(.interactiveSpring, value: dragOffset)
+            }
+        }
+        .navigationDestination(for: MonthDetailDestination.self) { dest in
+            MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel, monthPath: $monthPath)
+                .environment(theme)
+        }
+        .navigationDestination(item: $selectedMonth) { dest in
+            MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel)
+                .environment(theme)
+        }
+        .sheet(isPresented: $showAddTransaction, onDismiss: {
+            Task { await viewModel.load() }
+        }) {
+            AddTransactionView(initialQuickPickOrder: addSheetQuickPickOrder)
+                .environment(theme)
+        }
+        .sheet(item: $selectedTransactionForEdit) { tx in
+            AddTransactionView(transaction: tx, onSuccess: {
+                selectedTransactionForEdit = nil
+                Task { await viewModel.load() }
+            })
+            .environment(theme)
+        }
+        .task { await viewModel.load() }
+        .task(id: localSearchText) {
+            try? await Task.sleep(for: .milliseconds(300))
+            viewModel.searchText = localSearchText
+            if !localSearchText.trimmingCharacters(in: .whitespaces).isEmpty && viewModel.hasMore {
+                await viewModel.loadRemaining()
+            }
+        }
+        .onChange(of: viewModel.selectedFilterId) { _, newValue in
+            if newValue != nil && viewModel.hasMore {
+                Task { await viewModel.loadRemaining() }
+            }
+        }
+        .sensoryFeedback(.warning, trigger: deletingTransactionIds.count)
     }
 
     // MARK: - Bottom bar (when presented as modal) — same as Dashboard
@@ -151,11 +187,11 @@ struct TransactionListView: View {
     // MARK: - Title (scrollable)
 
     private var titleSection: some View {
-        Text("All Spending")
+        Text(L("txlist_header"))
             .font(.system(size: 34, weight: .light))
             .tracking(-0.5)
             .lineSpacing(2)
-            .foregroundColor(OnboardingDesign.textPrimary)
+            .foregroundColor(theme.textPrimary)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -165,20 +201,20 @@ struct TransactionListView: View {
         ZStack(alignment: .leading) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 18))
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
                 .padding(.leading, 16)
                 .accessibilityHidden(true)
-            TextField("Search merchants…", text: $viewModel.searchText)
+            TextField("", text: $localSearchText, prompt: Text(L("txlist_search")).foregroundStyle(theme.textTertiary))
                 .font(.system(size: 15))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .padding(.horizontal, 16)
                 .padding(.leading, 44)
                 .padding(.vertical, 14)
-                .background(Color.white.opacity(0.3))
+                .background(Color.white.opacity(theme.isDark ? 0.05 : 0.3))
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                        .stroke(theme.glassBorder, lineWidth: 1)
                 )
         }
     }
@@ -195,14 +231,14 @@ struct TransactionListView: View {
                     } label: {
                         Text(filter.label)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(isActive ? .white : OnboardingDesign.textSecondary)
+                            .foregroundColor(isActive ? .white : theme.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(isActive ? OnboardingDesign.accentGreen : OnboardingDesign.glassBg)
+                            .background(isActive ? theme.accentGreen : theme.glassBg)
                             .clipShape(Capsule())
                             .overlay(
                                 Capsule()
-                                    .stroke(isActive ? OnboardingDesign.accentGreen : OnboardingDesign.glassBorder, lineWidth: 1)
+                                    .stroke(isActive ? theme.accentGreen : theme.glassBorder, lineWidth: 1)
                             )
                     }
                     .buttonStyle(.plain)
@@ -223,16 +259,16 @@ struct TransactionListView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
             } else if viewModel.groupedByMonth.isEmpty && viewModel.pinnedTransactions.isEmpty {
-                Text("No transactions yet")
+                Text(L("txlist_no_transactions"))
                     .font(.system(size: 14))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
             } else {
                 ForEach(viewModel.groupedByMonth) { group in
                     monthSection(group: group)
                 }
-                if viewModel.hasMore && viewModel.selectedFilterId == nil {
+                if viewModel.hasMore && viewModel.selectedFilterId == nil && viewModel.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 20)
@@ -248,10 +284,10 @@ struct TransactionListView: View {
 
     private var pinnedSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("PINNED ITEMS")
+            Text(L("txlist_pinned"))
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.5)
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 4)
             ForEach(viewModel.pinnedTransactions.filter { !deletingTransactionIds.contains($0.id) }) { tx in
@@ -273,11 +309,11 @@ struct TransactionListView: View {
         .padding(.horizontal, 4)
         .background(
             RoundedRectangle(cornerRadius: 32)
-                .fill(Color.white.opacity(0.15))
+                .fill(Color.white.opacity(theme.isDark ? 0.03 : 0.15))
                 .overlay(
                     RoundedRectangle(cornerRadius: 32)
                         .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-                        .foregroundColor(OnboardingDesign.glassBorder)
+                        .foregroundColor(theme.glassBorder)
                 )
         )
     }
@@ -289,37 +325,44 @@ struct TransactionListView: View {
                 HStack(alignment: .center, spacing: 6) {
                     Text(transactionDisplayName(tx))
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                         .lineLimit(1)
                     categoryBadge(tx.category, isSubscription: tx.isSubscription == true)
                     Spacer(minLength: 0)
                 }
                 Text(subtitleForTransaction(tx))
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(amountString(tx))
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(tx.type.lowercased() == "income" ? theme.incomeColor : theme.expenseColor)
             Image(systemName: "pin.fill")
                 .font(.system(size: 10))
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
         }
         .padding(16)
-        .background(Color.white.opacity(0.6))
+        .background(Color.white.opacity(theme.isDark ? 0.08 : 0.6))
         .clipShape(RoundedRectangle(cornerRadius: 28))
-        .shadow(color: OnboardingDesign.textPrimary.opacity(0.04), radius: 20, x: 0, y: 10)
+        .shadow(color: theme.isDark ? Color.black.opacity(0.3) : theme.textPrimary.opacity(0.04), radius: 20, x: 0, y: 10)
         .overlay(
             RoundedRectangle(cornerRadius: 28)
-                .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                .stroke(theme.glassBorder, lineWidth: 1)
         )
     }
 
     private func monthSection(group: TransactionMonthGroup) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            NavigationLink(value: MonthDetailDestination(monthKey: group.id, monthLabel: group.monthLabel)) {
+            Button {
+                let dest = MonthDetailDestination(monthKey: group.id, monthLabel: group.monthLabel)
+                if showBottomBar {
+                    monthPath = [dest]
+                } else {
+                    selectedMonth = dest
+                }
+            } label: {
                 sectionHeader(monthLabel: group.monthLabel, total: group.total)
             }
             .buttonStyle(.plain)
@@ -347,11 +390,11 @@ struct TransactionListView: View {
             Text(monthLabel)
                 .font(.system(size: 12, weight: .semibold))
                 .tracking(0.5)
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
             Spacer()
-            Text(formatAmount(total, "USD"))
+            Text(AppFormatters.formatTotal(amount: total, currency: BaseCurrencyStore.baseCurrency))
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(OnboardingDesign.textSecondary)
+                .foregroundColor(theme.textSecondary)
         }
         .padding(.horizontal, 4)
     }
@@ -365,27 +408,27 @@ struct TransactionListView: View {
                 HStack(alignment: .center, spacing: 6) {
                     Text(transactionDisplayName(tx))
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                         .lineLimit(1)
                     categoryBadge(tx.category, isSubscription: tx.isSubscription == true)
                     if tx.isSubscription == true {
                         Image(systemName: "bubble.left")
                             .font(.system(size: 14))
-                            .foregroundColor(OnboardingDesign.accentBlue.opacity(0.8))
+                            .foregroundColor(theme.accentBlue.opacity(0.8))
                     }
                     Spacer(minLength: 0)
                 }
                 Text(subtitleForTransaction(tx))
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
                     .lineLimit(1)
                 if isWarning {
-                    Text("Possible Duplicate")
+                    Text(L("txlist_possible_duplicate"))
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(OnboardingDesign.accentWarning)
+                        .background(theme.accentWarning)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                         .padding(.top, 4)
                 }
@@ -394,10 +437,10 @@ struct TransactionListView: View {
             HStack(alignment: .center, spacing: 8) {
                 Text(amountString(tx))
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(tx.type.lowercased() == "income" ? theme.incomeColor : theme.expenseColor)
                 Image(systemName: "pencil")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textTertiary.opacity(0.6))
+                    .foregroundColor(theme.textTertiary.opacity(0.6))
             }
         }
         .padding(16)
@@ -405,13 +448,13 @@ struct TransactionListView: View {
         .background {
             if isWarning {
                 RoundedRectangle(cornerRadius: 28)
-                    .fill(OnboardingDesign.accentWarning.opacity(0.08))
+                    .fill(theme.accentWarning.opacity(0.08))
             }
         }
         .overlay {
             if isWarning {
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(OnboardingDesign.accentWarning.opacity(0.3), lineWidth: 1)
+                    .stroke(theme.accentWarning.opacity(0.3), lineWidth: 1)
             }
         }
         }
@@ -429,7 +472,7 @@ struct TransactionListView: View {
                 }
             }
         } label: {
-            Label(viewModel.isPinned(tx) ? "Unpin" : "Pin to Top", systemImage: "bookmark")
+            Label(viewModel.isPinned(tx) ? L("txlist_unpin") : L("txlist_pin"), systemImage: "bookmark")
         }
         Button(role: .destructive) {
             let id = tx.id
@@ -439,10 +482,12 @@ struct TransactionListView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
                 try? LocalDataStore.shared.deleteTransaction(id: id)
                 deletingTransactionIds.remove(id)
-                Task { @MainActor in await viewModel.load() }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                    viewModel.removeLocally(id: id)
+                }
             }
         } label: {
-            Label("Delete", systemImage: "trash")
+            Label(L("common_delete"), systemImage: "trash")
         }
     }
 
@@ -477,7 +522,7 @@ struct TransactionListView: View {
 
     private func badgeColors(category: String, isSubscription: Bool) -> (Color, Color) {
         if isSubscription {
-            return (OnboardingDesign.accentWarning.opacity(0.15), OnboardingDesign.accentWarning)
+            return (theme.accentWarning.opacity(0.15), theme.accentWarning)
         }
         let color = CategoryIconHelper.color(categoryId: category)
         return (color.opacity(0.15), color)
@@ -489,13 +534,8 @@ struct TransactionListView: View {
 
     private func subtitleForTransaction(_ tx: Transaction) -> String {
         let dateStr = String(tx.transactionDate.prefix(10))
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        guard let d = formatter.date(from: dateStr) else { return tx.transactionDate }
-        let out = DateFormatter()
-        out.dateFormat = "MMM d"
-        var sub = out.string(from: d)
+        guard let d = AppFormatters.inputDate.date(from: dateStr) else { return tx.transactionDate }
+        var sub = AppFormatters.shortMonthDay.string(from: d)
         if let note = tx.title, !note.isEmpty {
             sub += " • \(note)"
         }
@@ -503,39 +543,30 @@ struct TransactionListView: View {
     }
 
     private func amountString(_ tx: Transaction) -> String {
-        let amount = tx.amountOriginal
-        let formatted = formatAmount(amount, tx.currencyOriginal)
-        return tx.type.lowercased() == "income" ? "+\(formatted)" : "-\(formatted)"
-    }
-
-    private func formatAmount(_ amount: Double, _ currency: String) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = currency
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: abs(amount))) ?? "\(abs(amount)) \(currency)"
+        AppFormatters.formatTransaction(amount: tx.amountOriginal, currency: tx.currencyOriginal, isIncome: tx.type.lowercased() == "income")
     }
 }
 
 // MARK: - Glass modifier
 
 private struct TransactionsGlassModifier: ViewModifier {
+    @Environment(ThemeProvider.self) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
         content
-            .background(reduceTransparency ? AnyShapeStyle(Color(.secondarySystemGroupedBackground)) : AnyShapeStyle(.ultraThinMaterial))
-            .overlay(reduceTransparency ? nil : OnboardingDesign.glassBg.opacity(0.5))
+            .background(reduceTransparency ? AnyShapeStyle(Color(.secondarySystemGroupedBackground)) : theme.isDark ? AnyShapeStyle(theme.glassBg) : AnyShapeStyle(.ultraThinMaterial))
+            .overlay(reduceTransparency || theme.isDark ? nil : theme.glassBg.opacity(0.5))
             .clipShape(RoundedRectangle(cornerRadius: 28))
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                    .stroke(theme.glassBorder, lineWidth: 1)
                     .allowsHitTesting(false)
             )
-            .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+            .shadow(color: theme.isDark ? Color.black.opacity(0.4) : theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    .stroke(Color.white.opacity(theme.isDark ? 0.05 : 0.2), lineWidth: 1)
                     .blur(radius: 0)
                     .offset(y: 1)
                     .allowsHitTesting(false)

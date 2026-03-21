@@ -27,7 +27,7 @@ enum TransactionCategory: String, CaseIterable {
     }
 }
 
-@Observable
+@Observable @MainActor
 final class AddTransactionViewModel {
     var amountText = ""
     var selectedCurrency = "USD"
@@ -46,7 +46,28 @@ final class AddTransactionViewModel {
     var existingTransaction: Transaction?
     var isPendingEditMode: Bool = false
 
-    static let currencies = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "UAH", "RUB", "THB"]
+    static let currencies: [(code: String, name: String, symbol: String)] = [
+        ("AED", "UAE Dirham", "د.إ"), ("ARS", "Argentine Peso", "$"), ("AUD", "Australian Dollar", "A$"),
+        ("BRL", "Brazilian Real", "R$"), ("CAD", "Canadian Dollar", "C$"), ("CHF", "Swiss Franc", "Fr"),
+        ("CNY", "Chinese Yuan", "¥"), ("CZK", "Czech Koruna", "Kč"), ("DKK", "Danish Krone", "kr"),
+        ("EUR", "Euro", "€"), ("GBP", "British Pound", "£"), ("HKD", "Hong Kong Dollar", "HK$"),
+        ("HUF", "Hungarian Forint", "Ft"), ("IDR", "Indonesian Rupiah", "Rp"), ("ILS", "Israeli Shekel", "₪"),
+        ("INR", "Indian Rupee", "₹"), ("JPY", "Japanese Yen", "¥"), ("KRW", "South Korean Won", "₩"),
+        ("MXN", "Mexican Peso", "$"), ("MYR", "Malaysian Ringgit", "RM"), ("NOK", "Norwegian Krone", "kr"),
+        ("NZD", "New Zealand Dollar", "NZ$"), ("PHP", "Philippine Peso", "₱"), ("PLN", "Polish Zloty", "zł"),
+        ("RON", "Romanian Leu", "lei"), ("RUB", "Russian Ruble", "₽"), ("SAR", "Saudi Riyal", "﷼"),
+        ("SEK", "Swedish Krona", "kr"), ("SGD", "Singapore Dollar", "S$"), ("THB", "Thai Baht", "฿"),
+        ("TRY", "Turkish Lira", "₺"), ("TWD", "Taiwan Dollar", "NT$"), ("UAH", "Ukrainian Hryvnia", "₴"),
+        ("USD", "US Dollar", "$"), ("VND", "Vietnamese Dong", "₫"), ("ZAR", "South African Rand", "R")
+    ]
+
+    static func currencySymbol(for code: String) -> String {
+        currencies.first { $0.code == code }?.symbol ?? code
+    }
+
+    static func currencyName(for code: String) -> String {
+        currencies.first { $0.code == code }?.name ?? code
+    }
 
     var amount: Double? {
         Double(amountText.replacingOccurrences(of: ",", with: "."))
@@ -55,19 +76,17 @@ final class AddTransactionViewModel {
     var isEditMode: Bool { existingTransaction != nil }
 
     var primaryButtonTitle: String {
-        if isPendingEditMode || isEditMode { return "Save Changes" }
-        return "Add Transaction"
+        if isPendingEditMode || isEditMode { return L("common_save") }
+        return L("nav_add_transaction")
     }
 
     var sheetTitle: String {
-        if isPendingEditMode { return "Edit Entry" }
-        return isEditMode ? "Edit Entry" : "New Entry"
+        if isPendingEditMode { return L("common_edit") }
+        return isEditMode ? L("common_edit") : L("addtx_new_entry")
     }
 
     func buildPendingOverrides() -> ConfirmPendingOverrides {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let dateStr = dateFormatter.string(from: dateTime)
+        let dateStr = AppFormatters.inputDate.string(from: dateTime)
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "HH:mm"
         let timeStr = timeFormatter.string(from: dateTime)
@@ -89,7 +108,7 @@ final class AddTransactionViewModel {
         )
     }
 
-    init(existing: Transaction? = nil, initialType: String? = nil, fromPayload payload: PendingTransactionPayload? = nil) {
+    init(existing: Transaction? = nil, initialType: String? = nil, fromPayload payload: PendingTransactionPayload? = nil, prefillSubscriptionInterval: String? = nil) {
         self.existingTransaction = existing
         if let type = initialType, existing == nil, payload == nil {
             transactionType = type
@@ -107,15 +126,16 @@ final class AddTransactionViewModel {
             }
             transactionType = (p.type ?? "expense").lowercased()
             note = p.title ?? ""
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd"
-            formatter.timeZone = TimeZone(identifier: "UTC")
             if let dateStr = p.transactionDate, let timeStr = p.transactionTime,
                let d = parseDateTime(dateStr: dateStr, timeStr: timeStr) {
                 dateTime = d
             } else if let dateStr = p.transactionDate, !dateStr.isEmpty,
-                      let d = formatter.date(from: String(dateStr.prefix(10))) {
+                      let d = AppFormatters.inputDate.date(from: String(dateStr.prefix(10))) {
                 dateTime = d
+            }
+            if let interval = prefillSubscriptionInterval {
+                isSubscription = true
+                subscriptionInterval = interval
             }
         } else if let tx = existing {
             amountText = String(format: "%.2f", tx.amountOriginal)
@@ -130,12 +150,9 @@ final class AddTransactionViewModel {
             isSubscription = tx.isSubscription == true
             subscriptionInterval = tx.subscriptionInterval ?? "monthly"
             note = tx.title ?? ""
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd"
-            formatter.timeZone = TimeZone(identifier: "UTC")
             if let timeStr = tx.transactionTime, let d = parseDateTime(dateStr: tx.transactionDate, timeStr: timeStr) {
                 dateTime = d
-            } else if let d = formatter.date(from: String(tx.transactionDate.prefix(10))) {
+            } else if let d = AppFormatters.inputDate.date(from: String(tx.transactionDate.prefix(10))) {
                 dateTime = d
             }
         } else {
@@ -209,15 +226,13 @@ final class AddTransactionViewModel {
 
     func submit() async {
         guard let amt = amount, amt > 0 else {
-            errorMessage = "Enter a valid amount"
+            errorMessage = L("addtx_invalid_amount")
             return
         }
         isSubmitting = true
         errorMessage = nil
         defer { Task { @MainActor in isSubmitting = false } }
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let dateStr = dateFormatter.string(from: dateTime)
+        let dateStr = AppFormatters.inputDate.string(from: dateTime)
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "HH:mm"
         let timeStr = timeFormatter.string(from: dateTime)
@@ -244,7 +259,7 @@ final class AddTransactionViewModel {
                 comment: note.isEmpty ? nil : note
             )
             do {
-                _ = try await LocalDataStore.shared.updateTransaction(id: existing.id, body: body)
+                _ = try LocalDataStore.shared.updateTransaction(id: existing.id, body: body)
                 await MainActor.run {
                     if let catId = selectedCategoryId { LastUsedCategoriesStore.recordUsed(categoryId: catId) }
                     didSucceed = true
@@ -271,7 +286,7 @@ final class AddTransactionViewModel {
                 sourceType: "manual"
             )
             do {
-                _ = try await LocalDataStore.shared.createTransaction(body)
+                _ = try LocalDataStore.shared.createTransaction(body)
                 await MainActor.run {
                     if let catId = selectedCategoryId { LastUsedCategoriesStore.recordUsed(categoryId: catId) }
                     didSucceed = true

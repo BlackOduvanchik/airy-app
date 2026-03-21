@@ -22,6 +22,47 @@ final class LocalDataStore {
 
     var context: ModelContext? { modelContainer?.mainContext }
 
+    // MARK: - Delete All Data
+
+    /// Wipe all user data from the device: transactions, pending, categories, caches, rules.
+    func deleteAllData() {
+        // 1. SwiftData: delete all transactions and pending
+        if let ctx = context {
+            do {
+                try ctx.delete(model: LocalTransaction.self)
+                try ctx.delete(model: LocalPendingTransaction.self)
+                try ctx.save()
+            } catch {
+                print("[LocalDataStore] deleteAllData SwiftData error: \(error)")
+            }
+        }
+
+        // 2. Categories & subcategories
+        CategoryStore.save([])
+        SubcategoryStore.save([])
+
+        // 3. Merchant learning stores
+        MerchantCategoryRuleStore.shared.clearAll()
+        UserDefaults.standard.removeObject(forKey: "merchantAliasStore")
+
+        // 4. Image hash cache
+        ImageHashCacheStore.shared.clearAll()
+
+        // 5. Subscription insights
+        let insightKeys = ["subscriptionInsights_v1", "subscriptionInsights_lastAnalysis", "subscriptionInsights_firstSubAdded"]
+        insightKeys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
+
+        // 6. Misc UserDefaults
+        let miscKeys = [
+            "pinnedTransactionIds",
+            "airy.lastUsedCategoryIds",
+            "airy.categoriesInitialized",
+            "airy.subcategories_seeded",
+            "exportSelectedColumns"
+        ]
+        miscKeys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
+    }
+
     // MARK: - Transactions
 
     func fetchTransactions(limit: Int = 50, offset: Int = 0, month: String? = nil, year: String? = nil) -> [Transaction] {
@@ -43,6 +84,21 @@ final class LocalDataStore {
             descriptor.predicate = #Predicate<LocalTransaction> { tx in
                 tx.transactionDate >= startDate && tx.transactionDate < endDate
             }
+        }
+        guard let list = try? ctx.fetch(descriptor) else { return [] }
+        return list.map { $0.toTransaction() }
+    }
+
+    func fetchTransactions(from startDate: String, to endDate: String) -> [Transaction] {
+        guard let ctx = context else { return [] }
+        var descriptor = FetchDescriptor<LocalTransaction>(
+            sortBy: [
+                SortDescriptor(\.transactionDate, order: .reverse),
+                SortDescriptor(\.createdAt, order: .reverse)
+            ]
+        )
+        descriptor.predicate = #Predicate<LocalTransaction> { tx in
+            tx.transactionDate >= startDate && tx.transactionDate <= endDate
         }
         guard let list = try? ctx.fetch(descriptor) else { return [] }
         return list.map { $0.toTransaction() }
@@ -132,7 +188,7 @@ final class LocalDataStore {
             tx.category = targetId
             tx.subcategory = nil
         }
-        try? ctx.save()
+        do { try ctx.save() } catch { print("[LocalDataStore] save failed: \(error)") }
     }
 
     /// Clears subcategory on transactions that match the given subcategory name + parent category.
@@ -146,7 +202,7 @@ final class LocalDataStore {
         for tx in list {
             tx.subcategory = nil
         }
-        try? ctx.save()
+        do { try ctx.save() } catch { print("[LocalDataStore] save failed: \(error)") }
     }
 
     /// Renames subcategory on all transactions that match the old name + parent category.
@@ -159,7 +215,7 @@ final class LocalDataStore {
         for tx in list {
             tx.subcategory = newName
         }
-        try? ctx.save()
+        do { try ctx.save() } catch { print("[LocalDataStore] save failed: \(error)") }
     }
 
     // MARK: - Pending
@@ -173,20 +229,18 @@ final class LocalDataStore {
         return list.map { $0.toPendingTransaction() }
     }
 
-    func addPendingTransaction(payload: PendingTransactionPayload, ocrText: String?, sourceImageHash: String?, sourceFamilyId: String? = nil, sourceTemplateId: String? = nil) {
+    func addPendingTransaction(payload: PendingTransactionPayload, ocrText: String?, sourceImageHash: String?) {
         guard let ctx = context else { return }
         let pending = LocalPendingTransaction(
             payload: payload,
             ocrText: ocrText,
-            sourceImageHash: sourceImageHash,
-            sourceFamilyId: sourceFamilyId,
-            sourceTemplateId: sourceTemplateId
+            sourceImageHash: sourceImageHash
         )
         ctx.insert(pending)
-        try? ctx.save()
+        do { try ctx.save() } catch { print("[LocalDataStore] save failed: \(error)") }
     }
 
-    /// Fetch raw LocalPendingTransaction by id (needed to read sourceFamilyId for learning feedback).
+    /// Fetch raw LocalPendingTransaction by id.
     func fetchPendingLocalTransaction(byId id: String) -> LocalPendingTransaction? {
         guard let ctx = context else { return nil }
         var descriptor = FetchDescriptor<LocalPendingTransaction>(predicate: #Predicate { $0.id == id })
@@ -201,16 +255,6 @@ final class LocalDataStore {
         guard let pending = try? ctx.fetch(descriptor).first,
               let payload = pending.decodedPayload else { return false }
         if rememberMerchant, let o = overrides {
-            if let corrected = o.merchant, !corrected.isEmpty, corrected != (payload.merchant ?? "Transaction"),
-               let amt = payload.amountOriginal ?? o.amountOriginal,
-               let dt = payload.transactionDate ?? o.transactionDate {
-                MerchantCorrectionStore.shared.saveCorrection(
-                    amount: amt,
-                    date: dt,
-                    originalMerchant: payload.merchant,
-                    correctedMerchant: corrected
-                )
-            }
             if o.category != nil || o.subcategoryId != nil {
                 let merchant = payload.merchant ?? "Transaction"
                 let catId = o.category ?? payload.category ?? "other"
@@ -267,7 +311,7 @@ final class LocalDataStore {
             amountBase: baseAmount,
             baseCurrency: userBase,
             merchant: merged.merchant,
-            transactionDate: merged.transactionDate ?? ISO8601DateFormatter().string(from: Date()).prefix(10).description,
+            transactionDate: merged.transactionDate ?? AppFormatters.iso8601Basic.string(from: Date()).prefix(10).description,
             transactionTime: merged.transactionTime,
             category: merged.category ?? "other",
             subcategory: merged.subcategory,
@@ -278,7 +322,7 @@ final class LocalDataStore {
         )
         ctx.insert(tx)
         ctx.delete(pending)
-        try? ctx.save()
+        do { try ctx.save() } catch { print("[LocalDataStore] save failed: \(error)") }
         return true
     }
 
@@ -288,7 +332,7 @@ final class LocalDataStore {
         descriptor.fetchLimit = 1
         guard let pending = try? ctx.fetch(descriptor).first else { return }
         ctx.delete(pending)
-        try? ctx.save()
+        do { try ctx.save() } catch { print("[LocalDataStore] save failed: \(error)") }
     }
 
     private func mergePayloadWithOverrides(_ p: PendingTransactionPayload, _ o: ConfirmPendingOverrides?) -> PendingTransactionPayload {
@@ -529,7 +573,7 @@ final class LocalDataStore {
         tx.subscriptionColorHex = colorHex
         if let merchant { tx.merchant = merchant }
         tx.updatedAt = Date()
-        try? ctx.save()
+        do { try ctx.save() } catch { print("[LocalDataStore] save failed: \(error)") }
     }
 
     func cancelSubscription(templateId: String) {
@@ -542,13 +586,11 @@ final class LocalDataStore {
         tx.subscriptionIconLetter = nil
         tx.subscriptionColorHex = nil
         tx.updatedAt = Date()
-        try? ctx.save()
+        do { try ctx.save() } catch { print("[LocalDataStore] save failed: \(error)") }
     }
 
     private func addInterval(to dateStr: String, interval: String) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
+        let formatter = AppFormatters.inputDate
         guard let date = formatter.date(from: String(dateStr.prefix(10))) else { return dateStr }
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
@@ -687,11 +729,7 @@ final class LocalDataStore {
     }
 
     private func formatCurrency(_ value: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.maximumFractionDigits = 0
-        return f.string(from: NSNumber(value: value)) ?? "$0"
+        AppFormatters.currency(code: "USD", fractionDigits: 0).string(from: NSNumber(value: value)) ?? "$0"
     }
 }
 

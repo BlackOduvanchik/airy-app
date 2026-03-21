@@ -9,12 +9,14 @@ import SwiftUI
 @preconcurrency import UserNotifications
 
 private let designColors: [String] = [
-    // Row 1: bright
-    "#E50914", "#1DB954", "#0061FF", "#FF9900",
-    "#9B51E0", "#00A67E", "#E07A5F", "#000000",
-    // Row 2: muted analogues
-    "#C4956A", "#67A082", "#3D5A80", "#E8A838",
-    "#9B7EC8", "#7B9DAB", "#E07A7A", "#5E7A6B",
+    // Pastel
+    "#BFE8D2", "#C9D8C5", "#BFE7E3", "#C7DBF7", "#D1D7FA", "#DCCEF8",
+    "#F6D1DC", "#F8D6BF", "#F6E7B8", "#EBC9B8", "#D8D2E8", "#E7D1C8",
+    // Vivid
+    "#34C27A", "#4D8F63", "#22B8B0", "#4A90E2", "#6C7CF0", "#9B6DF2",
+    "#EC6FA9", "#F28A6A", "#E9B949", "#D9825B", "#B85FD6", "#D97C8E",
+    // Bold
+    "#111111", "#FF3B30", "#2F80FF", "#7ED957", "#FF4FA3", "#FF7A1A",
 ]
 
 @MainActor @Observable
@@ -61,22 +63,138 @@ final class EditSubscriptionViewModel {
         return !i.hasPrefix("year") && !i.hasPrefix("annual") && !i.hasPrefix("week")
     }
 
-    /// Estimated annual price (20% discount).
-    var annualPrice: Double {
-        monthlyAmount * 12 * 0.8
+    // MARK: - Insight
+
+    struct InsightItem {
+        let icon: String
+        let title: String
+        let body: String
+        enum Style { case savings, tip, stat }
+        let style: Style
     }
 
-    /// Monthly savings if switching to annual.
-    var monthlySavings: Double {
-        monthlyAmount * 0.2
+    var insight: InsightItem? {
+        // 1. GPT savings — compute actual savings; skip free plans (price == 0)
+        if let gpt = SubscriptionInsightStore.shared.forMerchant(subscription.merchant),
+           let best = gpt.alternatives.first(where: { $0.price > 0 }) {
+            let altMonthly = Self.normalizeToMonthly(price: best.price, interval: best.interval)
+            let actualSavings = monthlyAmount - altMonthly
+            if actualSavings > 0.50 {
+                let savings = formatCurrency(actualSavings)
+                let yearly = formatCurrency(actualSavings * 12)
+                return InsightItem(
+                    icon: "sparkles",
+                    title: "\(best.planName): \(formatCurrency(best.price))/\(best.interval)",
+                    body: L("editsub_insight_switch_save", savings, yearly),
+                    style: .savings
+                )
+            }
+        }
+
+        // 2. GPT tip only
+        if let gpt = SubscriptionInsightStore.shared.forMerchant(subscription.merchant),
+           !gpt.tip.isEmpty {
+            return InsightItem(icon: "lightbulb.fill", title: gpt.tip, body: "", style: .tip)
+        }
+
+        // 3-5. Local stats
+        return bestLocalInsight()
     }
 
-    var formattedAnnualPrice: String {
-        formatCurrency(annualPrice) + "/year"
+    /// Normalize any plan price to monthly equivalent.
+    private static func normalizeToMonthly(price: Double, interval: String) -> Double {
+        let i = interval.lowercased()
+        if i.hasPrefix("year") || i.hasPrefix("annual") { return price / 12 }
+        if i.hasPrefix("week") { return price * (52.0 / 12.0) }
+        return price
     }
 
-    var formattedMonthlySavings: String {
-        formatCurrency(monthlySavings) + "/mo savings"
+    private func bestLocalInsight() -> InsightItem? {
+        let allSubs = LocalDataStore.shared.subscriptionsFromTransactions()
+
+        // 3. Total lifetime cost
+        let months = monthsSinceStart()
+        if months >= 2 {
+            let total = monthlyAmount * Double(months)
+            return InsightItem(
+                icon: "chart.bar.fill",
+                title: L("editsub_insight_total", formatCurrency(total)),
+                body: L("editsub_insight_months", "\(months)"),
+                style: .stat
+            )
+        }
+
+        // 4. Share of budget
+        if allSubs.count >= 2 {
+            let totalMonthly = allSubs.reduce(0.0) { $0 + Self.normalizeMonthly($1) }
+            let share = totalMonthly > 0 ? monthlyAmount / totalMonthly * 100 : 0
+            if share >= 5 {
+                return InsightItem(
+                    icon: "chart.pie.fill",
+                    title: L("editsub_insight_share", "\(Int(share))"),
+                    body: L("editsub_insight_share_detail", formatCurrency(monthlyAmount), formatCurrency(totalMonthly)),
+                    style: .stat
+                )
+            }
+        }
+
+        // 5. Rank
+        if allSubs.count >= 3 {
+            let sorted = allSubs.map { Self.normalizeMonthly($0) }.sorted(by: >)
+            if let idx = sorted.firstIndex(where: { abs($0 - monthlyAmount) < 0.01 }) {
+                let rank = idx + 1
+                if rank <= 3 {
+                    return InsightItem(
+                        icon: "arrow.up.right",
+                        title: L("editsub_insight_rank", "\(rank)"),
+                        body: "",
+                        style: .stat
+                    )
+                } else if rank == sorted.count {
+                    return InsightItem(
+                        icon: "arrow.down.right",
+                        title: L("editsub_insight_cheapest"),
+                        body: "",
+                        style: .stat
+                    )
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func monthsSinceStart() -> Int {
+        guard let dateStr = subscription.nextBillingDate, !dateStr.isEmpty else { return 0 }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        guard let nextDate = f.date(from: String(dateStr.prefix(10))) else { return 0 }
+        let cal = Calendar.current
+        // nextBillingDate is the NEXT payment — subtract one interval to get last payment
+        let interval = subscription.interval.lowercased()
+        let lastPayment: Date
+        if interval.hasPrefix("year") || interval.hasPrefix("annual") {
+            lastPayment = cal.date(byAdding: .year, value: -1, to: nextDate) ?? nextDate
+        } else if interval.hasPrefix("week") {
+            lastPayment = cal.date(byAdding: .weekOfYear, value: -1, to: nextDate) ?? nextDate
+        } else {
+            lastPayment = cal.date(byAdding: .month, value: -1, to: nextDate) ?? nextDate
+        }
+        // Rough estimate: months from lastPayment to now gives 1 cycle; for lifetime we don't know exact start
+        // Use createdAt of the template transaction if available
+        let months = max(1, cal.dateComponents([.month], from: lastPayment, to: Date()).month ?? 1)
+        return months
+    }
+
+    private static func normalizeMonthly(_ sub: Subscription) -> Double {
+        let interval = sub.interval.lowercased()
+        if interval.hasPrefix("year") || interval.hasPrefix("annual") {
+            return sub.amount / 12
+        } else if interval.hasPrefix("week") {
+            return sub.amount * (52.0 / 12.0)
+        }
+        return sub.amount
     }
 
     private func formatCurrency(_ value: Double) -> String {

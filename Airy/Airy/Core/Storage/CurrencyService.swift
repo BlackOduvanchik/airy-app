@@ -21,17 +21,16 @@ enum BaseCurrencyStore {
 enum CurrencyService {
     /// Rate to USD (1 unit of currency = X USD). Approximate; update periodically for production.
     private static let rateToUSD: [String: Double] = [
-        "USD": 1.0,
-        "EUR": 1.08,
-        "GBP": 1.27,
-        "JPY": 0.0067,
-        "CHF": 1.12,
-        "CAD": 0.73,
-        "AUD": 0.65,
-        "UAH": 0.025,
-        "RUB": 0.011,
-        "THB": 0.029,
-        "USDC": 1.0
+        "AED": 0.27, "ARS": 0.0011, "AUD": 0.65, "BRL": 0.17,
+        "CAD": 0.73, "CHF": 1.12, "CNY": 0.14, "CZK": 0.043,
+        "DKK": 0.14, "EUR": 1.08, "GBP": 1.27, "HKD": 0.13,
+        "HUF": 0.0027, "IDR": 0.000063, "ILS": 0.27, "INR": 0.012,
+        "JPY": 0.0067, "KRW": 0.00075, "MXN": 0.058, "MYR": 0.22,
+        "NOK": 0.093, "NZD": 0.60, "PHP": 0.018, "PLN": 0.25,
+        "RON": 0.22, "RUB": 0.011, "SAR": 0.27, "SEK": 0.095,
+        "SGD": 0.74, "THB": 0.029, "TRY": 0.031, "TWD": 0.031,
+        "UAH": 0.025, "USD": 1.0, "USDC": 1.0, "VND": 0.000040,
+        "ZAR": 0.055
     ]
 
     /// Convert amount from source currency to target currency. Unknown currencies treated as USD.

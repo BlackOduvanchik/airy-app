@@ -9,9 +9,11 @@ import SwiftUI
 
 private enum AnalyticsRoute: Hashable {
     case categoryBreakdown
+    case allTransactions
 }
 
 struct DashboardView: View {
+    @Environment(ThemeProvider.self) private var theme
     var refreshId: Int = 0
     @Binding var showAllTransactions: Bool
     var onOpenSubscriptions: (() -> Void)? = nil
@@ -42,16 +44,29 @@ struct DashboardView: View {
                 }
                 .scrollIndicators(.hidden)
             }
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarBackButtonHidden(true)
             .navigationDestination(for: AnalyticsRoute.self) { route in
                 switch route {
                 case .categoryBreakdown:
                     CategoryBreakdownView(refreshId: refreshId)
+                        .environment(theme)
+                case .allTransactions:
+                    TransactionListView()
+                        .environment(theme)
                 }
             }
             .task(id: refreshId) { await viewModel.load() }
+            .onChange(of: showAllTransactions) { _, show in
+                if show {
+                    analyticsPath.append(AnalyticsRoute.allTransactions)
+                    showAllTransactions = false
+                }
+            }
             .onChange(of: analyticsPath) { _, path in
-                if path.isEmpty { colorVersion += 1 }
+                if path.isEmpty {
+                    colorVersion += 1
+                }
             }
             .sheet(item: $editingTransaction) { tx in
                 AddTransactionView(transaction: tx, onSuccess: {
@@ -60,6 +75,7 @@ struct DashboardView: View {
                 })
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
+                .environment(theme)
             }
             .sheet(item: $editingSubscription) { sub in
                 EditSubscriptionView(
@@ -69,8 +85,10 @@ struct DashboardView: View {
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
+                .environment(theme)
             }
         }
+        .environment(theme)
     }
 
     // MARK: - Header (mascot, total spent, badge)
@@ -84,9 +102,9 @@ struct DashboardView: View {
             } else {
                 VStack(spacing: 12) {
                     mascotView
-                    Text("Total spent this month")
+                    Text(L("dashboard_total_spent"))
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .foregroundColor(theme.textSecondary)
                     totalSpentTitle
                     if let deltaText = deltaBadgeText {
                         deltaBadge(deltaText)
@@ -99,99 +117,24 @@ struct DashboardView: View {
     }
 
     private var mascotView: some View {
-        let isAnalyzing = ImportViewModel.shared.isAnalyzing
-        let remaining = ImportViewModel.shared.remainingQueueCount
-        let hasUnreviewed = ImportViewModel.shared.hasUnreviewedResults
-
-        let a11yLabel: String = isAnalyzing
-            ? (remaining > 0 ? "Analyzing \(remaining) transactions" : "Analyzing transactions")
-            : hasUnreviewed ? "Review imported transactions"
-            : pendingTransactionCount > 0 ? "\(pendingTransactionCount) transactions pending review"
-            : "Import transactions"
-
-        return Button(action: { onCloudTapped?() }) {
-            ZStack(alignment: .topTrailing) {
-                // Icon — fixed 48×48, halos expand via overlay (don't affect layout)
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [Color.white.opacity(0.9), Color.white.opacity(0.2)],
-                                center: .topLeading,
-                                startRadius: 0,
-                                endRadius: 35
-                            )
-                        )
-                        .frame(width: 48, height: 48)
-                        .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
-                        .shadow(color: OnboardingDesign.accentBlue.opacity(0.3), radius: 8, x: 0, y: 0)
-                        .shadow(color: .black.opacity(0.03), radius: 6, x: 0, y: 4)
-
-                    Image(systemName: "cloud.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(OnboardingDesign.textPrimary)
-                }
-                .frame(width: 48, height: 48)
-                // Halos expand outward as an overlay — they don't push the badge away
-                .overlay {
-                    if isAnalyzing {
-                        CloudRippleHalosView()
-                            .transition(.opacity.animation(.easeInOut(duration: 0.4)))
-                            .allowsHitTesting(false)
-                    }
-                }
-
-                // Badge — anchored to the 48×48 icon's topTrailing corner
-                if isAnalyzing && remaining > 0 {
-                    ZStack {
-                        Circle()
-                            .fill(Color.red)
-                            .frame(width: 18, height: 18)
-                        Text("\(remaining)")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    .offset(x: 4, y: -4)
-                } else if hasUnreviewed {
-                    ZStack {
-                        Circle()
-                            .fill(OnboardingDesign.accentGreen)
-                            .frame(width: 16, height: 16)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    .offset(x: 4, y: -4)
-                } else if pendingTransactionCount > 0 {
-                    ZStack {
-                        Circle()
-                            .fill(OnboardingDesign.accentBlue)
-                            .frame(width: 18, height: 18)
-                        Text("\(min(pendingTransactionCount, 99))")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    .offset(x: 4, y: -4)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(a11yLabel)
-        .accessibilityHint("Tap to manage transaction imports")
+        ImportStatusBadge(
+            pendingCount: pendingTransactionCount,
+            refreshId: refreshId,
+            onTap: { onCloudTapped?() },
+            onPendingCountLoaded: { pendingTransactionCount = $0 }
+        )
+        .frame(height: 56)
         .padding(.bottom, 4)
-        .task(id: refreshId) {
-            pendingTransactionCount = LocalDataStore.shared.fetchPendingTransactions().count
-        }
     }
 
     private func totalSpentFormatted(_ amount: Double) -> Text {
         let whole = Text(formatCurrencyWhole(amount))
             .font(.system(size: 48, weight: .light))
             .tracking(-1.5)
-            .foregroundColor(OnboardingDesign.textPrimary)
+            .foregroundColor(theme.textPrimary)
         let cents = Text(formatCurrencyCents(amount))
             .font(.system(size: 32, weight: .ultraLight))
-            .foregroundColor(OnboardingDesign.textTertiary)
+            .foregroundColor(theme.textTertiary)
         return Text("\(whole)\(cents)")
     }
 
@@ -202,7 +145,7 @@ struct DashboardView: View {
             } else {
                 Text(formatCurrencyWithBase(0))
                     .font(.system(size: 48, weight: .light))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
             }
         }
     }
@@ -211,9 +154,9 @@ struct DashboardView: View {
         guard let month = viewModel.thisMonth else { return nil }
         let diff = month.totalSpent - viewModel.previousMonthSpent
         if diff < 0 {
-            return "\(formatCurrency(abs(diff))) less than last month"
+            return L("dashboard_less_than_last", formatCurrency(abs(diff)))
         } else if diff > 0 {
-            return "\(formatCurrency(diff)) more than last month"
+            return L("dashboard_more_than_last", formatCurrency(diff))
         }
         return nil
     }
@@ -224,15 +167,17 @@ struct DashboardView: View {
                 .font(.system(size: 14, weight: .medium))
             Text(text)
                 .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
-        .foregroundColor(OnboardingDesign.accentGreen)
+        .foregroundColor(theme.accentGreen)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.white.opacity(0.5))
+        .background(Color.white.opacity(theme.isDark ? 0.08 : 0.5))
         .clipShape(Capsule())
         .overlay(
             Capsule()
-                .stroke(OnboardingDesign.glassHighlight, lineWidth: 1)
+                .stroke(theme.glassHighlight, lineWidth: 1)
         )
     }
 
@@ -244,11 +189,11 @@ struct DashboardView: View {
                 HStack(alignment: .top, spacing: 16) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 20))
-                        .foregroundColor(OnboardingDesign.accentBlue)
+                        .foregroundColor(theme.accentBlue)
                     Text(line)
                         .font(.system(size: 14))
                         .lineSpacing(4)
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -267,12 +212,19 @@ struct DashboardView: View {
             analyticsPath.append(AnalyticsRoute.categoryBreakdown)
         } label: {
             VStack(alignment: .leading, spacing: 16) {
-                Text("CATEGORY BREAKDOWN")
-                    .font(.system(size: 12, weight: .semibold))
-                    .tracking(0.5)
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                HStack {
+                    Text(L("dashboard_category_breakdown"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundColor(theme.textTertiary)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 16))
+                        .foregroundColor(theme.textTertiary)
+                }
                 vizBar(segments: segments)
-                vizLegend(segments: segments)
+                vizLegend(segments: Array(segments.prefix(4)))
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -282,28 +234,32 @@ struct DashboardView: View {
         .dashboardGlassStyle()
     }
 
-    private static let fallbackSegments: [(label: String, ratio: CGFloat, color: Color)] = [
-        ("Housing", 0.45, OnboardingDesign.accentGreen),
-        ("Food", 0.30, OnboardingDesign.accentBlue),
-        ("Transit", 0.15, OnboardingDesign.bgBottomRight),
-        ("Other", 0.10, Color.white.opacity(0.6))
-    ]
+    private var fallbackSegments: [(label: String, ratio: CGFloat, color: Color)] {
+        [
+            (L("category_housing"), 0.45, theme.accentGreen),
+            (L("category_food"), 0.30, theme.accentBlue),
+            (L("category_transit"), 0.15, theme.bgBottomRight),
+            (L("category_other"), 0.10, Color.orange.opacity(theme.isDark ? 0.5 : 0.6))
+        ]
+    }
 
     private var categorySegments: [(label: String, ratio: CGFloat, color: Color)] {
         _ = colorVersion // force re-evaluation when colors change
         guard let byCat = viewModel.thisMonth?.byCategory, !byCat.isEmpty else {
-            return Self.fallbackSegments
+            return fallbackSegments
         }
         let total = byCat.values.reduce(0, +)
-        guard total > 0 else { return Self.fallbackSegments }
+        guard total > 0 else { return fallbackSegments }
         let sorted = byCat.sorted { $0.value > $1.value }
         let fallbackColors: [Color] = [
-            OnboardingDesign.accentGreen,
-            OnboardingDesign.accentBlue,
-            OnboardingDesign.bgBottomRight,
-            Color.white.opacity(0.6)
+            theme.accentGreen,
+            theme.accentBlue,
+            theme.bgBottomRight,
+            Color.orange.opacity(theme.isDark ? 0.5 : 0.6),
+            Color.purple.opacity(theme.isDark ? 0.5 : 0.6),
+            Color.pink.opacity(theme.isDark ? 0.5 : 0.6)
         ]
-        return Array(sorted.prefix(4).enumerated().map { i, pair in
+        return Array(sorted.enumerated().map { i, pair in
             let cat = CategoryStore.byId(pair.key)
             let label = cat?.name ?? pair.key.capitalized
             let color = cat?.color ?? fallbackColors[i % fallbackColors.count]
@@ -313,21 +269,24 @@ struct DashboardView: View {
 
     private func vizBar(segments: [(label: String, ratio: CGFloat, color: Color)]) -> some View {
         GeometryReader { geo in
-            HStack(spacing: 0) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { _, s in
-                    RoundedRectangle(cornerRadius: 0)
-                        .fill(s.color.opacity(0.8))
-                        .frame(width: max(0, geo.size.width * s.ratio))
+            ZStack(alignment: .leading) {
+                ForEach(Array(segments.enumerated().reversed()), id: \.offset) { index, s in
+                    Capsule()
+                        .fill(s.color)
+                        .frame(
+                            width: max(24, segments.prefix(index + 1).reduce(CGFloat(0)) { $0 + geo.size.width * $1.ratio }),
+                            height: 24
+                        )
                 }
             }
         }
         .frame(height: 24)
-        .background(Color.white.opacity(0.3))
+        .background(Color.white.opacity(theme.isDark ? 0.05 : 0.3))
+        .clipShape(Capsule())
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.4), lineWidth: 1)
+            Capsule()
+                .stroke(Color.white.opacity(theme.isDark ? 0.05 : 0.4), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func vizLegend(segments: [(label: String, ratio: CGFloat, color: Color)]) -> some View {
@@ -339,7 +298,7 @@ struct DashboardView: View {
                         .frame(width: 8, height: 8)
                     Text(s.label)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .foregroundColor(theme.textSecondary)
                 }
                 if segments.last?.label != s.label { Spacer() }
             }
@@ -351,28 +310,29 @@ struct DashboardView: View {
     private var listSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("RECENT ACTIVITY")
+                Text(L("dashboard_recent_activity"))
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(0.5)
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
+                    .lineLimit(1)
                 Spacer()
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 16))
-                    .foregroundColor(OnboardingDesign.textTertiary)
-                    .accessibilityLabel("View all transactions")
+                    .foregroundColor(theme.textTertiary)
+                    .accessibilityLabel(L("dashboard_view_all_transactions"))
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
             .contentShape(Rectangle())
-            .accessibilityLabel("Recent activity. View all transactions")
+            .accessibilityLabel(L("dashboard_recent_activity_hint"))
             .onTapGesture {
                 showAllTransactions = true
             }
 
             if viewModel.recentTransactions.isEmpty {
-                Text("No recent transactions")
+                Text(L("dashboard_no_recent"))
                     .font(.system(size: 14))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
             } else {
@@ -383,7 +343,7 @@ struct DashboardView: View {
                             .onTapGesture { editingTransaction = tx }
                         if index < viewModel.recentTransactions.count - 1 {
                             Divider()
-                                .background(Color.white.opacity(0.3))
+                                .background(Color.white.opacity(theme.isDark ? 0.06 : 0.3))
                                 .padding(.leading, 76)
                         }
                     }
@@ -406,17 +366,17 @@ struct DashboardView: View {
                 HStack {
                     Text(CategoryIconHelper.transactionDisplayName(merchant: transaction.merchant, subcategory: transaction.subcategory, categoryId: transaction.category))
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(theme.textPrimary)
                     Spacer()
-                    Text(formatAmount(transaction.amountOriginal, transaction.currencyOriginal))
+                    Text(AppFormatters.formatTransaction(amount: transaction.amountOriginal, currency: transaction.currencyOriginal, isIncome: transaction.type.lowercased() == "income"))
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textPrimary)
+                        .foregroundColor(transaction.type.lowercased() == "income" ? theme.incomeColor : theme.expenseColor)
                 }
                 GeometryReader { g in
                     let w = g.size.width.isFinite && g.size.width >= 0 ? g.size.width * max(0, barRatio) : 0
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.white.opacity(0.3))
+                            .fill(Color.white.opacity(theme.isDark ? 0.05 : 0.3))
                             .frame(height: 4)
                         RoundedRectangle(cornerRadius: 2)
                             .fill(barColor.opacity(0.8))
@@ -434,7 +394,7 @@ struct DashboardView: View {
         let iconName = CategoryIconHelper.iconName(categoryId: category)
         let iconColor = CategoryIconHelper.color(categoryId: category)
         return RoundedRectangle(cornerRadius: 16)
-            .fill(Color.white.opacity(0.6))
+            .fill(Color.white.opacity(theme.isDark ? 0.08 : 0.6))
             .frame(width: 44, height: 44)
             .overlay(
                 Image(systemName: iconName)
@@ -443,7 +403,7 @@ struct DashboardView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(OnboardingDesign.glassHighlight, lineWidth: 1)
+                    .stroke(theme.glassHighlight, lineWidth: 1)
             )
             .shadow(color: .black.opacity(0.02), radius: 5, x: 0, y: 4)
     }
@@ -454,16 +414,17 @@ struct DashboardView: View {
     private var subsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("UPCOMING BILLS")
+                Text(L("dashboard_upcoming_bills"))
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(0.5)
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
+                    .lineLimit(1)
                 Spacer()
                 if onOpenSubscriptions != nil {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 16))
-                        .foregroundColor(OnboardingDesign.textTertiary)
-                        .accessibilityLabel("View all subscriptions")
+                        .foregroundColor(theme.textTertiary)
+                        .accessibilityLabel(L("dashboard_view_all_subscriptions"))
                 }
             }
             .padding(.horizontal, 20)
@@ -474,9 +435,9 @@ struct DashboardView: View {
             }
 
             if viewModel.upcomingSubscriptions.isEmpty {
-                Text("No upcoming bills")
+                Text(L("dashboard_no_upcoming"))
                     .font(.system(size: 14))
-                    .foregroundColor(OnboardingDesign.textSecondary)
+                    .foregroundColor(theme.textSecondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
             } else {
@@ -524,23 +485,23 @@ struct DashboardView: View {
             VStack(spacing: 2) {
                 Text(displayTitle)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                     .lineLimit(1)
                 Text(monthDay)
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(0.5)
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
             }
             VStack(spacing: 4) {
                 Text(formatAmount(subscription.amount, subscription.currency))
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.expenseColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 if !description.isEmpty {
                     Text(description)
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .foregroundColor(theme.textSecondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                 }
@@ -548,20 +509,14 @@ struct DashboardView: View {
         }
         .padding(16)
         .frame(width: 110)
-        .background(Color.white.opacity(0.35))
+        .background(Color.white.opacity(theme.isDark ? 0.05 : 0.35))
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
     /// Formats nextBillingDate as month and day only (e.g. "Mar 13").
     private func formatMonthDay(_ dateStr: String) -> String? {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        guard let d = f.date(from: String(dateStr.prefix(10))) else { return nil }
-        let out = DateFormatter()
-        out.dateFormat = "MMM d"
-        out.timeZone = TimeZone.current
-        return out.string(from: d)
+        guard let d = AppFormatters.inputDate.date(from: String(dateStr.prefix(10))) else { return nil }
+        return AppFormatters.shortMonthDay.string(from: d)
     }
 
     /// Display name for subscription card: merchant if set, else subcategory name, else category name.
@@ -573,7 +528,7 @@ struct DashboardView: View {
         if m.contains("headspace") { return Color(red: 0.98, green: 0.365, blue: 0.365) }
         if m.contains("adobe") { return Color(red: 0.176, green: 0.243, blue: 0.314) }
         if m.contains("nyt") || m.contains("new york") { return Color(red: 0.071, green: 0.071, blue: 0.071) }
-        return OnboardingDesign.accentBlue
+        return theme.accentBlue
     }
 
     private func subscriptionDisplayTitle(subscription: Subscription) -> String {
@@ -591,19 +546,13 @@ struct DashboardView: View {
     }
 
     private func formatNextBilling(_ dateStr: String) -> String? {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        guard let d = f.date(from: String(dateStr.prefix(10))) else { return nil }
+        guard let d = AppFormatters.inputDate.date(from: String(dateStr.prefix(10))) else { return nil }
         let cal = Calendar.current
-        if cal.isDateInToday(d) { return "Today" }
-        if cal.isDateInTomorrow(d) { return "Tomorrow" }
+        if cal.isDateInToday(d) { return L("common_today") }
+        if cal.isDateInTomorrow(d) { return L("common_tomorrow") }
         let days = cal.dateComponents([.day], from: Date(), to: d).day ?? 0
-        if days > 0 && days <= 7 { return "In \(days) days" }
-        let out = DateFormatter()
-        out.dateFormat = "MMM d, yyyy"
-        out.timeZone = TimeZone.current
-        return out.string(from: d)
+        if days > 0 && days <= 7 { return L("dashboard_in_days", "\(days)") }
+        return AppFormatters.monthDayYear.string(from: d)
     }
 
     // MARK: - Helpers
@@ -613,33 +562,20 @@ struct DashboardView: View {
     }
 
     private func formatCurrencyWithBase(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = BaseCurrencyStore.baseCurrency
-        formatter.maximumFractionDigits = 0
-        formatter.minimumFractionDigits = 0
+        let formatter = AppFormatters.currency(code: BaseCurrencyStore.baseCurrency, fractionDigits: 0)
         return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value))"
     }
 
     private func formatCurrencyWhole(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = BaseCurrencyStore.baseCurrency
-        formatter.maximumFractionDigits = 0
-        formatter.minimumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "0"
+        AppFormatters.formatTotalWhole(amount: value, currency: BaseCurrencyStore.baseCurrency)
     }
 
     private func formatCurrencyCents(_ value: Double) -> String {
-        let cents = Int((value.truncatingRemainder(dividingBy: 1)) * 100)
-        return String(format: ".%02d", cents)
+        AppFormatters.formatTotalCents(value)
     }
 
     private func formatAmount(_ amount: Double, _ currency: String) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = currency
-        return formatter.string(from: NSNumber(value: amount)) ?? "\(amount) \(currency)"
+        AppFormatters.formatTotal(amount: amount, currency: currency)
     }
 }
 
@@ -658,12 +594,13 @@ private struct CloudRippleHalosView: View {
 }
 
 private struct RippleRingView: View {
+    @Environment(ThemeProvider.self) private var theme
     let delay: Double
     @State private var isAnimating = false
 
     var body: some View {
         Circle()
-            .stroke(OnboardingDesign.accentBlue.opacity(0.4), lineWidth: 1.5)
+            .stroke(theme.accentBlue.opacity(0.4), lineWidth: 1.5)
             .frame(width: 48, height: 48)
             .scaleEffect(isAnimating ? 2.6 : 1.0)
             .opacity(isAnimating ? 0 : 0.55)
@@ -680,22 +617,23 @@ private struct RippleRingView: View {
 // MARK: - Glass panel style for dashboard
 
 private struct DashboardGlassModifier: ViewModifier {
+    @Environment(ThemeProvider.self) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
         content
-            .background(reduceTransparency ? AnyShapeStyle(Color(.secondarySystemGroupedBackground)) : AnyShapeStyle(.ultraThinMaterial))
-            .overlay(reduceTransparency ? nil : OnboardingDesign.glassBg.opacity(0.5).allowsHitTesting(false))
+            .background(reduceTransparency ? AnyShapeStyle(Color(.secondarySystemGroupedBackground)) : theme.isDark ? AnyShapeStyle(theme.glassBg) : AnyShapeStyle(.ultraThinMaterial))
+            .overlay(reduceTransparency || theme.isDark ? nil : theme.glassBg.opacity(0.5).allowsHitTesting(false))
             .clipShape(RoundedRectangle(cornerRadius: 28))
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                    .stroke(theme.glassBorder, lineWidth: 1)
                     .allowsHitTesting(false)
             )
-            .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+            .shadow(color: theme.isDark ? Color.black.opacity(0.4) : theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    .stroke(Color.white.opacity(theme.isDark ? 0.05 : 0.2), lineWidth: 1)
                     .blur(radius: 0)
                     .offset(y: 1)
                     .allowsHitTesting(false)
@@ -706,6 +644,102 @@ private struct DashboardGlassModifier: ViewModifier {
 private extension View {
     func dashboardGlassStyle() -> some View {
         modifier(DashboardGlassModifier())
+    }
+}
+
+// MARK: - Import Status Badge (isolates ImportViewModel @Observable reads)
+
+private struct ImportStatusBadge: View {
+    @Environment(ThemeProvider.self) private var theme
+    let pendingCount: Int
+    let refreshId: Int
+    let onTap: () -> Void
+    let onPendingCountLoaded: (Int) -> Void
+
+    // These reads are isolated to THIS view's body — only this badge re-renders when ImportViewModel changes
+    private var isAnalyzing: Bool { ImportViewModel.shared.isAnalyzing }
+    private var remaining: Int { ImportViewModel.shared.remainingQueueCount }
+    private var hasUnreviewed: Bool { ImportViewModel.shared.hasUnreviewedResults }
+
+    var body: some View {
+        let a11yLabel: String = isAnalyzing
+            ? (remaining > 0 ? L("badge_analyzing_count", "\(remaining)") : L("badge_analyzing"))
+            : hasUnreviewed ? L("badge_review_imported")
+            : pendingCount > 0 ? L("badge_pending_review", "\(pendingCount)")
+            : L("badge_import")
+
+        Button(action: onTap) {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: theme.isDark
+                                    ? [Color.white.opacity(0.15), Color.white.opacity(0.05)]
+                                    : [Color.white.opacity(0.9), Color.white.opacity(0.2)],
+                                center: .topLeading,
+                                startRadius: 0,
+                                endRadius: 35
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+                        .overlay(Circle().stroke(Color.white.opacity(theme.isDark ? 0.08 : 0.5), lineWidth: 1))
+                        .shadow(color: theme.accentBlue.opacity(0.3), radius: 8, x: 0, y: 0)
+                        .shadow(color: .black.opacity(0.03), radius: 6, x: 0, y: 4)
+
+                    Image(systemName: "cloud.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(theme.textPrimary)
+                }
+                .frame(width: 48, height: 48)
+                .overlay {
+                    if isAnalyzing {
+                        CloudRippleHalosView()
+                            .allowsHitTesting(false)
+                    }
+                }
+
+                if isAnalyzing && remaining > 0 {
+                    ZStack {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 18, height: 18)
+                        Text("\(remaining)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .offset(x: 4, y: -4)
+                } else if hasUnreviewed {
+                    ZStack {
+                        Circle()
+                            .fill(theme.accentGreen)
+                            .frame(width: 16, height: 16)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .offset(x: 4, y: -4)
+                } else if pendingCount > 0 {
+                    ZStack {
+                        Circle()
+                            .fill(theme.accentBlue)
+                            .frame(width: 18, height: 18)
+                        Text("\(min(pendingCount, 99))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .offset(x: 4, y: -4)
+                }
+            }
+            .frame(width: 56, height: 56)
+        }
+        .buttonStyle(.plain)
+        .animation(nil, value: isAnalyzing)
+        .accessibilityLabel(a11yLabel)
+        .accessibilityHint(L("badge_import_hint"))
+        .task(id: refreshId) {
+            onPendingCountLoaded(LocalDataStore.shared.fetchPendingTransactions().count)
+        }
     }
 }
 

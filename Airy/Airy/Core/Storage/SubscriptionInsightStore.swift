@@ -101,8 +101,8 @@ final class SubscriptionInsightStore {
             return days >= 7
         }
         guard let firstAdded = firstSubscriptionAddedAt() else { return false }
-        let hours = Calendar.current.dateComponents([.hour], from: firstAdded, to: Date()).hour ?? 0
-        return hours >= 1
+        let minutes = Calendar.current.dateComponents([.minute], from: firstAdded, to: Date()).minute ?? 0
+        return minutes >= 10
     }
 
     // MARK: - Private

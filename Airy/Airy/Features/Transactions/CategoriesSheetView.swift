@@ -9,6 +9,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct CategoriesSheetView: View {
+    @Environment(ThemeProvider.self) private var theme
     /// Selected: (categoryId, subcategoryId?). subcategoryId nil = category itself selected.
     var onSelect: (String, String?) -> Void
     var onDismiss: (() -> Void)?
@@ -18,6 +19,7 @@ struct CategoriesSheetView: View {
     var showHandle: Bool = true
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
+    @State private var debouncedSearch = ""
     @State private var expandedCategoryIds: Set<String> = []
     @State private var categories: [Category] = CategoryStore.load()
     @State private var showNewCategory = false
@@ -34,7 +36,7 @@ struct CategoriesSheetView: View {
     @State private var draggingCategoryId: String?
 
     private var filteredCategories: [Category] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let q = debouncedSearch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return categories }
         return categories.filter {
             $0.name.lowercased().contains(q) ||
@@ -50,7 +52,7 @@ struct CategoriesSheetView: View {
             }
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(red: 0.956, green: 0.969, blue: 0.961).ignoresSafeArea())
+            .background { OnboardingGradientBackground().ignoresSafeArea() }
             .onDrop(of: [UTType.text], isTargeted: nil) { _ in
                 draggingCategoryId = nil
                 return false
@@ -65,13 +67,15 @@ struct CategoriesSheetView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("CATEGORIES")
+                    Text(L("categories_title"))
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.5)
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { showEditMode.toggle(); draggingCategoryId = nil } } label: {
@@ -93,6 +97,10 @@ struct CategoriesSheetView: View {
             selectedSubcategoryId = initialSubcategoryId
             expandedCategoryIds = []
         }
+        .task(id: searchText) {
+            try? await Task.sleep(for: .milliseconds(300))
+            debouncedSearch = searchText
+        }
         .sheet(item: $categoryToEdit) { cat in
             NewCategorySheetView(
                 existing: cat,
@@ -100,8 +108,12 @@ struct CategoriesSheetView: View {
                 onUpdate: { updated in
                     CategoryStore.update(updated)
                     categories = CategoryStore.load()
+                },
+                onDelete: { deleted in
+                    deleteCategory(deleted)
                 }
             )
+            .environment(theme)
         }
         .sheet(isPresented: $showNewCategory) {
             NewCategorySheetView(
@@ -117,6 +129,7 @@ struct CategoriesSheetView: View {
                     categories = CategoryStore.load()
                 }
             )
+            .environment(theme)
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
         }
@@ -132,6 +145,7 @@ struct CategoriesSheetView: View {
                         categories = CategoryStore.load()
                     }
                 )
+                .environment(theme)
             }
         }
         .sheet(item: $subcategoryToEdit) { sub in
@@ -152,13 +166,14 @@ struct CategoriesSheetView: View {
                     categories = CategoryStore.load()
                 }
             )
+            .environment(theme)
         }
         .confirmationDialog(
-            "Delete Subcategory",
+            L("categories_delete_sub"),
             isPresented: $showDeleteSubcategoryConfirm,
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) {
+            Button(L("common_delete"), role: .destructive) {
                 if let sub = subcategoryToDelete {
                     LocalDataStore.shared.clearSubcategory(named: sub.name, inCategory: sub.parentCategoryId)
                     SubcategoryStore.delete(id: sub.id)
@@ -167,9 +182,9 @@ struct CategoriesSheetView: View {
                     }
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L("common_cancel"), role: .cancel) {}
         } message: {
-            Text("Transactions will stay in the parent category.")
+            Text(L("categories_delete_sub_msg"))
         }
     }
 
@@ -178,14 +193,14 @@ struct CategoriesSheetView: View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 18))
-                .foregroundColor(OnboardingDesign.textTertiary)
-            TextField("Search categories...", text: $searchText)
+                .foregroundColor(theme.textTertiary)
+            TextField("", text: $searchText, prompt: Text(L("categories_search")).foregroundStyle(theme.textTertiary))
                 .font(.system(size: 15))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 18)
-        .background(Color.white)
+        .background(Color.white.opacity(theme.isDark ? 0.08 : 1))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
@@ -222,6 +237,7 @@ struct CategoriesSheetView: View {
                     }
                     .padding(.bottom, 40)
                 }
+                .scrollIndicators(.hidden)
                 .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
@@ -232,6 +248,7 @@ struct CategoriesSheetView: View {
                     }
                     .padding(.bottom, 40)
                 }
+                .scrollIndicators(.hidden)
                 .frame(maxHeight: .infinity)
             }
         }
@@ -258,7 +275,7 @@ struct CategoriesSheetView: View {
             HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(isAccentBlueCategory ? OnboardingDesign.accentBlue.opacity(0.08) : Self.iconBoxBg)
+                        .fill(isAccentBlueCategory ? theme.accentBlue.opacity(0.08) : Color.white.opacity(theme.isDark ? 0.06 : 0.15))
                         .frame(width: 40, height: 40)
                     Image(systemName: iconName(for: cat))
                         .font(.system(size: 18, weight: .medium))
@@ -266,19 +283,19 @@ struct CategoriesSheetView: View {
                 }
                 Text(cat.name)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(OnboardingDesign.textPrimary)
+                    .foregroundColor(theme.textPrimary)
                 Spacer()
                 if hasSubcategories {
                     Text("\(subcategories.count)")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.6))
+                        .background(Color.white.opacity(theme.isDark ? 0.08 : 0.6))
                         .clipShape(Capsule())
                     Image(systemName: "chevron.down")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(isExpanded ? OnboardingDesign.accentBlue : OnboardingDesign.textTertiary)
+                        .foregroundColor(isExpanded ? theme.accentBlue : theme.textTertiary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .frame(width: 28, height: 28)
                 }
@@ -287,7 +304,7 @@ struct CategoriesSheetView: View {
                 } label: {
                     Image(systemName: "pencil")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
@@ -296,11 +313,11 @@ struct CategoriesSheetView: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(Color.white.opacity(0.6))
+                    .fill(Color.white.opacity(theme.isDark ? 0.08 : 0.6))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
-                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                    .stroke(Color.white.opacity(theme.isDark ? 0.08 : 0.6), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -319,10 +336,10 @@ struct CategoriesSheetView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 13))
-                        .foregroundColor(OnboardingDesign.accentBlue.opacity(0.8))
-                    Text("Add subcategory")
+                        .foregroundColor(theme.accentBlue.opacity(0.8))
+                    Text(L("categories_add_sub"))
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.accentBlue)
+                        .foregroundColor(theme.accentBlue)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -355,23 +372,23 @@ struct CategoriesSheetView: View {
 
             Text(sub.name)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
 
             Spacer()
 
             Image(systemName: "pencil")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color.white.opacity(0.5))
+                .fill(Color.white.opacity(theme.isDark ? 0.08 : 0.5))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                .stroke(Color.white.opacity(theme.isDark ? 0.08 : 0.5), lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -416,7 +433,7 @@ struct CategoriesSheetView: View {
                     HStack(spacing: 14) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 16)
-                                .fill(isAccentBlueCategory ? OnboardingDesign.accentBlue.opacity(0.08) : Self.iconBoxBg)
+                                .fill(isAccentBlueCategory ? theme.accentBlue.opacity(0.08) : Color.white.opacity(theme.isDark ? 0.06 : 0.15))
                                 .frame(width: 48, height: 48)
                             Image(systemName: iconName(for: cat))
                                 .font(.system(size: 22, weight: .medium))
@@ -425,11 +442,11 @@ struct CategoriesSheetView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(cat.name)
                                 .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(OnboardingDesign.textPrimary)
+                                .foregroundColor(theme.textPrimary)
                             if hasSubcategories {
                                 Text(subcategories.map { $0.name }.joined(separator: ", "))
                                     .font(.system(size: 12))
-                                    .foregroundColor(OnboardingDesign.textTertiary)
+                                    .foregroundColor(theme.textTertiary)
                                     .lineLimit(1)
                             }
                         }
@@ -437,7 +454,7 @@ struct CategoriesSheetView: View {
                         if isCategorySelected && !hasSubcategories {
                             ZStack {
                                 Circle()
-                                    .fill(OnboardingDesign.accentGreen)
+                                    .fill(theme.accentGreen)
                                     .frame(width: 24, height: 24)
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 12, weight: .bold))
@@ -448,7 +465,7 @@ struct CategoriesSheetView: View {
                         if hasSubcategories {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(isExpanded ? OnboardingDesign.accentBlue : cat.color)
+                                .foregroundColor(isExpanded ? theme.accentBlue : cat.color)
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                                 .frame(width: 44, height: 44)
                                 .contentShape(Rectangle())
@@ -468,13 +485,13 @@ struct CategoriesSheetView: View {
                 .padding(12)
                 .background(
                     RoundedRectangle(cornerRadius: 24)
-                        .fill(isCategorySelected && !hasSubcategories ? Color.white : Color.white.opacity(0.4))
+                        .fill(isCategorySelected && !hasSubcategories ? Color.white.opacity(theme.isDark ? 0.15 : 1) : Color.white.opacity(theme.isDark ? 0.06 : 0.4))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 24)
                         .stroke(
-                            isCategorySelected && !hasSubcategories ? OnboardingDesign.accentGreen :
-                            isExpanded ? OnboardingDesign.accentBlue.opacity(0.3) : Color.white.opacity(0.6),
+                            isCategorySelected && !hasSubcategories ? theme.accentGreen :
+                            isExpanded ? theme.accentBlue.opacity(0.3) : Color.white.opacity(theme.isDark ? 0.08 : 0.6),
                             lineWidth: 1
                         )
                 )
@@ -487,27 +504,27 @@ struct CategoriesSheetView: View {
                         let isSubSelected = selectedCategoryId == cat.id && selectedSubcategoryId == sub.id
                         HStack(spacing: 10) {
                             Circle()
-                                .fill(OnboardingDesign.accentBlue)
+                                .fill(theme.accentBlue)
                                 .frame(width: 8, height: 8)
                             Text(sub.name)
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(OnboardingDesign.accentBlue)
+                                .foregroundColor(theme.accentBlue)
                             Spacer()
                             if isSubSelected {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(OnboardingDesign.accentBlue)
+                                    .foregroundColor(theme.accentBlue)
                             }
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(
                             RoundedRectangle(cornerRadius: 14)
-                                .fill(isSubSelected ? Color.white : Color.white.opacity(0.5))
+                                .fill(isSubSelected ? Color.white.opacity(theme.isDark ? 0.15 : 1) : Color.white.opacity(theme.isDark ? 0.06 : 0.5))
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
-                                .stroke(isSubSelected ? OnboardingDesign.accentBlue.opacity(0.2) : Color.clear, lineWidth: 1)
+                                .stroke(isSubSelected ? theme.accentBlue.opacity(0.2) : Color.clear, lineWidth: 1)
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -524,10 +541,10 @@ struct CategoriesSheetView: View {
                         HStack(spacing: 10) {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 14))
-                                .foregroundColor(OnboardingDesign.accentBlue.opacity(0.8))
-                            Text("Add subcategory")
+                                .foregroundColor(theme.accentBlue.opacity(0.8))
+                            Text(L("categories_add_sub"))
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(OnboardingDesign.accentBlue)
+                                .foregroundColor(theme.accentBlue)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)

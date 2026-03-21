@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SubscriptionsView: View {
     var onDismiss: (() -> Void)? = nil
+    @Environment(ThemeProvider.self) private var theme
     @State private var viewModel = SubscriptionsViewModel()
     @State private var selectedSubscription: Subscription?
     @State private var showSubscriptionLab = false
@@ -40,18 +41,21 @@ struct SubscriptionsView: View {
                         Button { onDismiss?() } label: {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 12, weight: .semibold))
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("SUBSCRIPTIONS")
+                    Text(L("subs_title"))
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.5)
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
             }
             .sheet(isPresented: $viewModel.showPaywall) {
                 PaywallView()
+                    .environment(theme)
             }
             .sheet(item: $selectedSubscription) { sub in
                 EditSubscriptionView(
@@ -59,6 +63,7 @@ struct SubscriptionsView: View {
                     onSave: { Task { await viewModel.load() } },
                     onCancel: { Task { await viewModel.load() } }
                 )
+                .environment(theme)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
             }
@@ -67,6 +72,7 @@ struct SubscriptionsView: View {
                     subscriptions: viewModel.subscriptions,
                     insights: SubscriptionInsightStore.shared.loadAll()
                 )
+                .environment(theme)
             }
             .task { await viewModel.load() }
         }
@@ -75,11 +81,11 @@ struct SubscriptionsView: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        Text("What You Pay For")
+        Text(L("subs_header"))
             .font(.system(size: 34, weight: .light))
             .tracking(-0.5)
             .lineSpacing(4)
-            .foregroundColor(OnboardingDesign.textPrimary)
+            .foregroundColor(theme.textPrimary)
             .multilineTextAlignment(.center)
     }
 
@@ -101,12 +107,12 @@ struct SubscriptionsView: View {
                                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                                     Text(formatCurrencyWhole(viewModel.totalMonthly))
                                         .font(.system(size: 32, weight: .medium))
-                                        .foregroundColor(OnboardingDesign.textPrimary)
-                                    Text("/mo")
+                                        .foregroundColor(theme.textPrimary)
+                                    Text(L("subs_per_month"))
                                         .font(.system(size: 16, weight: .regular))
-                                        .foregroundColor(OnboardingDesign.textSecondary)
+                                        .foregroundColor(theme.textSecondary)
                                 }
-                                deltaChip(text: "+$12 vs last month")
+                                // deltaChip removed — was hardcoded placeholder
                             }
                             Spacer()
                             donutChartView
@@ -115,7 +121,7 @@ struct SubscriptionsView: View {
                         }
                         if !subscriptionChartSegments.isEmpty {
                             Rectangle()
-                                .fill(OnboardingDesign.glassBorder)
+                                .fill(theme.glassBorder)
                                 .frame(height: 1)
                             HStack(spacing: 10) {
                                 ForEach(subscriptionChartSegments.prefix(2)) { seg in
@@ -125,15 +131,15 @@ struct SubscriptionsView: View {
                                             .frame(width: 6, height: 6)
                                         Text("\(seg.label) \(Int(round(seg.percent * 100)))%")
                                             .font(.system(size: 11, weight: .medium))
-                                            .foregroundColor(OnboardingDesign.textSecondary)
+                                            .foregroundColor(theme.textSecondary)
                                             .lineLimit(1)
                                     }
                                 }
                                 Text("\u{00B7}")
-                                    .foregroundColor(OnboardingDesign.textTertiary)
-                                Text("\(viewModel.subscriptionSharePercent)% of spending")
+                                    .foregroundColor(theme.textTertiary)
+                                Text("\(viewModel.subscriptionSharePercent)\(L("subs_of_spending"))")
                                     .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(OnboardingDesign.textPrimary)
+                                    .foregroundColor(theme.textPrimary)
                             }
                         }
                     }
@@ -151,10 +157,10 @@ struct SubscriptionsView: View {
             Text(text)
                 .font(.system(size: 12, weight: .bold))
         }
-        .foregroundColor(OnboardingDesign.accentAmber)
+        .foregroundColor(theme.accentAmber)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(Color.white.opacity(0.5))
+        .background(Color.white.opacity(theme.isDark ? 0.08 : 0.5))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
@@ -162,16 +168,16 @@ struct SubscriptionsView: View {
 
     private var activeSubscriptionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("SUBSCRIPTION DETAILS")
+            Text(L("subs_details"))
                 .font(.system(size: 12, weight: .semibold))
                 .tracking(1)
-                .foregroundColor(OnboardingDesign.textTertiary)
+                .foregroundColor(theme.textTertiary)
                 .padding(.leading, 4)
             if viewModel.subscriptions.isEmpty && !viewModel.isLoading {
                 subsGlassPanel {
-                    Text("No subscriptions yet")
+                    Text(L("subs_empty"))
                         .font(.system(size: 14))
-                        .foregroundColor(OnboardingDesign.textSecondary)
+                        .foregroundColor(theme.textSecondary)
                         .frame(maxWidth: .infinity)
                         .padding(24)
                 }
@@ -189,7 +195,6 @@ struct SubscriptionsView: View {
     }
 
     private func subRow(subscription: Subscription) -> some View {
-        let isTrial = subscription.status.lowercased().contains("trial")
         let subColor = subscription.colorHex.flatMap { Color(hex: $0) } ?? merchantColor(subscription.merchant)
         let subIcon = subscription.iconLetter ?? String(subscription.merchant.prefix(1)).uppercased()
         let isSFSymbol = subIcon.count > 1
@@ -210,40 +215,21 @@ struct SubscriptionsView: View {
                     .foregroundColor(.white)
                 )
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(subscription.merchant)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textPrimary)
-                    if isTrial {
-                        Text("TRIAL")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(OnboardingDesign.accentAmber)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                }
+                Text(subscription.merchant)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(theme.textPrimary)
                 Text("\(subscription.interval) \u{00B7} \(formatNextBillingShort(subscription.nextBillingDate))")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(isTrial ? OnboardingDesign.accentAmber : OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(formatAmount(subscription.amount, subscription.currency))
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
             billingProgressRing(for: subscription)
         }
         .padding(16)
         .modifier(SubsGlassModifier())
-        .overlay(alignment: .leading) {
-            if isTrial {
-                RoundedRectangle(cornerRadius: 28)
-                    .fill(OnboardingDesign.accentAmber)
-                    .frame(width: 4)
-                    .padding(.vertical, 16)
-            }
-        }
     }
 
     // MARK: - Billing progress ring
@@ -258,9 +244,9 @@ struct SubscriptionsView: View {
         let daysLeft = max(Double(daysUntil(subscription.nextBillingDate) ?? 0), 0)
         let progress = min((cycleDays - daysLeft) / cycleDays, 1)
         let remainingRatio = daysLeft / cycleDays
-        let ringColor: Color = remainingRatio > 0.5 ? OnboardingDesign.accentGreen
-            : remainingRatio > 0.25 ? OnboardingDesign.accentAmber
-            : OnboardingDesign.textDanger
+        let ringColor: Color = remainingRatio > 0.5 ? theme.accentGreen
+            : remainingRatio > 0.25 ? theme.accentAmber
+            : theme.textDanger
 
         return ZStack {
             Circle()
@@ -283,16 +269,16 @@ struct SubscriptionsView: View {
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("RECURRING INSIGHTS")
+                Text(L("subs_recurring_insights"))
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(1)
-                    .foregroundColor(OnboardingDesign.textTertiary)
+                    .foregroundColor(theme.textTertiary)
                     .padding(.leading, 4)
                 Spacer()
                 if hasSavings {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(OnboardingDesign.textTertiary)
+                        .foregroundColor(theme.textTertiary)
                 }
             }
 
@@ -300,34 +286,35 @@ struct SubscriptionsView: View {
                 VStack(spacing: 12) {
                     if hasSavings {
                         let totalYearlySavings = Int(insights.reduce(0) { $0 + $1.monthlySavingsPotential } * 12)
-                        insightCard("You could save ~$\(totalYearlySavings)/year on \(insights.count) service\(insights.count == 1 ? "" : "s").")
+                        let sPlural = insights.count == 1 ? "" : "s"
+                        insightCard(L("subs_could_save", "$\(totalYearlySavings)", "\(insights.count)", sPlural))
                         ForEach(insights.prefix(2)) { insight in
                             insightCard(insight.tip)
                         }
                     } else if SubscriptionAnalysisService.shared.isAnalyzing {
                         HStack(spacing: 12) {
                             ProgressView()
-                                .tint(OnboardingDesign.accentBlue)
-                            Text("Analyzing your subscriptions...")
+                                .tint(theme.accentBlue)
+                            Text(L("subs_analyzing"))
                                 .font(.system(size: 14))
-                                .foregroundColor(OnboardingDesign.textSecondary)
+                                .foregroundColor(theme.textSecondary)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
                         .modifier(SubsGlassModifier())
                     } else {
-                        insightCard("We'll analyze your subscriptions for savings opportunities.")
+                        insightCard(L("subs_default_insight"))
                     }
                 }
                 .padding(hasSavings ? 16 : 0)
                 .background(
                     hasSavings
                         ? RoundedRectangle(cornerRadius: 28)
-                            .fill(OnboardingDesign.accentGreen.opacity(0.06))
+                            .fill(theme.accentGreen.opacity(0.06))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 28)
-                                    .stroke(OnboardingDesign.accentGreen.opacity(0.3), lineWidth: 1.5)
+                                    .stroke(theme.accentGreen.opacity(0.3), lineWidth: 1.5)
                             )
                         : nil
                 )
@@ -340,11 +327,11 @@ struct SubscriptionsView: View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: "sparkles")
                 .font(.system(size: 18))
-                .foregroundColor(OnboardingDesign.accentBlue)
+                .foregroundColor(theme.accentBlue)
             Text(text)
                 .font(.system(size: 14))
                 .lineSpacing(4)
-                .foregroundColor(OnboardingDesign.textPrimary)
+                .foregroundColor(theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -398,10 +385,10 @@ struct SubscriptionsView: View {
         let usableAngle = 360 * fillRatio
         let gapAngle = n > 1 ? (360 - usableAngle) / Double(n) : 0
         let fallbackColors: [Color] = [
-            OnboardingDesign.accentGreen,
-            OnboardingDesign.accentBlue,
-            OnboardingDesign.accentAmber,
-            OnboardingDesign.bgTop,
+            theme.accentGreen,
+            theme.accentBlue,
+            theme.accentAmber,
+            theme.bgTop,
             Color.white.opacity(0.6)
         ]
         var current: Double = 0
@@ -428,7 +415,7 @@ struct SubscriptionsView: View {
     private var donutChartView: some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.2), lineWidth: 4)
+                .stroke(Color.white.opacity(theme.isDark ? 0.05 : 0.2), lineWidth: 4)
             ForEach(subscriptionChartSegments) { seg in
                 Circle()
                     .trim(from: seg.start, to: seg.end)
@@ -450,39 +437,22 @@ struct SubscriptionsView: View {
     }
 
     private func formatCurrencyWhole(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.maximumFractionDigits = 0
-        formatter.minimumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+        AppFormatters.formatTotalWhole(amount: value, currency: BaseCurrencyStore.baseCurrency)
     }
 
     private func formatAmount(_ amount: Double, _ currency: String) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = currency
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: amount)) ?? "\(amount) \(currency)"
+        AppFormatters.formatTotal(amount: amount, currency: currency)
     }
 
     private func formatNextBillingShort(_ dateStr: String?) -> String {
         guard let s = dateStr, !s.isEmpty else { return "\u{2014}" }
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        guard let d = f.date(from: String(s.prefix(10))) else { return s }
-        let out = DateFormatter()
-        out.dateFormat = "MMM d"
-        return out.string(from: d)
+        guard let d = AppFormatters.inputDate.date(from: String(s.prefix(10))) else { return s }
+        return AppFormatters.shortMonthDay.string(from: d)
     }
 
     private func daysUntil(_ dateStr: String?) -> Int? {
         guard let s = dateStr, !s.isEmpty else { return nil }
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        guard let d = f.date(from: String(s.prefix(10))) else { return nil }
+        guard let d = AppFormatters.inputDate.date(from: String(s.prefix(10))) else { return nil }
         return Calendar.current.dateComponents([.day], from: Date(), to: d).day
     }
 
@@ -494,23 +464,25 @@ struct SubscriptionsView: View {
         if m.contains("headspace") { return Color(red: 0.98, green: 0.365, blue: 0.365) }
         if m.contains("adobe") { return Color(red: 0.176, green: 0.243, blue: 0.314) }
         if m.contains("nyt") || m.contains("new york") { return Color(red: 0.071, green: 0.071, blue: 0.071) }
-        return OnboardingDesign.accentBlue
+        return theme.accentBlue
     }
 }
 
 // MARK: - Glass modifier
 
 struct SubsGlassModifier: ViewModifier {
+    @Environment(ThemeProvider.self) private var theme
     func body(content: Content) -> some View {
         content
-            .background(.ultraThinMaterial)
-            .overlay(OnboardingDesign.glassBg.opacity(0.5))
+            .background(theme.isDark ? AnyShapeStyle(theme.glassBg) : AnyShapeStyle(.ultraThinMaterial))
+            .overlay(theme.isDark ? nil : theme.glassBg.opacity(0.5).allowsHitTesting(false))
             .clipShape(RoundedRectangle(cornerRadius: 28))
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(OnboardingDesign.glassBorder, lineWidth: 1)
+                    .stroke(theme.glassBorder, lineWidth: 1)
+                    .allowsHitTesting(false)
             )
-            .shadow(color: OnboardingDesign.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+            .shadow(color: theme.isDark ? Color.black.opacity(0.4) : theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
     }
 }
 

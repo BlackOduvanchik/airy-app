@@ -16,6 +16,7 @@ struct ImportView: View {
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var pendingSelection: [PhotosPickerItem] = []
     @State private var isLoadingSelection = false
+    @Environment(ThemeProvider.self) private var theme
     @State private var viewModel = ImportViewModel()
     @State private var didAttemptClipboard = false
 
@@ -78,6 +79,7 @@ struct ImportView: View {
             .navigationTitle("Import")
             .sheet(isPresented: $viewModel.showPaywall) {
                 PaywallView()
+                    .environment(theme)
             }
             .onChange(of: selectedItems) { _, new in
                 guard !new.isEmpty else { return }

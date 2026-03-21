@@ -33,6 +33,12 @@ final class SpendingInsightsEngine {
         let lastMonthDate = cal.date(byAdding: .month, value: -1, to: now) ?? now
         let lastMonthKey = monthKey(for: lastMonthDate)
 
+        // Prior month keys (used across many blocks)
+        let priorMonthKeys = (1...3).compactMap { offset -> String? in
+            guard let d = cal.date(byAdding: .month, value: -offset, to: now) else { return nil }
+            return monthKey(for: d)
+        }
+
         // Build set of (monthKey|merchant) that have a real expense, to deduplicate subscription templates
         let expenseMonthMerchant: Set<String> = {
             var set = Set<String>()
@@ -72,14 +78,40 @@ final class SpendingInsightsEngine {
             (byMonth[key] ?? []).reduce(0) { $0 + amountInBase($1) }
         }
 
+        let thisMonthTxs = byMonth[thisMonthKey] ?? []
         let thisMonthSpent = monthTotal(thisMonthKey)
         let lastMonthSpent = monthTotal(lastMonthKey)
         let monthDelta = lastMonthSpent > 0 ? ((thisMonthSpent - lastMonthSpent) / lastMonthSpent) * 100 : 0
 
-        // Category breakdown for this & last month
+        // Calendar
+        let dayOfMonth = cal.component(.day, from: now)
+        let daysInMonth = cal.range(of: .day, in: .month, for: now)?.count ?? 30
+
+        // MARK: Block A — Pace
+
+        let prior3Totals = priorMonthKeys.map { monthTotal($0) }
+        let last3MonthAvgSpend = prior3Totals.isEmpty ? 0 : prior3Totals.reduce(0, +) / Double(prior3Totals.count)
+        let expectedByToday = last3MonthAvgSpend > 0 ? (last3MonthAvgSpend / Double(daysInMonth)) * Double(dayOfMonth) : 0
+        let spendPaceRatio = expectedByToday > 0 ? thisMonthSpent / expectedByToday : 1.0
+
+        // MARK: Block B — First/second half
+
+        var firstHalfSpend: Double = 0
+        var secondHalfSpend: Double = 0
+        let lastDayCutoff = max(dayOfMonth - 7, 0)
+        for tx in thisMonthTxs {
+            if let day = dayComponent(from: tx.transactionDate) {
+                let amt = amountInBase(tx)
+                if day <= 7 { firstHalfSpend += amt }
+                if day > lastDayCutoff { secondHalfSpend += amt }
+            }
+        }
+
+        // MARK: Category breakdown for this & last month
+
         var thisByCat: [String: Double] = [:]
         var lastByCat: [String: Double] = [:]
-        for tx in byMonth[thisMonthKey] ?? [] {
+        for tx in thisMonthTxs {
             thisByCat[tx.category, default: 0] += amountInBase(tx)
         }
         for tx in byMonth[lastMonthKey] ?? [] {
@@ -97,9 +129,10 @@ final class SpendingInsightsEngine {
             return CategoryDelta(id: catId, name: name, emoji: emoji, thisMonth: thisAmt, lastMonth: lastAmt, deltaPercent: delta)
         }.sorted { abs($0.deltaPercent) > abs($1.deltaPercent) }
 
-        // Top merchant per category (this month)
+        // MARK: Top merchant per category (this month)
+
         var merchantByCat: [String: [String: Double]] = [:]
-        for tx in byMonth[thisMonthKey] ?? [] {
+        for tx in thisMonthTxs {
             let m = tx.merchant ?? "Unknown"
             merchantByCat[tx.category, default: [:]][m, default: 0] += amountInBase(tx)
         }
@@ -110,7 +143,76 @@ final class SpendingInsightsEngine {
             }
         }
 
-        // Weekly spending
+        // MARK: Block C — Concentration
+
+        let sortedCats = thisByCat.sorted { $0.value > $1.value }
+        let topCategoryShare = thisMonthSpent > 0 ? (sortedCats.first?.value ?? 0) / thisMonthSpent : 0
+        let topCategoryName = sortedCats.first.map { CategoryIconHelper.displayName(categoryId: $0.key) }
+        let top2Sum = sortedCats.prefix(2).reduce(0.0) { $0 + $1.value }
+        let top2CategoriesShare = thisMonthSpent > 0 ? top2Sum / thisMonthSpent : 0
+
+        var merchantThisMonth: [String: (total: Double, category: String)] = [:]
+        for tx in thisMonthTxs {
+            let m = tx.merchant ?? "Unknown"
+            let existing = merchantThisMonth[m]
+            merchantThisMonth[m] = (total: (existing?.total ?? 0) + amountInBase(tx), category: existing?.category ?? tx.category)
+        }
+        let sortedMerchants = merchantThisMonth.sorted { $0.value.total > $1.value.total }
+        let topMerchantShareTotal = thisMonthSpent > 0 ? (sortedMerchants.first?.value.total ?? 0) / thisMonthSpent : 0
+        let topMerchantNameTotal = sortedMerchants.first?.key
+
+        var topMerchantShareInCategory: [String: MerchantConcentration] = [:]
+        for (cat, merchants) in merchantByCat {
+            let catTotal = thisByCat[cat] ?? 0
+            if catTotal > 0, let top = merchants.max(by: { $0.value < $1.value }) {
+                topMerchantShareInCategory[cat] = MerchantConcentration(merchant: top.key, share: top.value / catTotal)
+            }
+        }
+
+        // MARK: Block D — Frequency
+
+        let txCountThisMonth = thisMonthTxs.count
+        let prior3Counts = priorMonthKeys.map { (byMonth[$0] ?? []).count }
+        let txCountLast3MonthAvg = prior3Counts.isEmpty ? 0 : Double(prior3Counts.reduce(0, +)) / Double(prior3Counts.count)
+
+        var merchantFreqs: [String: Int] = [:]
+        for tx in thisMonthTxs {
+            merchantFreqs[tx.merchant ?? "Unknown", default: 0] += 1
+        }
+        let topFreqMerchant = merchantFreqs.max(by: { $0.value < $1.value })
+
+        // Category tx counts (this month vs avg prior 3)
+        var catTxCountsThis: [String: Int] = [:]
+        for tx in thisMonthTxs { catTxCountsThis[tx.category, default: 0] += 1 }
+        var categoryTxCounts: [String: (thisMonth: Int, avg3Month: Double)] = [:]
+        for (cat, cnt) in catTxCountsThis {
+            let priorCounts = priorMonthKeys.map { mk in
+                (byMonth[mk] ?? []).filter { $0.category == cat }.count
+            }
+            let avg = priorCounts.isEmpty ? 0 : Double(priorCounts.reduce(0, +)) / Double(priorCounts.count)
+            categoryTxCounts[cat] = (thisMonth: cnt, avg3Month: avg)
+        }
+
+        // MARK: Block E — Ticket size
+
+        let thisMonthAmounts = thisMonthTxs.map { amountInBase($0) }.sorted()
+        let medianTicketThis = median(thisMonthAmounts)
+        let avgTicketThis = txCountThisMonth > 0 ? thisMonthSpent / Double(txCountThisMonth) : 0
+        let smallTxCount = thisMonthAmounts.filter { $0 < medianTicketThis }.count
+        let smallTxShare = txCountThisMonth > 0 ? Double(smallTxCount) / Double(txCountThisMonth) : 0
+
+        var prior3Amounts: [Double] = []
+        for mk in priorMonthKeys {
+            for tx in byMonth[mk] ?? [] { prior3Amounts.append(amountInBase(tx)) }
+        }
+        prior3Amounts.sort()
+        let medianTicketPrior = median(prior3Amounts)
+        let prior3TxCount = prior3Amounts.count
+        let prior3TotalSpend = prior3Amounts.reduce(0, +)
+        let avgTicketPrior = prior3TxCount > 0 ? prior3TotalSpend / Double(prior3TxCount) : 0
+
+        // MARK: Weekly spending
+
         let (thisWeekStart, thisWeekEnd) = weekBounds(for: now)
         let lastWeekStart = cal.date(byAdding: .day, value: -7, to: thisWeekStart) ?? thisWeekStart
         let lastWeekEnd = cal.date(byAdding: .day, value: -7, to: thisWeekEnd) ?? thisWeekEnd
@@ -132,13 +234,13 @@ final class SpendingInsightsEngine {
         }
         let weekDelta = lastWeekSpent > 0 ? ((thisWeekSpent - lastWeekSpent) / lastWeekSpent) * 100 : 0
 
-        // Daily average & projections
-        let dayOfMonth = cal.component(.day, from: now)
-        let daysInMonth = cal.range(of: .day, in: .month, for: now)?.count ?? 30
+        // MARK: Daily average & projections
+
         let dailyAvg = dayOfMonth > 0 ? thisMonthSpent / Double(dayOfMonth) : 0
         let projectedSpend = dailyAvg * Double(daysInMonth)
 
-        // Income & safe-to-spend
+        // MARK: Income & safe-to-spend
+
         let thisMonthIncome = LocalDataStore.shared.fetchIncomeForMonth(monthKey: thisMonthKey)
         let projectedSavings = thisMonthIncome > 0 ? thisMonthIncome - projectedSpend : 0
 
@@ -157,22 +259,27 @@ final class SpendingInsightsEngine {
         }
         let remainingDays = max(daysInMonth - dayOfMonth, 0)
         let committedRemaining = subscriptionMonthly * (Double(remainingDays) / Double(daysInMonth))
-        let safeToSpend = thisMonthIncome > 0
-            ? max(thisMonthIncome - thisMonthSpent - committedRemaining, 0)
-            : 0
+        let safeToSpendRaw = thisMonthIncome > 0 ? thisMonthIncome - thisMonthSpent - committedRemaining : 0
+        let safeToSpend = max(safeToSpendRaw, 0)
 
-        // Merchant anomalies (compare this month vs avg of 3 prior months)
+        // MARK: Block F — Subscriptions extended
+
+        let committedToIncomeRatio = thisMonthIncome > 0 ? subscriptionMonthly / thisMonthIncome : 0
+
+        var upcomingBillsNext7Days: Double = 0
+        let next7Date = dateFmt.string(from: cal.date(byAdding: .day, value: 7, to: now) ?? now)
+        let todayStr = dateFmt.string(from: now)
+        for sub in subs {
+            guard let nbd = sub.nextBillingDate, !nbd.isEmpty else { continue }
+            let dateStr = String(nbd.prefix(10))
+            if dateStr >= todayStr && dateStr <= next7Date {
+                upcomingBillsNext7Days += CurrencyService.convert(amount: sub.amount, from: sub.currency, to: base)
+            }
+        }
+
+        // MARK: Merchant anomalies
+
         var merchantAnomalies: [MerchantAnomaly] = []
-        let priorMonthKeys = (1...3).compactMap { offset -> String? in
-            guard let d = cal.date(byAdding: .month, value: -offset, to: now) else { return nil }
-            return monthKey(for: d)
-        }
-        var merchantThisMonth: [String: (total: Double, category: String)] = [:]
-        for tx in byMonth[thisMonthKey] ?? [] {
-            let m = tx.merchant ?? "Unknown"
-            let existing = merchantThisMonth[m]
-            merchantThisMonth[m] = (total: (existing?.total ?? 0) + amountInBase(tx), category: existing?.category ?? tx.category)
-        }
         for (merchant, info) in merchantThisMonth {
             var priorTotals: [Double] = []
             for mk in priorMonthKeys {
@@ -193,14 +300,70 @@ final class SpendingInsightsEngine {
             }
         }
         merchantAnomalies.sort { $0.ratio > $1.ratio }
+        let anomalyCount = merchantAnomalies.count
 
-        // Weekday vs weekend average (exclude subscriptions — they're recurring, not behavioral)
+        // MARK: Block G — New merchants, repeated merchant streak
+
+        let priorMerchants: Set<String> = {
+            var s = Set<String>()
+            for mk in priorMonthKeys {
+                for tx in byMonth[mk] ?? [] { s.insert(tx.merchant ?? "Unknown") }
+            }
+            return s
+        }()
+        let thisMerchants = Set(merchantThisMonth.keys)
+        let newMerchantCount = thisMerchants.subtracting(priorMerchants).subtracting(["Unknown"]).count
+
+        // Repeated merchant streak: for each merchant, find max consecutive days
+        var merchantDates: [String: [String]] = [:]
+        for tx in thisMonthTxs {
+            let m = tx.merchant ?? "Unknown"
+            let d = String(tx.transactionDate.prefix(10))
+            merchantDates[m, default: []].append(d)
+        }
+        var bestStreak: MerchantStreak? = nil
+        for (merchant, dates) in merchantDates where merchant != "Unknown" {
+            let unique = Array(Set(dates)).sorted()
+            let streak = consecutiveDayStreak(dates: unique)
+            if streak >= 3 {
+                if bestStreak == nil || streak > bestStreak!.days {
+                    bestStreak = MerchantStreak(merchant: merchant, days: streak)
+                }
+            }
+        }
+
+        // MARK: Block H — Positive / savings helpers
+
+        let lastMonthIncome = LocalDataStore.shared.fetchIncomeForMonth(monthKey: lastMonthKey)
+        let lastMonthSavings = lastMonthIncome > 0 ? lastMonthIncome - lastMonthSpent : 0
+
+        // Average weekly spend over 8 weeks
+        let eightWeeksAgoStr = dateFmt.string(from: cal.date(byAdding: .day, value: -56, to: now) ?? now)
+        var eightWeekTotal: Double = 0
+        for tx in allExpenses where shouldCount(tx) {
+            let d = String(tx.transactionDate.prefix(10))
+            if d >= eightWeeksAgoStr && d < todayStr {
+                eightWeekTotal += amountInBase(tx)
+            }
+        }
+        let avgWeeklySpend8Weeks = eightWeekTotal / 8.0
+
+        // Recurring cost delta
+        let currentSubTotal = subMonthlyTotals(byMonth: byMonth, thisMonthKey: thisMonthKey, allExpenses: allExpenses, shouldCount: shouldCount, amountInBase: amountInBase)
+        let priorSubTotals = priorMonthKeys.map { mk in
+            subMonthlyTotals(byMonth: byMonth, thisMonthKey: mk, allExpenses: allExpenses, shouldCount: shouldCount, amountInBase: amountInBase)
+        }
+        let avgPriorSub = priorSubTotals.isEmpty ? 0 : priorSubTotals.reduce(0, +) / Double(priorSubTotals.count)
+        let recurringCostDeltaPercent = avgPriorSub > 0 ? ((currentSubTotal - avgPriorSub) / avgPriorSub) * 100 : 0
+
+        // MARK: Weekday vs weekend average
+
         var weekdayTotal: Double = 0; var weekdayDays = Set<String>()
         var weekendTotal: Double = 0; var weekendDays = Set<String>()
-        for tx in (byMonth[thisMonthKey] ?? []) where tx.isSubscription != true {
+        for tx in thisMonthTxs where tx.isSubscription != true {
             let dateStr = String(tx.transactionDate.prefix(10))
             if let d = dateFmt.date(from: dateStr) {
-                let wd = cal.component(.weekday, from: d) // 1=Sun, 7=Sat
+                let wd = cal.component(.weekday, from: d)
                 let amt = amountInBase(tx)
                 if wd == 1 || wd == 7 {
                     weekendTotal += amt; weekendDays.insert(dateStr)
@@ -212,7 +375,8 @@ final class SpendingInsightsEngine {
         let weekdayAvg = weekdayDays.count > 0 ? weekdayTotal / Double(weekdayDays.count) : 0
         let weekendAvg = weekendDays.count > 0 ? weekendTotal / Double(weekendDays.count) : 0
 
-        // Monthly history (12 months)
+        // MARK: Monthly history (12 months)
+
         let shortLabels = ["J","F","M","A","M","J","J","A","S","O","N","D"]
         var monthlyHistory: [MonthlySpendPoint] = []
         for offset in stride(from: 11, through: 0, by: -1) {
@@ -226,20 +390,17 @@ final class SpendingInsightsEngine {
             ))
         }
 
-        // Subscription trend (6 months)
-        var subMonthlyTotals: [(monthKey: String, total: Double)] = []
+        // MARK: Subscription trend (6 months)
+
+        var subMonthlyTotalsList: [(monthKey: String, total: Double)] = []
         for offset in stride(from: 5, through: 0, by: -1) {
             guard let d = cal.date(byAdding: .month, value: -offset, to: now) else { continue }
             let mk = monthKey(for: d)
-            let subTotal = (byMonth[mk] ?? []).filter { $0.isSubscription == true }.reduce(0.0) { $0 + amountInBase($1) }
-            // Also add subscription templates that weren't counted as expenses
-            let templateTotal = allExpenses.filter { tx in
-                tx.isSubscription == true && String(tx.transactionDate.prefix(7)) == mk && shouldCount(tx)
-            }.reduce(0.0) { $0 + amountInBase($1) }
-            subMonthlyTotals.append((monthKey: mk, total: subTotal + templateTotal))
+            let total = subMonthlyTotals(byMonth: byMonth, thisMonthKey: mk, allExpenses: allExpenses, shouldCount: shouldCount, amountInBase: amountInBase)
+            subMonthlyTotalsList.append((monthKey: mk, total: total))
         }
-        let subDelta = subMonthlyTotals.count >= 2
-            ? (subMonthlyTotals.last?.total ?? 0) - (subMonthlyTotals.first?.total ?? 0)
+        let subDelta = subMonthlyTotalsList.count >= 2
+            ? (subMonthlyTotalsList.last?.total ?? 0) - (subMonthlyTotalsList.first?.total ?? 0)
             : 0
         let thirtyDaysAgo = dateFmt.string(from: cal.date(byAdding: .day, value: -30, to: now) ?? now)
         let newTrials = subs.filter { sub in
@@ -247,7 +408,9 @@ final class SpendingInsightsEngine {
             return allExpenses.first { $0.id == tid }?.transactionDate ?? "" >= thirtyDaysAgo
         }.count
 
-        let totalTxCount = (byMonth[thisMonthKey] ?? []).count + (byMonth[lastMonthKey] ?? []).count
+        let totalTxCount = thisMonthTxs.count + (byMonth[lastMonthKey] ?? []).count
+
+        // MARK: - Build Snapshot
 
         return SpendingSnapshot(
             thisMonthSpent: thisMonthSpent,
@@ -268,32 +431,108 @@ final class SpendingInsightsEngine {
             weekendAvgSpend: weekendAvg,
             monthlyHistory: monthlyHistory,
             subscriptionTrend: SubscriptionTrendData(
-                monthlyTotals: subMonthlyTotals,
+                monthlyTotals: subMonthlyTotalsList,
                 deltaAmount: subDelta,
-                newTrialsCount: newTrials
+                newSubsCount: newTrials
             ),
             totalTransactionCount: totalTxCount,
-            computedAt: now
+            computedAt: now,
+            // Pace
+            last3MonthAvgSpend: last3MonthAvgSpend,
+            spendPaceRatio: spendPaceRatio,
+            firstHalfSpend: firstHalfSpend,
+            secondHalfSpend: secondHalfSpend,
+            // Concentration
+            topCategoryShare: topCategoryShare,
+            topCategoryName: topCategoryName,
+            top2CategoriesShare: top2CategoriesShare,
+            topMerchantShareTotal: topMerchantShareTotal,
+            topMerchantNameTotal: topMerchantNameTotal,
+            topMerchantShareInCategory: topMerchantShareInCategory,
+            // Frequency
+            txCountThisMonth: txCountThisMonth,
+            txCountLast3MonthAvg: txCountLast3MonthAvg,
+            topFrequentMerchant: topFreqMerchant?.key,
+            topFrequentMerchantCount: topFreqMerchant?.value ?? 0,
+            categoryTxCounts: categoryTxCounts,
+            // Ticket size
+            smallTxShare: smallTxShare,
+            smallTxCount: smallTxCount,
+            avgTicketThisMonth: avgTicketThis,
+            avgTicketLast3Month: avgTicketPrior,
+            medianTicketThisMonth: medianTicketThis,
+            medianTicketLast3Month: medianTicketPrior,
+            // Subscriptions extended
+            committedToIncomeRatio: committedToIncomeRatio,
+            upcomingBillsNext7Days: upcomingBillsNext7Days,
+            subscriptionMonthlyTotal: subscriptionMonthly,
+            recurringCostDeltaPercent: recurringCostDeltaPercent,
+            // Risk / anomaly
+            anomalyCount: anomalyCount,
+            newMerchantCount: newMerchantCount,
+            repeatedMerchantStreak: bestStreak,
+            safeToSpendRaw: safeToSpendRaw,
+            avgWeeklySpend8Weeks: avgWeeklySpend8Weeks,
+            // Positive
+            lastMonthSavings: lastMonthSavings,
+            // Calendar
+            dayOfMonth: dayOfMonth,
+            daysInMonth: daysInMonth
         )
     }
 
     // MARK: - Text Generation
 
     func generateSummaryText(_ s: SpendingSnapshot) -> String {
-        guard s.totalTransactionCount >= 5 else {
-            return "Keep tracking to unlock personalized insights."
+        // Graduated fallbacks
+        if s.txCountThisMonth == 0 && s.totalTransactionCount == 0 {
+            return L("insight_no_spending")
+        }
+        if s.txCountThisMonth <= 4 {
+            if s.dayOfMonth <= 7 {
+                return L("insight_early_month")
+            }
+            if s.subscriptionTrend.monthlyTotals.contains(where: { $0.total > 0 }) {
+                return L("insight_mostly_subs")
+            }
+            return L("insight_few_tx")
         }
 
-        var candidates: [(priority: Double, text: String)] = []
+        var candidates: [InsightCandidate] = []
         let fmt = currencyFormatter()
+        let significantDeltas = s.categoryDeltas.filter { abs($0.deltaPercent) > 10 && $0.lastMonth > 0 }
+        let weekday = cal.component(.weekday, from: Date())
+
+        // ──────────────────────────────────────
+        // GROUP 1: Month Pace (tag: "pace")
+        // ──────────────────────────────────────
+
+        if s.last3MonthAvgSpend > 0 {
+            if s.spendPaceRatio > 1.15 {
+                candidates.append(InsightCandidate(priority: 32, text: L("insight_pace_faster"), tag: "pace"))
+            } else if s.spendPaceRatio < 0.85 {
+                candidates.append(InsightCandidate(priority: 30, text: L("insight_pace_slower"), tag: "pace"))
+            }
+        }
+
+        if s.dayOfMonth >= 7 && s.firstHalfSpend > 0 {
+            let projected7 = (s.firstHalfSpend / 7) * Double(s.daysInMonth)
+            if s.firstHalfSpend > projected7 * 0.40 {
+                candidates.append(InsightCandidate(priority: 22, text: L("insight_front_loaded"), tag: "pace"))
+            }
+        }
+
+        if s.dayOfMonth >= 14 && s.firstHalfSpend > 0 && s.secondHalfSpend > s.firstHalfSpend * 1.4 {
+            candidates.append(InsightCandidate(priority: 24, text: L("insight_recent_spike"), tag: "pace"))
+        }
 
         // Weekly pacing
         if s.lastWeekSpent > 0 {
             let pct = Int(abs(s.weekDeltaPercent).rounded())
             if s.weekDeltaPercent < -5 {
-                candidates.append((abs(s.weekDeltaPercent), "Spending is down \(pct)% this week."))
+                candidates.append(InsightCandidate(priority: abs(s.weekDeltaPercent), text: L("insight_week_down", "\(pct)"), tag: "pace"))
             } else if s.weekDeltaPercent > 10 {
-                candidates.append((s.weekDeltaPercent, "Spending is up \(pct)% this week."))
+                candidates.append(InsightCandidate(priority: s.weekDeltaPercent, text: L("insight_week_up", "\(pct)"), tag: "pace"))
             }
         }
 
@@ -301,74 +540,293 @@ final class SpendingInsightsEngine {
         if s.lastMonthSpent > 0 {
             let pct = Int(abs(s.monthDeltaPercent).rounded())
             if s.monthDeltaPercent < -5 {
-                candidates.append((abs(s.monthDeltaPercent) * 0.8, "You spent \(pct)% less this month."))
+                candidates.append(InsightCandidate(priority: abs(s.monthDeltaPercent) * 0.8, text: L("insight_month_down", "\(pct)"), tag: "pace"))
             } else if s.monthDeltaPercent > 10 {
-                candidates.append((s.monthDeltaPercent * 0.8, "Spending is up \(pct)% vs last month."))
+                candidates.append(InsightCandidate(priority: s.monthDeltaPercent * 0.8, text: L("insight_month_up", "\(pct)"), tag: "pace"))
             }
+        }
+
+        // ──────────────────────────────────────
+        // GROUP 2: Concentration (tag: "concentration")
+        // ──────────────────────────────────────
+
+        if s.topCategoryShare > 0.45, let name = s.topCategoryName {
+            candidates.append(InsightCandidate(priority: 28, text: L("insight_concentration_cat", name), tag: "concentration"))
+        }
+
+        if s.top2CategoriesShare > 0.7 && s.topCategoryShare <= 0.45 {
+            candidates.append(InsightCandidate(priority: 24, text: L("insight_two_cats"), tag: "concentration"))
+        }
+
+        for (catId, conc) in s.topMerchantShareInCategory {
+            if conc.share > 0.6 && conc.merchant != "Unknown" {
+                let catName = CategoryIconHelper.displayName(categoryId: catId)
+                candidates.append(InsightCandidate(priority: 20, text: L("insight_cat_merchant", catName, conc.merchant), tag: "concentration"))
+                break
+            }
+        }
+
+        if s.topMerchantShareTotal > 0.25, let name = s.topMerchantNameTotal, name != "Unknown" {
+            candidates.append(InsightCandidate(priority: 18, text: L("insight_one_merchant"), tag: "concentration"))
+        }
+
+        // ──────────────────────────────────────
+        // GROUP 3: Frequency (tag: "habit")
+        // ──────────────────────────────────────
+
+        if s.txCountLast3MonthAvg > 0 {
+            let ratio = Double(s.txCountThisMonth) / s.txCountLast3MonthAvg
+            if ratio > 1.25 {
+                candidates.append(InsightCandidate(priority: 22, text: L("insight_more_frequent"), tag: "habit"))
+            } else if ratio < 0.8 {
+                candidates.append(InsightCandidate(priority: 18, text: L("insight_less_frequent"), tag: "habit"))
+            }
+        }
+
+        if s.topFrequentMerchantCount >= 5, let merchant = s.topFrequentMerchant, merchant != "Unknown" {
+            candidates.append(InsightCandidate(priority: 20, text: L("insight_returning", merchant), tag: "habit"))
+        }
+
+        // Category frequency spike with small amounts
+        for (catId, counts) in s.categoryTxCounts {
+            if counts.avg3Month > 2 && Double(counts.thisMonth) > counts.avg3Month * 1.5 {
+                if let conc = s.topMerchantShareInCategory[catId] {
+                    let catName = CategoryIconHelper.displayName(categoryId: catId)
+                    if conc.share < 0.8 {
+                        candidates.append(InsightCandidate(priority: 24, text: L("insight_small_adding", catName), tag: "habit"))
+                        break
+                    }
+                }
+            }
+        }
+
+        // ──────────────────────────────────────
+        // GROUP 4: Small Purchases (tag: "habit")
+        // ──────────────────────────────────────
+
+        if s.smallTxShare > 0.35 && s.smallTxCount >= 5 {
+            candidates.append(InsightCandidate(priority: 26, text: L("insight_small_share"), tag: "habit"))
+        }
+
+        if s.avgTicketLast3Month > 0 && s.avgTicketThisMonth < s.avgTicketLast3Month * 0.85 && s.thisMonthSpent > s.last3MonthAvgSpend {
+            candidates.append(InsightCandidate(priority: 28, text: L("insight_small_more"), tag: "habit"))
+        }
+
+        if s.avgTicketLast3Month > 0 && s.avgTicketThisMonth > s.avgTicketLast3Month * 1.15 && s.txCountLast3MonthAvg > 0 {
+            let countRatio = Double(s.txCountThisMonth) / s.txCountLast3MonthAvg
+            if countRatio > 0.85 && countRatio < 1.15 {
+                candidates.append(InsightCandidate(priority: 21, text: L("insight_avg_higher"), tag: "habit"))
+            }
+        }
+
+        if s.medianTicketLast3Month > 0 && s.medianTicketThisMonth > s.medianTicketLast3Month * 1.2 {
+            candidates.append(InsightCandidate(priority: 20, text: L("insight_avg_increased"), tag: "habit"))
+        }
+
+        // ──────────────────────────────────────
+        // GROUP 5: Subscriptions (tag: "subscriptions")
+        // ──────────────────────────────────────
+
+        if s.committedToIncomeRatio > 0.15 && s.thisMonthIncome > 0 {
+            candidates.append(InsightCandidate(priority: 27, text: L("insight_sub_share"), tag: "subscriptions"))
+        }
+
+        if s.subscriptionTrend.newSubsCount > 0 {
+            let n = s.subscriptionTrend.newSubsCount
+            candidates.append(InsightCandidate(priority: 29, text: L("insight_new_subs", "\(n)", n == 1 ? "" : "s"), tag: "subscriptions"))
+        }
+
+        if s.upcomingBillsNext7Days > 0 && s.safeToSpend > 0 && s.upcomingBillsNext7Days > s.safeToSpend {
+            candidates.append(InsightCandidate(priority: 31, text: L("insight_upcoming_bills"), tag: "subscriptions"))
+        }
+
+        if s.recurringCostDeltaPercent > 10 {
+            candidates.append(InsightCandidate(priority: 23, text: L("insight_recurring_higher"), tag: "subscriptions"))
+        }
+
+        // ──────────────────────────────────────
+        // GROUP 6: Risk (tag: "risk")
+        // ──────────────────────────────────────
+
+        if s.thisMonthIncome > 0 && s.projectedMonthlySpend > s.thisMonthIncome {
+            candidates.append(InsightCandidate(priority: 45, text: L("insight_exceed_income"), tag: "risk"))
+        }
+
+        if s.thisMonthIncome > 0 && s.safeToSpendRaw < 0 {
+            candidates.append(InsightCandidate(priority: 44, text: L("insight_over_safe"), tag: "risk"))
+        }
+
+        if s.anomalyCount >= 2 {
+            candidates.append(InsightCandidate(priority: 26, text: L("insight_outliers"), tag: "risk"))
+        }
+
+        // Category up > 25% with merchant anomaly
+        if let topUp = significantDeltas.first(where: { $0.deltaPercent > 25 }),
+           let anomaly = s.merchantAnomalies.first(where: { $0.category == topUp.id }) {
+            candidates.append(InsightCandidate(priority: 34, text: L("insight_spike", topUp.name, anomaly.merchant), tag: "risk"))
+        }
+
+        if s.avgWeeklySpend8Weeks > 0 && s.thisWeekSpent > s.avgWeeklySpend8Weeks * 1.4 {
+            candidates.append(InsightCandidate(priority: 30, text: L("insight_expensive_week"), tag: "risk"))
+        }
+
+        // ──────────────────────────────────────
+        // GROUP 7: Positive (tag: "stability")
+        // ──────────────────────────────────────
+
+        if s.lastMonthSavings > 0 && s.projectedMonthlySavings > s.lastMonthSavings * 1.2 {
+            candidates.append(InsightCandidate(priority: 34, text: L("insight_save_more"), tag: "stability"))
+        }
+
+        if let topDown = s.categoryDeltas.first(where: { $0.deltaPercent < -15 && $0.lastMonth > 0 }) {
+            candidates.append(InsightCandidate(priority: 25, text: L("insight_cooled_off", topDown.name), tag: "stability"))
+        }
+
+        if s.anomalyCount == 0 && s.lastMonthSpent > 0 && abs(s.monthDeltaPercent) < 5 {
+            candidates.append(InsightCandidate(priority: 18, text: L("insight_controlled"), tag: "stability"))
+        }
+
+        if abs(s.recurringCostDeltaPercent) <= 2 && s.monthDeltaPercent < -5 {
+            candidates.append(InsightCandidate(priority: 20, text: L("insight_fixed_steady"), tag: "stability"))
+        }
+
+        if s.safeToSpend > 0 && s.spendPaceRatio < 0.9 && s.thisMonthIncome > 0 {
+            candidates.append(InsightCandidate(priority: 33, text: L("insight_room_left"), tag: "stability"))
         }
 
         // Projected savings
         if s.projectedMonthlySavings > 50 && s.thisMonthIncome > 0 {
-            candidates.append((40, "You're on track to save \(fmt.string(from: NSNumber(value: s.projectedMonthlySavings)) ?? "$0") this month."))
+            candidates.append(InsightCandidate(priority: 40, text: L("insight_on_track", fmt.string(from: NSNumber(value: s.projectedMonthlySavings)) ?? "$0"), tag: "stability"))
+        }
+
+        // Stable spending (low priority fallback)
+        if s.lastMonthSpent > 0 && abs(s.monthDeltaPercent) < 5 {
+            candidates.append(InsightCandidate(priority: 5, text: L("insight_steady"), tag: "stability"))
+        }
+
+        // ──────────────────────────────────────
+        // GROUP 8: Calendar (tag: "calendar")
+        // ──────────────────────────────────────
+
+        if s.dayOfMonth <= 7 && s.spendPaceRatio > 1.1 && s.last3MonthAvgSpend > 0 {
+            candidates.append(InsightCandidate(priority: 17, text: L("insight_expensive_start"), tag: "calendar"))
+        }
+
+        if s.dayOfMonth >= s.daysInMonth - 5 && s.last3MonthAvgSpend > 0 && abs(s.spendPaceRatio - 1.0) < 0.1 {
+            candidates.append(InsightCandidate(priority: 16, text: L("insight_ending_usual"), tag: "calendar"))
+        }
+
+        if s.weekendAvgSpend > s.weekdayAvgSpend * 1.3 && s.weekdayAvgSpend > 0 && (weekday >= 6 || weekday == 1) {
+            candidates.append(InsightCandidate(priority: 22, text: L("insight_weekends_expensive"), tag: "calendar"))
         }
 
         // Safe to spend (weekends)
-        let weekday = cal.component(.weekday, from: Date())
         if (weekday >= 6 || weekday == 1) && s.safeToSpend > 0 {
-            candidates.append((35, "You have roughly \(fmt.string(from: NSNumber(value: s.safeToSpend)) ?? "$0") safe to spend this weekend."))
+            candidates.append(InsightCandidate(priority: 35, text: L("insight_safe_weekend", fmt.string(from: NSNumber(value: s.safeToSpend)) ?? "$0"), tag: "calendar"))
+        }
+
+        // Weekend vs weekday pattern (non-calendar-specific)
+        if s.weekendAvgSpend > 0 && s.weekdayAvgSpend > 0 && s.weekendAvgSpend > s.weekdayAvgSpend * 1.5 {
+            candidates.append(InsightCandidate(priority: 25, text: L("insight_weekend_vs_weekday", fmt.string(from: NSNumber(value: s.weekendAvgSpend)) ?? "$0", fmt.string(from: NSNumber(value: s.weekdayAvgSpend)) ?? "$0"), tag: "habit"))
+        }
+
+        // ──────────────────────────────────────
+        // GROUP 9: Category Comparison (tag: "category")
+        // ──────────────────────────────────────
+
+        let catsDown = s.categoryDeltas.filter { $0.deltaPercent < -15 && $0.lastMonth > 0 }
+        let catsUp = s.categoryDeltas.filter { $0.deltaPercent > 15 && $0.lastMonth > 0 }
+
+        if let down = catsDown.first, let up = catsUp.first {
+            candidates.append(InsightCandidate(priority: 24, text: L("insight_less_more", down.name, up.name), tag: "category"))
+        }
+
+        if significantDeltas.count >= 2 {
+            let growing = significantDeltas.filter { $0.deltaPercent > 0 }.first
+            let shrinking = significantDeltas.filter { $0.deltaPercent < 0 }.first
+            if let g = growing, let sh = shrinking {
+                candidates.append(InsightCandidate(priority: 23, text: L("insight_rose_cooled", g.name, sh.name), tag: "category"))
+            }
         }
 
         // Top category shift
-        let significantDeltas = s.categoryDeltas.filter { abs($0.deltaPercent) > 10 && $0.lastMonth > 0 }
         if let top = significantDeltas.first {
-            let dir = top.deltaPercent < 0 ? "down" : "up"
+            let dir = top.deltaPercent < 0 ? L("direction_down") : L("direction_up")
             let pct = Int(abs(top.deltaPercent).rounded())
-            candidates.append((abs(top.deltaPercent) * 0.7, "\(top.name) is \(dir) \(pct)%."))
+            candidates.append(InsightCandidate(priority: abs(top.deltaPercent) * 0.7, text: L("insight_cat_direction", top.name, dir, "\(pct)"), tag: "category"))
         }
 
-        // Two significant category shifts
+        // Two category shifts combined
         if significantDeltas.count >= 2 {
             let a = significantDeltas[0]
             let b = significantDeltas[1]
-            let aDir = a.deltaPercent < 0 ? "down" : "up"
-            let bDir = b.deltaPercent < 0 ? "down" : "slightly higher"
-            candidates.append((abs(a.deltaPercent) * 0.6,
-                "\(a.name) is \(aDir) \(Int(abs(a.deltaPercent)))%, but \(b.name.lowercased()) costs are \(bDir) than usual."))
+            let aDir = a.deltaPercent < 0 ? L("direction_down") : L("direction_up")
+            let bDir = b.deltaPercent < 0 ? L("direction_down") : L("direction_slightly_higher")
+            candidates.append(InsightCandidate(priority: abs(a.deltaPercent) * 0.6,
+                text: L("insight_cat_direction_but", a.name, aDir, "\(Int(abs(a.deltaPercent)))", b.name.lowercased(), bDir), tag: "category"))
         }
 
-        // Weekend vs weekday pattern
-        if s.weekendAvgSpend > 0 && s.weekdayAvgSpend > 0 && s.weekendAvgSpend > s.weekdayAvgSpend * 1.5 {
-            candidates.append((25, "You tend to spend more on weekends — \(fmt.string(from: NSNumber(value: s.weekendAvgSpend)) ?? "$0")/day vs \(fmt.string(from: NSNumber(value: s.weekdayAvgSpend)) ?? "$0") on weekdays."))
+        if s.categoryDeltas.count >= 3 {
+            let top3 = Array(s.categoryDeltas.prefix(3))
+            if top3.allSatisfy({ abs($0.deltaPercent) < 10 || $0.lastMonth == 0 }) && s.lastMonthSpent > 0 {
+                candidates.append(InsightCandidate(priority: 14, text: L("insight_cats_in_line"), tag: "category"))
+            }
         }
 
-        // Top merchant insight
+        // ──────────────────────────────────────
+        // GROUP 10: Merchant-specific (tag: "merchant")
+        // ──────────────────────────────────────
+
+        if let streak = s.repeatedMerchantStreak, streak.days >= 3 {
+            candidates.append(InsightCandidate(priority: 18, text: L("insight_merchant_often", streak.merchant), tag: "merchant"))
+        }
+
+        // Top merchant in shifted category
         if let topCatDelta = significantDeltas.first(where: { abs($0.deltaPercent) > 15 }),
            let topMerch = s.topMerchantByCategory[topCatDelta.id] {
-            candidates.append((20, "\(topCatDelta.name) is tracking higher than usual, mostly at \(topMerch.merchant)."))
+            candidates.append(InsightCandidate(priority: 20, text: L("insight_cat_higher_merchant", topCatDelta.name, topMerch.merchant), tag: "merchant"))
         }
 
-        // Stable spending
-        if s.lastMonthSpent > 0 && abs(s.monthDeltaPercent) < 5 {
-            candidates.append((5, "Your spending is steady this month."))
+        if s.newMerchantCount > 0 {
+            candidates.append(InsightCandidate(priority: 17, text: L("insight_new_merchant"), tag: "merchant"))
         }
 
-        // Sort by priority, pick top 2
+        // ──────────────────────────────────────
+        // Tag-based selection with time-of-day rotation
+        // ──────────────────────────────────────
+
         candidates.sort { $0.priority > $1.priority }
 
         if candidates.isEmpty {
             return s.thisMonthSpent > 0
-                ? "Your spending is in line with last month."
-                : "Start adding transactions to see insights."
+                ? L("insight_in_line")
+                : L("insight_start_adding")
         }
 
-        // Pick best primary + compatible secondary
-        let primary = candidates[0].text
-        let secondary = candidates.dropFirst().first(where: { !textOverlaps(primary, $0.text) })?.text
+        // Rotate 3× daily: slot 0 (00-08), 1 (08-16), 2 (16-24)
+        // Combined with day-of-month so each slot+day is unique
+        let hour = cal.component(.hour, from: Date())
+        let slot = hour / 8                         // 0, 1, or 2
+        let rotationSeed = s.dayOfMonth * 3 + slot  // unique per slot per day
+
+        // Build valid (primary, secondary) pairs from top candidates
+        // then pick pair based on rotationSeed
+        var pairs: [(InsightCandidate, InsightCandidate?)] = []
+        for (i, candidate) in candidates.enumerated() {
+            let secondary = candidates.dropFirst(i + 1).first {
+                $0.tag != candidate.tag && !textOverlaps(candidate.text, $0.text)
+            }
+            pairs.append((candidate, secondary))
+            if pairs.count >= 6 { break } // enough variety
+        }
+
+        let idx = rotationSeed % pairs.count
+        let (primary, secondary) = pairs[idx]
 
         if let secondary {
-            return "\(primary) \(secondary)"
+            return "\(primary.text) \(secondary.text)"
         }
-        return primary
+        return primary.text
     }
 
     // MARK: - Helpers
@@ -414,7 +872,55 @@ final class SpendingInsightsEngine {
     private func textOverlaps(_ a: String, _ b: String) -> Bool {
         let aWords = Set(a.lowercased().split(separator: " ").map(String.init))
         let bWords = Set(b.lowercased().split(separator: " ").map(String.init))
-        let shared = aWords.intersection(bWords).subtracting(["is", "a", "the", "your", "you", "this", "than"])
+        let shared = aWords.intersection(bWords).subtracting(["is", "a", "the", "your", "you", "this", "than", "of", "to", "in", "more"])
         return shared.count > 3
+    }
+
+    private func median(_ values: [Double]) -> Double {
+        guard !values.isEmpty else { return 0 }
+        let sorted = values.sorted()
+        let mid = sorted.count / 2
+        if sorted.count % 2 == 0 {
+            return (sorted[mid - 1] + sorted[mid]) / 2
+        }
+        return sorted[mid]
+    }
+
+    private func dayComponent(from dateString: String) -> Int? {
+        let prefix = dateString.prefix(10) // "yyyy-MM-dd"
+        guard prefix.count == 10 else { return nil }
+        let parts = prefix.split(separator: "-")
+        guard parts.count == 3 else { return nil }
+        return Int(parts[2])
+    }
+
+    private func consecutiveDayStreak(dates: [String]) -> Int {
+        guard dates.count >= 2 else { return dates.count }
+        var maxStreak = 1
+        var current = 1
+        for i in 1..<dates.count {
+            if let prev = dateFmt.date(from: dates[i - 1]),
+               let curr = dateFmt.date(from: dates[i]),
+               let diff = cal.dateComponents([.day], from: prev, to: curr).day,
+               diff == 1 {
+                current += 1
+                maxStreak = max(maxStreak, current)
+            } else {
+                current = 1
+            }
+        }
+        return maxStreak
+    }
+
+    private func subMonthlyTotals(
+        byMonth: [String: [LocalTransaction]],
+        thisMonthKey: String,
+        allExpenses: [LocalTransaction],
+        shouldCount: (LocalTransaction) -> Bool,
+        amountInBase: (LocalTransaction) -> Double
+    ) -> Double {
+        (byMonth[thisMonthKey] ?? [])
+            .filter { $0.isSubscription == true }
+            .reduce(0.0) { $0 + amountInBase($1) }
     }
 }
