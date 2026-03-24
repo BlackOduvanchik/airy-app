@@ -15,8 +15,9 @@ struct CategoryDetailDestination: Hashable, Identifiable {
     let iconName: String
     let monthKey: String
     let monthLabel: String
+    var isIncome: Bool = false
 
-    var id: String { categoryId + monthKey }
+    var id: String { categoryId + monthKey + (isIncome ? "_income" : "") }
 
     var color: Color {
         Color(hex: colorHex) ?? OnboardingDesign.accentGreen
@@ -75,7 +76,7 @@ struct CategoryDetailView: View {
                     onSuccess: {
                         selectedTransactionForEdit = nil
                         Task { @MainActor in
-                            await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey)
+                            await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey, isIncome: destination.isIncome)
                             if viewModel.groupedByDay.isEmpty {
                                 dismiss()
                             }
@@ -86,7 +87,7 @@ struct CategoryDetailView: View {
             }
             .onAppear { print("[Nav] CategoryDetail '\(destination.label)' (monthKey=\(destination.monthKey))") }
             .task {
-                await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey)
+                await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey, isIncome: destination.isIncome)
             }
         }
     }
@@ -247,7 +248,7 @@ final class CategoryDetailViewModel {
     var totalAmount: Double = 0
     var isLoading = true
 
-    func load(categoryId: String, monthKey: String) async {
+    func load(categoryId: String, monthKey: String, isIncome: Bool = false) async {
         let perfStart = CFAbsoluteTimeGetCurrent()
         isLoading = true
         defer { Task { @MainActor in isLoading = false } }
@@ -265,7 +266,10 @@ final class CategoryDetailViewModel {
             } else {
                 return
             }
-            let filtered = all.filter { $0.type.lowercased() != "income" && $0.category == categoryId }
+            let filtered = all.filter {
+                (isIncome ? $0.type.lowercased() == "income" : $0.type.lowercased() != "income")
+                && $0.category == categoryId
+            }
             let sorted = filtered.sorted { $0.transactionDate > $1.transactionDate }
 
             var byDay: [String: [Transaction]] = [:]

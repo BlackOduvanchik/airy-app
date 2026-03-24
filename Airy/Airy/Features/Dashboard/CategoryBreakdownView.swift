@@ -51,6 +51,9 @@ struct CategoryBreakdownView: View {
                         .buttonStyle(.plain)
                     }
                     categoryListSection
+                    if viewModel.totalIncome > 0 {
+                        incomeListSection
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
@@ -71,23 +74,22 @@ struct CategoryBreakdownView: View {
                 }
             }
             ToolbarItem(placement: .principal) {
+                Text(viewModel.monthLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(theme.textTertiary)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    print("[Tap] CategoryBreakdown → Calendar")
                     pickerMonth = viewModel.currentMonth
                     pickerYear = viewModel.currentYear
                     showPeriodPicker = true
                 } label: {
-                    HStack(spacing: 4) {
-                        Text(viewModel.monthLabel)
-                            .font(.system(size: 12, weight: .semibold))
-                            .tracking(0.5)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                    }
-                    .foregroundColor(theme.textTertiary)
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showPeriodPicker, arrowEdge: .top) {
-                    periodPickerContent
+                    Image(systemName: "calendar")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
             }
         }
@@ -96,6 +98,9 @@ struct CategoryBreakdownView: View {
         }) { dest in
             CategoryDetailView(destination: dest)
                 .themed(theme)
+        }
+        .sheet(isPresented: $showPeriodPicker) {
+            periodPickerContent
         }
         .task {
             print("[Nav] CategoryBreakdown (month=\(initialMonth.map(String.init) ?? "nil") year=\(initialYear.map(String.init) ?? "nil") allYear=\(showAllYear))")
@@ -250,6 +255,82 @@ struct CategoryBreakdownView: View {
                 .allowsHitTesting(false)
         )
         .shadow(color: theme.isDark ? Color.black.opacity(0.4) : theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+    }
+
+    // MARK: - Income List
+
+    private var incomeListSection: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(L("breakdown_income"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundColor(theme.textTertiary)
+                Spacer()
+                Text(formatCurrencyWhole(viewModel.totalIncome))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(theme.accentGreen)
+            }
+            .padding(.bottom, 16)
+
+            ForEach(Array(viewModel.incomeSegments.enumerated()), id: \.element.categoryId) { index, seg in
+                incomeRow(segment: seg)
+                if index < viewModel.incomeSegments.count - 1 {
+                    Divider()
+                        .background(Color.white.opacity(theme.isDark ? 0.06 : 0.3))
+                        .padding(.leading, 56)
+                }
+            }
+        }
+        .padding(24)
+        .background(theme.isDark ? AnyShapeStyle(theme.glassBg) : AnyShapeStyle(.ultraThinMaterial))
+        .overlay(theme.isDark ? nil : theme.glassBg.opacity(0.5).allowsHitTesting(false))
+        .clipShape(RoundedRectangle(cornerRadius: 28))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28)
+                .stroke(theme.glassBorder, lineWidth: 1)
+                .allowsHitTesting(false)
+        )
+        .shadow(color: theme.isDark ? Color.black.opacity(0.4) : theme.textPrimary.opacity(0.06), radius: 16, x: 0, y: 8)
+    }
+
+    private func incomeRow(segment: CategorySegment) -> some View {
+        let dest = CategoryDetailDestination(
+            categoryId: segment.categoryId,
+            label: segment.label,
+            amount: segment.amount,
+            colorHex: segment.colorHex,
+            iconName: segment.iconName,
+            monthKey: viewModel.monthKey,
+            monthLabel: viewModel.monthLabel,
+            isIncome: true
+        )
+        return Button {
+            print("[Tap] CategoryBreakdown → Income '\(segment.label)'")
+            selectedCategoryDetail = dest
+        } label: {
+            HStack(alignment: .center, spacing: 16) {
+                categoryIcon(segment: segment)
+                HStack {
+                    Text(segment.label)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(theme.textPrimary)
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Text(formatAmount(segment.amount, BaseCurrencyStore.baseCurrency))
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(theme.accentGreen)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(theme.textTertiary)
+                    }
+                }
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func categoryRow(segment: CategorySegment, index: Int) -> some View {
@@ -415,6 +496,9 @@ private struct CategoryAggregateResult: Sendable {
     let totalSpent: Double
     let sortedCategories: [CategoryAggregateItem]
     let transactionsByCategory: [String: [Transaction]]
+    let totalIncome: Double
+    let sortedIncomeCategories: [CategoryAggregateItem]
+    let incomeTransactionsByCategory: [String: [Transaction]]
 }
 
 @Observable @MainActor
@@ -429,6 +513,9 @@ final class CategoryBreakdownViewModel {
         return String(format: "%d-%02d", cal.component(.year, from: Date()), cal.component(.month, from: Date()))
     }()
     var transactionsByCategory: [String: [Transaction]] = [:]
+    var incomeSegments: [CategorySegment] = []
+    var totalIncome: Double = 0
+    var incomeTransactionsByCategory: [String: [Transaction]] = [:]
     var isLoading = true
 
     // Parameterized period support
@@ -557,7 +644,27 @@ final class CategoryBreakdownViewModel {
             let sorted = byCat.sorted { $0.value > $1.value }
                 .map { CategoryAggregateItem(categoryId: $0.key, amount: $0.value) }
 
-            return CategoryAggregateResult(totalSpent: total, sortedCategories: sorted, transactionsByCategory: byCatTx)
+            // Income aggregation
+            let incomeOnly = transactions.filter { $0.type.lowercased() == "income" }
+            var incByCat: [String: Double] = [:]
+            var incByCatTx: [String: [Transaction]] = [:]
+            for tx in incomeOnly {
+                if Task.isCancelled { return nil }
+                let inBase = amtInBase(tx)
+                incByCat[tx.category, default: 0] += inBase
+                incByCatTx[tx.category, default: []].append(tx)
+            }
+            for (cat, list) in incByCatTx {
+                incByCatTx[cat] = list.sorted { $0.transactionDate > $1.transactionDate }
+            }
+            let incTotal = incomeOnly.reduce(0.0) { $0 + amtInBase($1) }
+            let incSorted = incByCat.sorted { $0.value > $1.value }
+                .map { CategoryAggregateItem(categoryId: $0.key, amount: $0.value) }
+
+            return CategoryAggregateResult(
+                totalSpent: total, sortedCategories: sorted, transactionsByCategory: byCatTx,
+                totalIncome: incTotal, sortedIncomeCategories: incSorted, incomeTransactionsByCategory: incByCatTx
+            )
         }
         computeTask = task
         let result = await task.value
@@ -568,6 +675,24 @@ final class CategoryBreakdownViewModel {
 
         // Commit on main — map to segments with Color/icon
         totalSpent = result.totalSpent
+
+        // Commit income
+        totalIncome = result.totalIncome
+        incomeTransactionsByCategory = result.incomeTransactionsByCategory
+        incomeSegments = result.sortedIncomeCategories.enumerated().map { i, item in
+            let cat = CategoryStore.byId(item.categoryId)
+            let label = CategoryIconHelper.displayName(categoryId: item.categoryId)
+            let color = cat?.color ?? fallbackColors[i % fallbackColors.count]
+            let colorHex = cat?.colorHex ?? color.toHex()
+            let icon = CategoryIconHelper.iconName(categoryId: item.categoryId)
+            let ratio = result.totalIncome > 0 ? item.amount / result.totalIncome : 0
+            return CategorySegment(
+                id: item.categoryId, categoryId: item.categoryId, label: label,
+                amount: item.amount, ratio: CGFloat(ratio), percent: ratio * 100,
+                color: color, colorHex: colorHex, iconName: icon,
+                startAngle: .degrees(0), endAngle: .degrees(0)
+            )
+        }
 
         guard result.totalSpent > 0 else {
             segments = []
@@ -601,7 +726,7 @@ final class CategoryBreakdownViewModel {
             let end = start + segmentAngle
             currentAngle = end + gapAngle
             let cat = CategoryStore.byId(item.categoryId)
-            let label = cat?.name ?? item.categoryId.capitalized
+            let label = CategoryIconHelper.displayName(categoryId: item.categoryId)
             let color = cat?.color ?? fallbackColors[i % fallbackColors.count]
             let colorHex = cat?.colorHex ?? color.toHex()
             let icon = CategoryIconHelper.iconName(categoryId: item.categoryId)

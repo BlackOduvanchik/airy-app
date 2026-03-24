@@ -370,6 +370,7 @@ let translationsPT: [String: String] = [
 
     // MARK: - Category Breakdown
     "breakdown_total": "Total",
+    "breakdown_income": "RECEITA",
 
     // MARK: - Category Detail
     "catdetail_title": "Detalhes da categoria",

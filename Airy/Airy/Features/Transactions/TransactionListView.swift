@@ -61,36 +61,32 @@ struct TransactionListView: View {
     }
 
     private var innerContent: some View {
-        GeometryReader { rootGeo in
-            let topInset = rootGeo.safeAreaInsets.top
-            let bottomInset = rootGeo.safeAreaInsets.bottom
-            ZStack(alignment: .top) {
-                OnboardingGradientBackground()
-                    .ignoresSafeArea()
+        ZStack(alignment: .top) {
+            OnboardingGradientBackground()
+                .ignoresSafeArea()
 
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 24) {
-                        titleSection
-                        if !viewModel.pinnedTransactions.isEmpty {
-                            pinnedSection
-                                .transition(.asymmetric(
-                                    insertion: .opacity
-                                        .combined(with: .scale(scale: 0.88, anchor: .top))
-                                        .combined(with: .offset(y: -36)),
-                                    removal: .opacity
-                                        .combined(with: .scale(scale: 0.92, anchor: .top))
-                                        .combined(with: .offset(y: -16))
-                                ))
-                        }
-                        searchSection
-                        filterPillsSection
-                        transactionsContent
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    titleSection
+                    if !viewModel.pinnedTransactions.isEmpty {
+                        pinnedSection
+                            .transition(.asymmetric(
+                                insertion: .opacity
+                                    .combined(with: .scale(scale: 0.88, anchor: .top))
+                                    .combined(with: .offset(y: -36)),
+                                removal: .opacity
+                                    .combined(with: .scale(scale: 0.92, anchor: .top))
+                                    .combined(with: .offset(y: -16))
+                            ))
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 120)
+                    searchSection
+                    filterPillsSection
+                    transactionsContent
                 }
-                .scrollIndicators(.hidden)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 120)
             }
+            .scrollIndicators(.hidden)
         }
         .overlay(alignment: .bottom) {
             if showBottomBar && AppearanceStore.navigationType == .airyBar {

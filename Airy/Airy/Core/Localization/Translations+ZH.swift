@@ -370,6 +370,7 @@ let translationsZH: [String: String] = [
 
     // MARK: - Category Breakdown
     "breakdown_total": "总计",
+    "breakdown_income": "收入",
 
     // MARK: - Category Detail
     "catdetail_title": "分类详情",
