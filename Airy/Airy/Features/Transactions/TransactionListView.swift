@@ -70,16 +70,6 @@ struct TransactionListView: View {
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 24) {
-                        // Diagnostic probe
-                        GeometryReader { innerGeo in
-                            Color.clear
-                                .onAppear {
-                                    let f = innerGeo.frame(in: .global)
-                                    let s = innerGeo.safeAreaInsets
-                                    print("[Debug][TxList] INNER onAppear: frame.y=\(f.origin.y) safeArea.top=\(s.top) safeArea.bottom=\(s.bottom)")
-                                }
-                        }
-                        .frame(height: 0)
                         titleSection
                         if !viewModel.pinnedTransactions.isEmpty {
                             pinnedSection
@@ -100,14 +90,6 @@ struct TransactionListView: View {
                     .padding(.bottom, 120)
                 }
                 .scrollIndicators(.hidden)
-            }
-            .onAppear {
-                print("[Debug][TxList] ROOT onAppear: topInset=\(topInset) bottomInset=\(bottomInset)")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    let f = rootGeo.frame(in: .global)
-                    let s = rootGeo.safeAreaInsets
-                    print("[Debug][TxList] ROOT SETTLED (0.5s): frame=\(f) safeArea.top=\(s.top) safeArea.bottom=\(s.bottom)")
-                }
             }
         }
         .overlay(alignment: .bottom) {

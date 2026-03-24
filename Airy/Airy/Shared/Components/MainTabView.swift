@@ -18,6 +18,7 @@ struct MainTabView: View {
     @State private var showPendingReview = false
     @State private var pasteNoImageAlert = false
     @State private var dashboardRefreshId = 0
+    @State private var navResetId = 0
     @State private var debounceTask: Task<Void, Never>?
     @State private var showAllTransactions = false
     @State private var showSubscriptions = false
@@ -92,19 +93,15 @@ struct MainTabView: View {
             .presentationDragIndicator(.hidden)
             .themed(theme)
         }
-        .sheet(isPresented: $showAddTransaction) {
+        .sheet(isPresented: $showAddTransaction, onDismiss: { navResetId += 1 }) {
             AddTransactionView(initialType: addTransactionInitialType, initialQuickPickOrder: addSheetQuickPickOrder, onSuccess: {
-                print("[Debug] AddTransaction onSuccess → will close sheet, refreshId will become \(dashboardRefreshId + 1)")
                 showAddTransaction = false
                 addTransactionInitialType = nil
                 dashboardRefreshId += 1
             })
             .themed(theme)
         }
-        .onChange(of: showAddTransaction) { old, new in
-            print("[Debug] showAddTransaction: \(old) → \(new)")
-        }
-        .fullScreenCover(isPresented: $showGalleryPicker) {
+        .fullScreenCover(isPresented: $showGalleryPicker, onDismiss: { navResetId += 1 }) {
             GalleryPickerView(
                 onImagesPicked: { images in
                     ImportViewModel.shared.enqueue(images)
@@ -116,7 +113,7 @@ struct MainTabView: View {
             .ignoresSafeArea()
             .themed(theme)
         }
-        .fullScreenCover(isPresented: $showLiveExtraction) {
+        .fullScreenCover(isPresented: $showLiveExtraction, onDismiss: { navResetId += 1 }) {
             AnalyzingTransactionsView(
                 importViewModel: importViewModel,
                 onConfirm: {
@@ -131,7 +128,7 @@ struct MainTabView: View {
             )
             .themed(theme)
         }
-        .fullScreenCover(isPresented: $showPendingReview) {
+        .fullScreenCover(isPresented: $showPendingReview, onDismiss: { navResetId += 1 }) {
             NavigationStack {
                 PendingReviewView()
                     .toolbar {
@@ -159,7 +156,7 @@ struct MainTabView: View {
         } message: {
             Text(L("add_no_image_message"))
         }
-        .fullScreenCover(isPresented: $showSubscriptions) {
+        .fullScreenCover(isPresented: $showSubscriptions, onDismiss: { navResetId += 1 }) {
             SubscriptionsView(onDismiss: { showSubscriptions = false })
                 .themed(theme)
         }
@@ -217,6 +214,7 @@ struct MainTabView: View {
             Tab(L("tab_dashboard"), systemImage: "house.fill", value: AppTab.dashboard) {
                 DashboardView(
                     refreshId: dashboardRefreshId,
+                    navResetId: navResetId,
                     showAllTransactions: $showAllTransactions,
                     subscriptionsRequested: $subscriptionsRequested,
                     cloudTapRequested: $cloudTapRequested
@@ -243,6 +241,7 @@ struct MainTabView: View {
             case .dashboard:
                 DashboardView(
                     refreshId: dashboardRefreshId,
+                    navResetId: navResetId,
                     showAllTransactions: $showAllTransactions,
                     subscriptionsRequested: $subscriptionsRequested,
                     cloudTapRequested: $cloudTapRequested
