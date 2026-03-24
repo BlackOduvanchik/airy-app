@@ -94,10 +94,9 @@ final class YearInReviewViewModel {
         let base = baseCurrency
         let excludeSubs = excludeSubscriptions
         let selectedIdx = selectedMonthIndex
-        let currentMonthlyData = monthlyData // for selectedMonthIndex filtering context
 
         computeTask?.cancel()
-        let task = Task.detached { [filtered, localeId, base, excludeSubs, selectedIdx, currentMonthlyData] in
+        let task = Task.detached { [filtered, localeId, base, excludeSubs, selectedIdx] in
             if Task.isCancelled { return nil as YRBackgroundResult? }
 
             let monthly = Self.computeMonthlyDataPure(
@@ -212,12 +211,12 @@ final class YearInReviewViewModel {
 
     // MARK: - Pure statics (safe for background)
 
-    private static func amountInBasePure(_ tx: Transaction, baseCurrency: String) -> Double {
+    nonisolated private static func amountInBasePure(_ tx: Transaction, baseCurrency: String) -> Double {
         if tx.baseCurrency.uppercased() == baseCurrency { return abs(tx.amountBase) }
         return CurrencyService.convert(amount: abs(tx.amountOriginal), from: tx.currencyOriginal, to: baseCurrency)
     }
 
-    private static func computeMonthlyDataPure(
+    nonisolated private static func computeMonthlyDataPure(
         from transactions: [Transaction],
         localeIdentifier: String,
         baseCurrency: String
