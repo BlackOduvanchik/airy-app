@@ -452,6 +452,30 @@ final class LocalDataStore {
         return (try? ctx.fetch(descriptor)) ?? []
     }
 
+    /// Background-safe expense fetch: creates its own ModelContext, returns Transaction DTOs.
+    /// Semantics are 1-to-1 with fetchAllExpenseTransactions(months:).
+    nonisolated static func fetchExpenseDTOsBackground(months: Int = 13) async -> [Transaction] {
+        let container = await MainActor.run { LocalDataStore.shared.modelContainer }
+        guard let container else { return [] }
+        let cal = Calendar.current
+        let cutoff = cal.date(byAdding: .month, value: -months, to: Date()) ?? Date()
+        let cutoffStr = String(format: "%04d-%02d-01",
+                               cal.component(.year, from: cutoff),
+                               cal.component(.month, from: cutoff))
+        return await Task.detached {
+            let ctx = ModelContext(container)
+            let incomeType = "income"
+            var descriptor = FetchDescriptor<LocalTransaction>(
+                predicate: #Predicate<LocalTransaction> { tx in
+                    tx.type != incomeType && tx.transactionDate >= cutoffStr
+                },
+                sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
+            )
+            descriptor.fetchLimit = 2000
+            return ((try? ctx.fetch(descriptor)) ?? []).map { $0.toTransaction() }
+        }.value
+    }
+
     /// Total income for a given month key (e.g. "2026-03").
     func fetchIncomeForMonth(monthKey: String) -> Double {
         guard let ctx = context else { return 0 }
