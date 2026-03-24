@@ -184,13 +184,13 @@ final class SpendingInsightsEngine {
         // Category tx counts (this month vs avg prior 3)
         var catTxCountsThis: [String: Int] = [:]
         for tx in thisMonthTxs { catTxCountsThis[tx.category, default: 0] += 1 }
-        var categoryTxCounts: [String: (thisMonth: Int, avg3Month: Double)] = [:]
+        var categoryTxCounts: [String: CategoryTxCount] = [:]
         for (cat, cnt) in catTxCountsThis {
             let priorCounts = priorMonthKeys.map { mk in
                 (byMonth[mk] ?? []).filter { $0.category == cat }.count
             }
             let avg = priorCounts.isEmpty ? 0 : Double(priorCounts.reduce(0, +)) / Double(priorCounts.count)
-            categoryTxCounts[cat] = (thisMonth: cnt, avg3Month: avg)
+            categoryTxCounts[cat] = CategoryTxCount(thisMonth: cnt, avg3Month: avg)
         }
 
         // MARK: Block E — Ticket size
@@ -392,12 +392,12 @@ final class SpendingInsightsEngine {
 
         // MARK: Subscription trend (6 months)
 
-        var subMonthlyTotalsList: [(monthKey: String, total: Double)] = []
+        var subMonthlyTotalsList: [MonthlySubTotal] = []
         for offset in stride(from: 5, through: 0, by: -1) {
             guard let d = cal.date(byAdding: .month, value: -offset, to: now) else { continue }
             let mk = monthKey(for: d)
             let total = subMonthlyTotals(byMonth: byMonth, thisMonthKey: mk, allExpenses: allExpenses, shouldCount: shouldCount, amountInBase: amountInBase)
-            subMonthlyTotalsList.append((monthKey: mk, total: total))
+            subMonthlyTotalsList.append(MonthlySubTotal(monthKey: mk, total: total))
         }
         let subDelta = subMonthlyTotalsList.count >= 2
             ? (subMonthlyTotalsList.last?.total ?? 0) - (subMonthlyTotalsList.first?.total ?? 0)
@@ -618,8 +618,8 @@ final class SpendingInsightsEngine {
         }
 
         // Category frequency spike with small amounts
-        for (catId, counts) in s.categoryTxCounts {
-            if counts.avg3Month > 2 && Double(counts.thisMonth) > counts.avg3Month * 1.5 {
+        for (catId, txCount) in s.categoryTxCounts {
+            if txCount.avg3Month > 2 && Double(txCount.thisMonth) > txCount.avg3Month * 1.5 {
                 if let conc = s.topMerchantShareInCategory[catId] {
                     let catName = CategoryIconHelper.displayName(categoryId: catId)
                     if conc.share < 0.8 {

@@ -8,7 +8,17 @@
 
 import Foundation
 
-struct SpendingSnapshot {
+struct CategoryTxCount: Sendable {
+    let thisMonth: Int
+    let avg3Month: Double
+}
+
+struct MonthlySubTotal: Sendable {
+    let monthKey: String
+    let total: Double
+}
+
+struct SpendingSnapshot: Sendable {
     let thisMonthSpent: Double
     let lastMonthSpent: Double
     let monthDeltaPercent: Double
@@ -61,7 +71,7 @@ struct SpendingSnapshot {
     let txCountLast3MonthAvg: Double
     let topFrequentMerchant: String?
     let topFrequentMerchantCount: Int
-    let categoryTxCounts: [String: (thisMonth: Int, avg3Month: Double)]
+    let categoryTxCounts: [String: CategoryTxCount]
 
     // MARK: - Ticket size
 
@@ -102,23 +112,23 @@ struct SpendingSnapshot {
     let weeklySpendLastMonth: [Double]   // same for last month
 }
 
-struct MerchantConcentration {
+struct MerchantConcentration: Sendable {
     let merchant: String
     let share: Double
 }
 
-struct MerchantStreak {
+struct MerchantStreak: Sendable {
     let merchant: String
     let days: Int
 }
 
-struct InsightCandidate {
+struct InsightCandidate: Sendable {
     let priority: Double
     let text: String
     let tag: String
 }
 
-struct CategoryDelta: Identifiable {
+struct CategoryDelta: Identifiable, Sendable {
     let id: String
     let name: String
     let emoji: String
@@ -127,12 +137,12 @@ struct CategoryDelta: Identifiable {
     let deltaPercent: Double
 }
 
-struct MerchantStat {
+struct MerchantStat: Sendable {
     let merchant: String
     let totalSpent: Double
 }
 
-struct MerchantAnomaly: Identifiable {
+struct MerchantAnomaly: Identifiable, Sendable {
     let id: String
     let merchant: String
     let category: String
@@ -142,7 +152,7 @@ struct MerchantAnomaly: Identifiable {
     let ratio: Double
 }
 
-struct MonthlySpendPoint: Identifiable {
+struct MonthlySpendPoint: Identifiable, Sendable {
     let id: String
     let monthKey: String
     let shortLabel: String
@@ -150,8 +160,8 @@ struct MonthlySpendPoint: Identifiable {
     let isCurrent: Bool
 }
 
-struct SubscriptionTrendData {
-    let monthlyTotals: [(monthKey: String, total: Double)]
+struct SubscriptionTrendData: Sendable {
+    let monthlyTotals: [MonthlySubTotal]
     let deltaAmount: Double
     let newSubsCount: Int
 }

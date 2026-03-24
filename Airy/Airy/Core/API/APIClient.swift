@@ -281,7 +281,7 @@ struct ConfirmPendingOverrides: Encodable {
     }
 }
 
-struct Transaction: Codable, Identifiable, Hashable {
+struct Transaction: Codable, Identifiable, Hashable, Sendable {
     let id: String
     let type: String
     let amountOriginal: Double
@@ -440,7 +440,7 @@ struct SubscriptionsResponse: Codable {
     let subscriptions: [Subscription]
 }
 
-struct Subscription: Codable, Identifiable {
+struct Subscription: Codable, Identifiable, Sendable {
     let id: String
     let merchant: String
     let amount: Double

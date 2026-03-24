@@ -15,7 +15,7 @@ enum YRChartMode: String, CaseIterable {
 
 // MARK: - Monthly data point
 
-struct YRMonthData: Identifiable {
+struct YRMonthData: Identifiable, Sendable {
     let id: String
     let monthKey: String
     let label: String       // Short (chart axis): "Mar"
@@ -108,4 +108,17 @@ struct YRInsightCard: Identifiable {
     let body: String
     let accentColor: Color
     let section: YRSection
+}
+
+// MARK: - Background compute results (Sendable)
+
+struct TopCatAggregate: Sendable {
+    let categoryId: String
+    let amount: Double
+    let share: Double
+}
+
+struct YRBackgroundResult: Sendable {
+    let monthlyData: [YRMonthData]
+    let topCatAggregates: [TopCatAggregate]
 }
