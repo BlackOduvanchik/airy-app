@@ -94,11 +94,15 @@ struct MainTabView: View {
         }
         .sheet(isPresented: $showAddTransaction) {
             AddTransactionView(initialType: addTransactionInitialType, initialQuickPickOrder: addSheetQuickPickOrder, onSuccess: {
+                print("[Debug] AddTransaction onSuccess → will close sheet, refreshId will become \(dashboardRefreshId + 1)")
                 showAddTransaction = false
                 addTransactionInitialType = nil
                 dashboardRefreshId += 1
             })
             .themed(theme)
+        }
+        .onChange(of: showAddTransaction) { old, new in
+            print("[Debug] showAddTransaction: \(old) → \(new)")
         }
         .fullScreenCover(isPresented: $showGalleryPicker) {
             GalleryPickerView(

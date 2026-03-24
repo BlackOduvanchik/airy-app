@@ -36,6 +36,7 @@ struct DashboardView: View {
                 editingSubscription: $editingSubscription
             )
             .navigationDestination(for: AnalyticsRoute.self) { route in
+                let _ = print("[Debug] navigationDestination evaluated for: \(route)")
                 switch route {
                 case .categoryBreakdown:
                     CategoryBreakdownView(refreshId: refreshId)
@@ -48,9 +49,13 @@ struct DashboardView: View {
         }
         .onChange(of: showAllTransactions) { _, show in
             if show {
+                print("[Debug] DashboardView: showAllTransactions=true, path.count=\(path.count) → appending .allTransactions")
                 showAllTransactions = false
                 path.append(AnalyticsRoute.allTransactions)
             }
+        }
+        .onChange(of: path.count) { old, new in
+            print("[Debug] DashboardView: path.count \(old) → \(new)")
         }
         .sheet(item: $editingTransaction) { tx in
             AddTransactionView(transaction: tx, onSuccess: {
@@ -121,7 +126,9 @@ private struct DashboardScrollContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .onAppear { print("[Nav] Dashboard") }
+        .onDisappear { print("[Debug] Dashboard onDisappear") }
         .task(id: refreshId) {
+            print("[Debug] Dashboard .task(id: \(refreshId)) fired")
             await viewModel.load()
             await TransactionListViewModel.shared.preload()
         }

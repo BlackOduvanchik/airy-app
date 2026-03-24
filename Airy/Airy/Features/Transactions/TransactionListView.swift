@@ -61,32 +61,54 @@ struct TransactionListView: View {
     }
 
     private var innerContent: some View {
-        ZStack(alignment: .top) {
-            OnboardingGradientBackground()
-                .ignoresSafeArea()
+        GeometryReader { rootGeo in
+            let topInset = rootGeo.safeAreaInsets.top
+            let bottomInset = rootGeo.safeAreaInsets.bottom
+            ZStack(alignment: .top) {
+                OnboardingGradientBackground()
+                    .ignoresSafeArea()
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 24) {
-                    titleSection
-                    if !viewModel.pinnedTransactions.isEmpty {
-                        pinnedSection
-                            .transition(.asymmetric(
-                                insertion: .opacity
-                                    .combined(with: .scale(scale: 0.88, anchor: .top))
-                                    .combined(with: .offset(y: -36)),
-                                removal: .opacity
-                                    .combined(with: .scale(scale: 0.92, anchor: .top))
-                                    .combined(with: .offset(y: -16))
-                            ))
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 24) {
+                        // Diagnostic probe
+                        GeometryReader { innerGeo in
+                            Color.clear
+                                .onAppear {
+                                    let f = innerGeo.frame(in: .global)
+                                    let s = innerGeo.safeAreaInsets
+                                    print("[Debug][TxList] INNER onAppear: frame.y=\(f.origin.y) safeArea.top=\(s.top) safeArea.bottom=\(s.bottom)")
+                                }
+                        }
+                        .frame(height: 0)
+                        titleSection
+                        if !viewModel.pinnedTransactions.isEmpty {
+                            pinnedSection
+                                .transition(.asymmetric(
+                                    insertion: .opacity
+                                        .combined(with: .scale(scale: 0.88, anchor: .top))
+                                        .combined(with: .offset(y: -36)),
+                                    removal: .opacity
+                                        .combined(with: .scale(scale: 0.92, anchor: .top))
+                                        .combined(with: .offset(y: -16))
+                                ))
+                        }
+                        searchSection
+                        filterPillsSection
+                        transactionsContent
                     }
-                    searchSection
-                    filterPillsSection
-                    transactionsContent
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 120)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 120)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
+            .onAppear {
+                print("[Debug][TxList] ROOT onAppear: topInset=\(topInset) bottomInset=\(bottomInset)")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    let f = rootGeo.frame(in: .global)
+                    let s = rootGeo.safeAreaInsets
+                    print("[Debug][TxList] ROOT SETTLED (0.5s): frame=\(f) safeArea.top=\(s.top) safeArea.bottom=\(s.bottom)")
+                }
+            }
         }
         .overlay(alignment: .bottom) {
             if showBottomBar && AppearanceStore.navigationType == .airyBar {
