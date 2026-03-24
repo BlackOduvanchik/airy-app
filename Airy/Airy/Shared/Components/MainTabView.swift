@@ -18,6 +18,7 @@ struct MainTabView: View {
     @State private var showPendingReview = false
     @State private var pasteNoImageAlert = false
     @State private var dashboardRefreshId = 0
+    @State private var debounceTask: Task<Void, Never>?
     @State private var showAllTransactions = false
     @State private var showSubscriptions = false
     @State private var subscriptionsRequested = false
@@ -138,13 +139,16 @@ struct MainTabView: View {
             .themed(theme)
         }
         .onChange(of: showPendingReview) { _, showing in
-            if !showing { dashboardRefreshId += 1 }
+            if !showing {
+                DashboardViewModel.invalidateSubCheck()
+                dashboardRefreshId += 1
+            }
         }
         .onChange(of: showGalleryPicker) { _, showing in
-            if !showing { dashboardRefreshId += 1 }
+            if !showing { debouncedRefresh() }
         }
         .onChange(of: showLiveExtraction) { _, showing in
-            if !showing { dashboardRefreshId += 1 }
+            if !showing { debouncedRefresh() }
         }
         .alert(L("add_no_image_title"), isPresented: $pasteNoImageAlert) {
             Button(L("common_ok"), role: .cancel) {}
@@ -181,6 +185,10 @@ struct MainTabView: View {
             withAnimation(.easeInOut(duration: 0.3)) {
                 navType = AppearanceStore.navigationType
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            DashboardViewModel.invalidateSubCheck()
+            dashboardRefreshId += 1
         }
     }
 
@@ -253,6 +261,17 @@ struct MainTabView: View {
         .ignoresSafeArea(edges: .bottom)
     }
 
+    // MARK: - Debounced refresh
+
+    private func debouncedRefresh() {
+        debounceTask?.cancel()
+        debounceTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            dashboardRefreshId += 1
+        }
+    }
+
     // MARK: - Cloud icon tap logic
 
     private func handleCloudTap() {
@@ -261,7 +280,7 @@ struct MainTabView: View {
             showLiveExtraction = true
         } else if importViewModel.hasUnreviewedResults {
             importViewModel.addProcessedToPending()
-            dashboardRefreshId += 1
+            debouncedRefresh()
             showPendingReview = true
         } else {
             let hasPending = !LocalDataStore.shared.fetchPendingTransactions().isEmpty

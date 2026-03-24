@@ -54,6 +54,7 @@ struct DashboardView: View {
         }
         .sheet(item: $editingTransaction) { tx in
             AddTransactionView(transaction: tx, onSuccess: {
+                DashboardViewModel.invalidateSubCheck()
                 Task { await DashboardViewModel.shared.load() }
             })
             .presentationDetents([.large])
@@ -63,8 +64,8 @@ struct DashboardView: View {
         .sheet(item: $editingSubscription) { sub in
             EditSubscriptionView(
                 subscription: sub,
-                onSave: { Task { await DashboardViewModel.shared.load() } },
-                onCancel: { Task { await DashboardViewModel.shared.load() } }
+                onSave: { DashboardViewModel.invalidateSubCheck(); Task { await DashboardViewModel.shared.load() } },
+                onCancel: { DashboardViewModel.invalidateSubCheck(); Task { await DashboardViewModel.shared.load() } }
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
