@@ -42,8 +42,8 @@ final class DashboardViewModel {
                 }
                 .prefix(5)
                 .map { $0 }
-            let snapshot = SpendingInsightsEngine.shared.compute()
-            aiSummaryLine = SpendingInsightsEngine.shared.generateSummaryText(snapshot)
+            let snapshot = SpendingInsightsEngine.compute()
+            aiSummaryLine = SpendingInsightsEngine.generateSummaryText(snapshot)
             isLoading = false
             let perfEnd = CFAbsoluteTimeGetCurrent()
             print("[Perf] DashboardVM.load() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms")

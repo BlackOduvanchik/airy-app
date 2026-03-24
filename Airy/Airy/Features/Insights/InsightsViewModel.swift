@@ -33,9 +33,9 @@ final class InsightsViewModel {
         isLoading = true
         defer { Task { @MainActor in isLoading = false } }
         await MainActor.run {
-            let s = SpendingInsightsEngine.shared.compute()
+            let s = SpendingInsightsEngine.compute()
             snapshot = s
-            summaryText = SpendingInsightsEngine.shared.generateSummaryText(s, offset: 1)
+            summaryText = SpendingInsightsEngine.generateSummaryText(s, offset: 1)
         }
     }
 }

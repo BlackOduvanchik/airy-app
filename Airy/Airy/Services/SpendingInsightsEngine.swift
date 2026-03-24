@@ -9,25 +9,53 @@
 import Foundation
 import SwiftUI
 
-@MainActor
-final class SpendingInsightsEngine {
-    static let shared = SpendingInsightsEngine()
-    private init() {}
-
-    private let cal = Calendar.current
-    private lazy var dateFmt: DateFormatter = {
+enum SpendingInsightsEngine {
+    private static let cal = Calendar.current
+    private static let dateFmt: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone.current
         return f
     }()
 
-    // MARK: - Compute
+    // MARK: - Legacy wrapper (reads from store, delegates to computePure)
 
-    func compute() -> SpendingSnapshot {
-        let now = Date()
+    @MainActor
+    static func compute() -> SpendingSnapshot {
         let base = BaseCurrencyStore.baseCurrency
-        let allExpenses = LocalDataStore.shared.fetchAllExpenseTransactions(months: 13)
+        let now = Date()
+        let allLocal = LocalDataStore.shared.fetchAllExpenseTransactions(months: 13)
+        let expenses = allLocal.map { $0.toTransaction() }
+        let subs = LocalDataStore.shared.subscriptionsFromTransactions()
+        let thisMonthKey = monthKey(for: now)
+        let lastMonthDate = cal.date(byAdding: .month, value: -1, to: now) ?? now
+        let lastMonthKey = monthKey(for: lastMonthDate)
+        let thisIncome = LocalDataStore.shared.fetchIncomeForMonth(monthKey: thisMonthKey)
+        let lastIncome = LocalDataStore.shared.fetchIncomeForMonth(monthKey: lastMonthKey)
+        let catIds = Set(expenses.map { $0.category })
+        let catNames = Dictionary(uniqueKeysWithValues: catIds.map { ($0, CategoryIconHelper.displayName(categoryId: $0)) })
+
+        #if DEBUG
+        let result = computePure(expenses: expenses, baseCurrency: base, thisMonthIncome: thisIncome, lastMonthIncome: lastIncome, subscriptions: subs, categoryNames: catNames, now: now)
+        print("[Parity] compute(): expenses=\(expenses.count) this=\(String(format: "%.2f", result.thisMonthSpent)) last=\(String(format: "%.2f", result.lastMonthSpent)) safe=\(String(format: "%.2f", result.safeToSpend))")
+        return result
+        #else
+        return computePure(expenses: expenses, baseCurrency: base, thisMonthIncome: thisIncome, lastMonthIncome: lastIncome, subscriptions: subs, categoryNames: catNames, now: now)
+        #endif
+    }
+
+    // MARK: - Pure compute (safe for background)
+
+    static func computePure(
+        expenses: [Transaction],
+        baseCurrency: String,
+        thisMonthIncome: Double,
+        lastMonthIncome: Double,
+        subscriptions: [Subscription],
+        categoryNames: [String: String],
+        now: Date = Date()
+    ) -> SpendingSnapshot {
+        let allExpenses = expenses
 
         let thisMonthKey = monthKey(for: now)
         let lastMonthDate = cal.date(byAdding: .month, value: -1, to: now) ?? now
@@ -49,7 +77,7 @@ final class SpendingInsightsEngine {
             return set
         }()
 
-        func shouldCount(_ tx: LocalTransaction) -> Bool {
+        func shouldCount(_ tx: Transaction) -> Bool {
             if tx.isSubscription == true {
                 let k = String(tx.transactionDate.prefix(7))
                 return !expenseMonthMerchant.contains("\(k)|\(tx.merchant ?? "")")
@@ -57,17 +85,13 @@ final class SpendingInsightsEngine {
             return true
         }
 
-        func amountInBase(_ tx: LocalTransaction) -> Double {
-            CurrencyService.amountInBase(
-                amountOriginal: abs(tx.amountOriginal),
-                currencyOriginal: tx.currencyOriginal,
-                amountBase: tx.amountBase,
-                baseCurrency: tx.baseCurrency
-            )
+        func amountInBase(_ tx: Transaction) -> Double {
+            if tx.baseCurrency.uppercased() == baseCurrency.uppercased() { return abs(tx.amountBase) }
+            return CurrencyService.convert(amount: abs(tx.amountOriginal), from: tx.currencyOriginal, to: baseCurrency)
         }
 
         // Group by month
-        var byMonth: [String: [LocalTransaction]] = [:]
+        var byMonth: [String: [Transaction]] = [:]
         for tx in allExpenses where shouldCount(tx) {
             let k = String(tx.transactionDate.prefix(7))
             byMonth[k, default: []].append(tx)
@@ -124,7 +148,7 @@ final class SpendingInsightsEngine {
             let lastAmt = lastByCat[catId] ?? 0
             guard thisAmt > 0 || lastAmt > 0 else { return nil }
             let delta = lastAmt > 0 ? ((thisAmt - lastAmt) / lastAmt) * 100 : (thisAmt > 0 ? 100 : 0)
-            let name = CategoryIconHelper.displayName(categoryId: catId)
+            let name = categoryNames[catId] ?? catId
             let emoji = emojiForCategory(catId)
             return CategoryDelta(id: catId, name: name, emoji: emoji, thisMonth: thisAmt, lastMonth: lastAmt, deltaPercent: delta)
         }.sorted { abs($0.deltaPercent) > abs($1.deltaPercent) }
@@ -147,7 +171,7 @@ final class SpendingInsightsEngine {
 
         let sortedCats = thisByCat.sorted { $0.value > $1.value }
         let topCategoryShare = thisMonthSpent > 0 ? (sortedCats.first?.value ?? 0) / thisMonthSpent : 0
-        let topCategoryName = sortedCats.first.map { CategoryIconHelper.displayName(categoryId: $0.key) }
+        let topCategoryName = sortedCats.first.map { categoryNames[$0.key] ?? $0.key }
         let top2Sum = sortedCats.prefix(2).reduce(0.0) { $0 + $1.value }
         let top2CategoriesShare = thisMonthSpent > 0 ? top2Sum / thisMonthSpent : 0
 
@@ -241,10 +265,9 @@ final class SpendingInsightsEngine {
 
         // MARK: Income & safe-to-spend
 
-        let thisMonthIncome = LocalDataStore.shared.fetchIncomeForMonth(monthKey: thisMonthKey)
         let projectedSavings = thisMonthIncome > 0 ? thisMonthIncome - projectedSpend : 0
 
-        let subs = LocalDataStore.shared.subscriptionsFromTransactions()
+        let subs = subscriptions
         let subscriptionMonthly = subs.reduce(0.0) { sum, sub in
             let monthly: Double
             let interval = sub.interval.lowercased()
@@ -255,7 +278,7 @@ final class SpendingInsightsEngine {
             } else {
                 monthly = sub.amount
             }
-            return sum + CurrencyService.convert(amount: monthly, from: sub.currency, to: base)
+            return sum + CurrencyService.convert(amount: monthly, from: sub.currency, to: baseCurrency)
         }
         let remainingDays = max(daysInMonth - dayOfMonth, 0)
         let committedRemaining = subscriptionMonthly * (Double(remainingDays) / Double(daysInMonth))
@@ -273,7 +296,7 @@ final class SpendingInsightsEngine {
             guard let nbd = sub.nextBillingDate, !nbd.isEmpty else { continue }
             let dateStr = String(nbd.prefix(10))
             if dateStr >= todayStr && dateStr <= next7Date {
-                upcomingBillsNext7Days += CurrencyService.convert(amount: sub.amount, from: sub.currency, to: base)
+                upcomingBillsNext7Days += CurrencyService.convert(amount: sub.amount, from: sub.currency, to: baseCurrency)
             }
         }
 
@@ -292,7 +315,7 @@ final class SpendingInsightsEngine {
             guard avg > 0 else { continue }
             let ratio = info.total / avg
             if ratio >= 1.8 {
-                let catName = CategoryIconHelper.displayName(categoryId: info.category)
+                let catName = categoryNames[info.category] ?? info.category
                 merchantAnomalies.append(MerchantAnomaly(
                     id: merchant, merchant: merchant, category: info.category, categoryName: catName,
                     currentSpent: info.total, averageSpent: avg, ratio: ratio
@@ -334,7 +357,6 @@ final class SpendingInsightsEngine {
 
         // MARK: Block H — Positive / savings helpers
 
-        let lastMonthIncome = LocalDataStore.shared.fetchIncomeForMonth(monthKey: lastMonthKey)
         let lastMonthSavings = lastMonthIncome > 0 ? lastMonthIncome - lastMonthSpent : 0
 
         // Average weekly spend over 8 weeks
@@ -414,7 +436,7 @@ final class SpendingInsightsEngine {
 
         let weekBounds = [7, 14, 21, daysInMonth]
 
-        func weeklyCumulative(txs: [LocalTransaction]) -> [Double] {
+        func weeklyCumulative(txs: [Transaction]) -> [Double] {
             var cumulative = 0.0
             var result: [Double] = []
             var txIdx = 0
@@ -509,9 +531,10 @@ final class SpendingInsightsEngine {
     // MARK: - Text Generation
 
     /// Wraps a value in markdown bold markers for rendering in Text(.init(...))
-    private func B(_ s: String) -> String { "**\(s)**" }
+    private static func B(_ s: String) -> String { "**\(s)**" }
 
-    func generateSummaryText(_ s: SpendingSnapshot, offset: Int = 0) -> String {
+    @MainActor
+    static func generateSummaryText(_ s: SpendingSnapshot, offset: Int = 0) -> String {
         // Graduated fallbacks
         if s.txCountThisMonth == 0 && s.totalTransactionCount == 0 {
             return L("insight_no_spending")
@@ -879,13 +902,13 @@ final class SpendingInsightsEngine {
 
     // MARK: - Helpers
 
-    private func monthKey(for date: Date) -> String {
+    private static func monthKey(for date: Date) -> String {
         let y = cal.component(.year, from: date)
         let m = cal.component(.month, from: date)
         return String(format: "%04d-%02d", y, m)
     }
 
-    private func weekBounds(for date: Date) -> (start: Date, end: Date) {
+    private static func weekBounds(for date: Date) -> (start: Date, end: Date) {
         let weekday = cal.component(.weekday, from: date) // 1=Sun
         let mondayOffset = weekday == 1 ? -6 : (2 - weekday)
         let monday = cal.date(byAdding: .day, value: mondayOffset, to: cal.startOfDay(for: date)) ?? date
@@ -893,7 +916,7 @@ final class SpendingInsightsEngine {
         return (monday, sunday)
     }
 
-    private func emojiForCategory(_ catId: String) -> String {
+    private static func emojiForCategory(_ catId: String) -> String {
         let c = catId.lowercased()
         if c.contains("food") || c.contains("dining") || c.contains("grocer") { return "🍱" }
         if c.contains("transport") || c.contains("transit") { return "🚗" }
@@ -908,7 +931,7 @@ final class SpendingInsightsEngine {
         return "📊"
     }
 
-    private func currencyFormatter() -> NumberFormatter {
+    private static func currencyFormatter() -> NumberFormatter {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = BaseCurrencyStore.baseCurrency
@@ -917,7 +940,7 @@ final class SpendingInsightsEngine {
         return f
     }
 
-    private func textOverlaps(_ a: String, _ b: String) -> Bool {
+    private static func textOverlaps(_ a: String, _ b: String) -> Bool {
         let strip = { (s: String) in s.replacingOccurrences(of: "**", with: "") }
         let aWords = Set(strip(a).lowercased().split(separator: " ").map(String.init))
         let bWords = Set(strip(b).lowercased().split(separator: " ").map(String.init))
@@ -925,7 +948,7 @@ final class SpendingInsightsEngine {
         return shared.count > 3
     }
 
-    private func median(_ values: [Double]) -> Double {
+    private static func median(_ values: [Double]) -> Double {
         guard !values.isEmpty else { return 0 }
         let sorted = values.sorted()
         let mid = sorted.count / 2
@@ -935,7 +958,7 @@ final class SpendingInsightsEngine {
         return sorted[mid]
     }
 
-    private func dayComponent(from dateString: String) -> Int? {
+    private static func dayComponent(from dateString: String) -> Int? {
         let prefix = dateString.prefix(10) // "yyyy-MM-dd"
         guard prefix.count == 10 else { return nil }
         let parts = prefix.split(separator: "-")
@@ -943,7 +966,7 @@ final class SpendingInsightsEngine {
         return Int(parts[2])
     }
 
-    private func consecutiveDayStreak(dates: [String]) -> Int {
+    private static func consecutiveDayStreak(dates: [String]) -> Int {
         guard dates.count >= 2 else { return dates.count }
         var maxStreak = 1
         var current = 1
@@ -961,12 +984,12 @@ final class SpendingInsightsEngine {
         return maxStreak
     }
 
-    private func subMonthlyTotals(
-        byMonth: [String: [LocalTransaction]],
+    private static func subMonthlyTotals(
+        byMonth: [String: [Transaction]],
         thisMonthKey: String,
-        allExpenses: [LocalTransaction],
-        shouldCount: (LocalTransaction) -> Bool,
-        amountInBase: (LocalTransaction) -> Double
+        allExpenses: [Transaction],
+        shouldCount: (Transaction) -> Bool,
+        amountInBase: (Transaction) -> Double
     ) -> Double {
         (byMonth[thisMonthKey] ?? [])
             .filter { $0.isSubscription == true }
