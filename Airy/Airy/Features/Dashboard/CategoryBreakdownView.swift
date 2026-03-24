@@ -29,7 +29,7 @@ struct CategoryBreakdownView: View {
             let topInset = rootGeo.safeAreaInsets.top
             ZStack(alignment: .top) {
                 OnboardingGradientBackground()
-                    .ignoresSafeArea(.container)
+                    .ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -60,8 +60,15 @@ struct CategoryBreakdownView: View {
                 }
                 .scrollIndicators(.hidden)
                 .ignoresSafeArea(.container, edges: .top)
+                .onAppear {
+                    #if DEBUG
+                    let capturedInset = topInset
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        print("[SafeArea] CategoryBreakdown topInset=\(capturedInset)")
+                    }
+                    #endif
+                }
             }
-            .ignoresSafeArea(.container, edges: .top)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)

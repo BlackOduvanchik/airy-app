@@ -65,6 +65,7 @@ struct TransactionListView: View {
             let topInset = rootGeo.safeAreaInsets.top
             ZStack(alignment: .top) {
                 OnboardingGradientBackground()
+                    .ignoresSafeArea()
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 24) {
@@ -91,7 +92,6 @@ struct TransactionListView: View {
             .scrollIndicators(.hidden)
             .ignoresSafeArea(.container, edges: .top)
         }
-        .ignoresSafeArea(.container, edges: .top)
         }
         .overlay(alignment: .bottom) {
             if showBottomBar && AppearanceStore.navigationType == .airyBar {
