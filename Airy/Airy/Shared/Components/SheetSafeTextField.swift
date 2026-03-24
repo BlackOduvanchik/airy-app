@@ -17,6 +17,10 @@ struct SheetSafeTextField: UIViewRepresentable {
     var textColor: UIColor = .label
     var placeholderColor: UIColor = .tertiaryLabel
     var font: UIFont = .systemFont(ofSize: 15)
+    var keyboardType: UIKeyboardType = .default
+    var autocapitalizationType: UITextAutocapitalizationType = .sentences
+    var autocorrectionType: UITextAutocorrectionType = .default
+    var returnKeyType: UIReturnKeyType = .done
     var onFocusChange: ((Bool) -> Void)?
 
     func makeUIView(context: Context) -> UITextField {
@@ -27,8 +31,10 @@ struct SheetSafeTextField: UIViewRepresentable {
             string: placeholder,
             attributes: [.foregroundColor: placeholderColor, .font: font]
         )
-        tf.autocorrectionType = .default
-        tf.returnKeyType = .done
+        tf.keyboardType = keyboardType
+        tf.autocapitalizationType = autocapitalizationType
+        tf.autocorrectionType = autocorrectionType
+        tf.returnKeyType = returnKeyType
         tf.delegate = context.coordinator
         tf.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
         tf.setContentHuggingPriority(.defaultLow, for: .horizontal)

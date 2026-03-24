@@ -33,7 +33,6 @@ struct AddTransactionView: View {
     @State private var frozenQuickPickOrder: [String] = []
     @State private var pickedFromOthersThisSession: String? = nil
     @State private var didAppear = false
-    @FocusState private var isNoteFocused: Bool
 
     init(transaction: Transaction? = nil, initialType: String? = nil, initialQuickPickOrder: [String]? = nil, onSuccess: (() -> Void)? = nil) {
         self.transaction = transaction
@@ -471,10 +470,13 @@ struct AddTransactionView: View {
             Image(systemName: "pencil")
                 .font(.system(size: 18))
                 .foregroundColor(theme.textTertiary)
-            TextField("", text: $viewModel.note, prompt: Text(L("addtx_note")).foregroundStyle(theme.textTertiary))
-                .font(.system(size: 15))
-                .foregroundColor(theme.textPrimary)
-                .focused($isNoteFocused)
+            SheetSafeTextField(
+                text: $viewModel.note,
+                placeholder: L("addtx_note"),
+                textColor: UIColor(theme.textPrimary),
+                placeholderColor: UIColor(theme.textTertiary),
+                font: .systemFont(ofSize: 15)
+            )
         }
         .padding(16)
         .contentShape(Rectangle())
