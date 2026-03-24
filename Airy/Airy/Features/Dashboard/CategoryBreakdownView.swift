@@ -417,7 +417,19 @@ struct CategorySegment: Identifiable {
     let endAngle: Angle
 }
 
-@Observable
+/// Background-safe aggregate result (no Color, no CategoryStore).
+private struct CategoryAggregateItem: Sendable {
+    let categoryId: String
+    let amount: Double
+}
+
+private struct CategoryAggregateResult: Sendable {
+    let totalSpent: Double
+    let sortedCategories: [CategoryAggregateItem]
+    let transactionsByCategory: [String: [Transaction]]
+}
+
+@Observable @MainActor
 final class CategoryBreakdownViewModel {
     var segments: [CategorySegment] = []
     var totalSpent: Double = 0
@@ -435,6 +447,9 @@ final class CategoryBreakdownViewModel {
     var currentMonth: Int = Calendar.current.component(.month, from: Date())
     var currentYear: Int = Calendar.current.component(.year, from: Date())
     var showAllYear: Bool = false
+
+    private var loadGeneration = 0
+    private var computeTask: Task<CategoryAggregateResult?, Never>?
 
     func configure(month: Int?, year: Int?, allYear: Bool) {
         print("[CategoryBreakdownVM] configure: month=\(String(describing: month)) year=\(String(describing: year)) allYear=\(allYear)")
@@ -484,44 +499,66 @@ final class CategoryBreakdownViewModel {
     ]
 
     func load() async {
-        let perfStart = CFAbsoluteTimeGetCurrent()
+        let mainStart = CFAbsoluteTimeGetCurrent()
+        loadGeneration += 1
+        let myGen = loadGeneration
+        computeTask?.cancel()
+
         isLoading = true
         print("[CategoryBreakdownVM] load() start: showAllYear=\(showAllYear) month=\(currentMonth) year=\(currentYear)")
-        await MainActor.run {
-            let transactions: [Transaction]
-            if showAllYear {
-                print("[CategoryBreakdownVM] Fetching all-year: \(currentYear)-01-01 to \(currentYear)-12-31")
-                transactions = LocalDataStore.shared.fetchTransactions(
-                    from: "\(currentYear)-01-01", to: "\(currentYear)-12-31"
-                )
-                monthKey = "\(currentYear)"
-                monthLabel = "\(currentYear)"
-            } else {
-                let monthStr = String(format: "%02d", currentMonth)
-                let yearStr = String(currentYear)
-                transactions = LocalDataStore.shared.fetchTransactions(limit: 500, month: monthStr, year: yearStr)
-                monthKey = String(format: "%d-%02d", currentYear, currentMonth)
-                var comp = DateComponents()
-                comp.year = currentYear
-                comp.month = currentMonth
-                comp.day = 1
-                monthLabel = (Calendar.current.date(from: comp).map { AppFormatters.monthYear.string(from: $0) }) ?? "\(currentMonth)/\(currentYear)"
-            }
-            print("[CategoryBreakdownVM] Fetched \(transactions.count) transactions for monthKey=\(monthKey)")
-            let nonSubExpenseMerchants = Set(transactions.filter { $0.type.lowercased() != "income" && $0.isSubscription != true }.map { $0.merchant ?? "" })
+
+        // Fetch on main (SwiftData main context)
+        let transactions: [Transaction]
+        if showAllYear {
+            print("[CategoryBreakdownVM] Fetching all-year: \(currentYear)-01-01 to \(currentYear)-12-31")
+            transactions = LocalDataStore.shared.fetchTransactions(
+                from: "\(currentYear)-01-01", to: "\(currentYear)-12-31"
+            )
+            monthKey = "\(currentYear)"
+            monthLabel = "\(currentYear)"
+        } else {
+            let monthStr = String(format: "%02d", currentMonth)
+            let yearStr = String(currentYear)
+            transactions = LocalDataStore.shared.fetchTransactions(limit: 500, month: monthStr, year: yearStr)
+            monthKey = String(format: "%d-%02d", currentYear, currentMonth)
+            var comp = DateComponents()
+            comp.year = currentYear
+            comp.month = currentMonth
+            comp.day = 1
+            monthLabel = (Calendar.current.date(from: comp).map { AppFormatters.monthYear.string(from: $0) }) ?? "\(currentMonth)/\(currentYear)"
+        }
+        print("[CategoryBreakdownVM] Fetched \(transactions.count) transactions for monthKey=\(monthKey)")
+
+        let preBg = CFAbsoluteTimeGetCurrent()
+        guard myGen == loadGeneration else { return }
+
+        // Background aggregation
+        let baseCurrency = BaseCurrencyStore.baseCurrency
+        let task = Task.detached { [transactions, baseCurrency] in
+            if Task.isCancelled { return nil as CategoryAggregateResult? }
+
+            let nonSubExpenseMerchants = Set(
+                transactions.filter { $0.type.lowercased() != "income" && $0.isSubscription != true }
+                    .map { $0.merchant ?? "" }
+            )
             let expenseOnly = transactions.filter { tx in
                 guard tx.type.lowercased() != "income" else { return false }
                 if tx.isSubscription != true { return true }
                 return !nonSubExpenseMerchants.contains(tx.merchant ?? "")
             }
-            totalSpent = expenseOnly.reduce(0) { acc, tx in
-                acc + CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
+
+            func amtInBase(_ tx: Transaction) -> Double {
+                if tx.baseCurrency.uppercased() == baseCurrency { return abs(tx.amountBase) }
+                return CurrencyService.convert(amount: abs(tx.amountOriginal), from: tx.currencyOriginal, to: baseCurrency)
             }
+
+            let total = expenseOnly.reduce(0.0) { $0 + amtInBase($1) }
 
             var byCat: [String: Double] = [:]
             var byCatTx: [String: [Transaction]] = [:]
-            for tx in expenseOnly {
-                let inBase = CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
+            for (i, tx) in expenseOnly.enumerated() {
+                if i % 500 == 0, Task.isCancelled { return nil }
+                let inBase = amtInBase(tx)
                 byCat[tx.category, default: 0] += inBase
                 byCatTx[tx.category, default: []].append(tx)
             }
@@ -530,67 +567,80 @@ final class CategoryBreakdownViewModel {
             }
 
             let sorted = byCat.sorted { $0.value > $1.value }
-            guard totalSpent > 0 else {
-                segments = []
-                transactionsByCategory = [:]
-                let perfEnd = CFAbsoluteTimeGetCurrent()
-                print("[Perf] CategoryBreakdownVM.load() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms (\(expenseOnly.count) transactions, 0 segments)")
-                return
-            }
+                .map { CategoryAggregateItem(categoryId: $0.key, amount: $0.value) }
 
-            let n = sorted.count
-            let fillRatio: Double = {
-                switch n {
-                case 1: return 1.0
-                case 2: return 0.85
-                case 3: return 0.75
-                case 4: return 0.70
-                case 5: return 0.60
-                default: return 0.40
-                }
-            }()
-            let usableAngle: Double = 360 * fillRatio
-            let gapAngle: Double = n > 1 ? (360 - usableAngle) / Double(n) : 0
+            return CategoryAggregateResult(totalSpent: total, sortedCategories: sorted, transactionsByCategory: byCatTx)
+        }
+        computeTask = task
+        let result = await task.value
+        let postBg = CFAbsoluteTimeGetCurrent()
 
-            var currentAngle: Double = 0
-            let newSegments = Array(sorted.enumerated().map { i, pair in
-                let normalizedValue = pair.value / totalSpent
-                let segmentAngle = usableAngle * normalizedValue
-                let start = currentAngle
-                let end = start + segmentAngle
-                currentAngle = end + gapAngle
-                let cat = CategoryStore.byId(pair.key)
-                let label = cat?.name ?? pair.key.capitalized
-                let color = cat?.color ?? fallbackColors[i % fallbackColors.count]
-                let colorHex = cat?.colorHex ?? color.toHex()
-                let icon = categoryIconName(pair.key)
-                return CategorySegment(
-                    id: pair.key,
-                    categoryId: pair.key,
-                    label: label,
-                    amount: pair.value,
-                    ratio: CGFloat(normalizedValue),
-                    percent: normalizedValue * 100,
-                    color: color,
-                    colorHex: colorHex,
-                    iconName: icon,
-                    startAngle: .degrees(start),
-                    endAngle: .degrees(end)
-                )
-            })
-            print("[CategoryBreakdownVM] Built \(newSegments.count) segments, total=\(totalSpent)")
-            withAnimation(.easeInOut(duration: 0.35)) {
-                segments = newSegments
-                transactionsByCategory = byCatTx
-            }
+        guard myGen == loadGeneration else { return }
+        guard let result else { return }
+
+        // Commit on main — map to segments with Color/icon
+        totalSpent = result.totalSpent
+
+        guard result.totalSpent > 0 else {
+            segments = []
+            transactionsByCategory = [:]
             isLoading = false
             let perfEnd = CFAbsoluteTimeGetCurrent()
-            print("[Perf] CategoryBreakdownVM.load() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms (\(expenseOnly.count) transactions, \(newSegments.count) segments)")
+            print("[Perf] CategoryBreakdownVM.load() main=\(String(format: "%.1f", ((preBg - mainStart) + (perfEnd - postBg)) * 1000))ms bg=\(String(format: "%.1f", (postBg - preBg) * 1000))ms (0 segments)")
+            return
         }
-    }
 
-    private func categoryIconName(_ categoryId: String) -> String {
-        CategoryIconHelper.iconName(categoryId: categoryId)
+        let sorted = result.sortedCategories
+        let n = sorted.count
+        let fillRatio: Double = {
+            switch n {
+            case 1: return 1.0
+            case 2: return 0.85
+            case 3: return 0.75
+            case 4: return 0.70
+            case 5: return 0.60
+            default: return 0.40
+            }
+        }()
+        let usableAngle: Double = 360 * fillRatio
+        let gapAngle: Double = n > 1 ? (360 - usableAngle) / Double(n) : 0
+
+        var currentAngle: Double = 0
+        let newSegments = Array(sorted.enumerated().map { i, item in
+            let normalizedValue = item.amount / result.totalSpent
+            let segmentAngle = usableAngle * normalizedValue
+            let start = currentAngle
+            let end = start + segmentAngle
+            currentAngle = end + gapAngle
+            let cat = CategoryStore.byId(item.categoryId)
+            let label = cat?.name ?? item.categoryId.capitalized
+            let color = cat?.color ?? fallbackColors[i % fallbackColors.count]
+            let colorHex = cat?.colorHex ?? color.toHex()
+            let icon = CategoryIconHelper.iconName(categoryId: item.categoryId)
+            return CategorySegment(
+                id: item.categoryId,
+                categoryId: item.categoryId,
+                label: label,
+                amount: item.amount,
+                ratio: CGFloat(normalizedValue),
+                percent: normalizedValue * 100,
+                color: color,
+                colorHex: colorHex,
+                iconName: icon,
+                startAngle: .degrees(start),
+                endAngle: .degrees(end)
+            )
+        })
+        print("[CategoryBreakdownVM] Built \(newSegments.count) segments, total=\(totalSpent)")
+        withAnimation(.easeInOut(duration: 0.35)) {
+            segments = newSegments
+            transactionsByCategory = result.transactionsByCategory
+        }
+        isLoading = false
+        let end = CFAbsoluteTimeGetCurrent()
+        let mainMs = ((preBg - mainStart) + (end - postBg)) * 1000
+        let bgMs = (postBg - preBg) * 1000
+        print("[Perf] CategoryBreakdownVM.load() main=\(String(format: "%.1f", mainMs))ms bg=\(String(format: "%.1f", bgMs))ms (\(newSegments.count) segments)")
     }
 }
 
