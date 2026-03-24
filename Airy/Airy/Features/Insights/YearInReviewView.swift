@@ -105,10 +105,8 @@ struct YearInReviewView: View {
         let isSelected = viewModel.selectedPeriod == id
         return Button {
             print("[Tap] YearInReview → Period '\(id)'")
-            withAnimation(.easeInOut(duration: 0.2)) {
-                dragIndex = nil
-                viewModel.changePeriod(id)
-            }
+            withAnimation(.easeInOut(duration: 0.2)) { dragIndex = nil }
+            Task { await viewModel.changePeriod(id) }
         } label: {
             Text(label)
                 .font(.system(size: 13, weight: .semibold))
@@ -175,7 +173,7 @@ struct YearInReviewView: View {
                         viewModel.chartMode = mode
                         if mode == .all { viewModel.selectedMonthIndex = nil }
                         dragIndex = nil
-                        viewModel.recompute()
+                        Task { await viewModel.recompute() }
                     }
                 } label: {
                     Text(mode == .all ? L("yr_all") : L("yr_month"))
@@ -337,8 +335,8 @@ struct YearInReviewView: View {
                         if dist < 10, let di = dragIndex {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 viewModel.selectedMonthIndex = viewModel.selectedMonthIndex == di ? nil : di
-                                viewModel.recompute()
                             }
+                            Task { await viewModel.recompute() }
                         }
                     }
             )
@@ -386,15 +384,18 @@ struct YearInReviewView: View {
         HStack(spacing: 10) {
             filterChip(label: L("yr_income"), color: theme.incomeColor, isOn: viewModel.showIncome) {
                 print("[Tap] YearInReview → Toggle Income")
-                viewModel.showIncome.toggle(); viewModel.recompute()
+                viewModel.showIncome.toggle()
+                Task { await viewModel.recompute() }
             }
             filterChip(label: L("yr_expense"), color: theme.expenseColor, isOn: viewModel.showExpense) {
                 print("[Tap] YearInReview → Toggle Expense")
-                viewModel.showExpense.toggle(); viewModel.recompute()
+                viewModel.showExpense.toggle()
+                Task { await viewModel.recompute() }
             }
             filterChip(label: L("yr_sub"), color: theme.accentAmber, isOn: !viewModel.excludeSubscriptions) {
                 print("[Tap] YearInReview → Toggle Subscriptions")
-                viewModel.excludeSubscriptions.toggle(); viewModel.recompute()
+                viewModel.excludeSubscriptions.toggle()
+                Task { await viewModel.recompute() }
             }
             Spacer()
         }

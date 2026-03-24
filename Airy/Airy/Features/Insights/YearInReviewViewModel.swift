@@ -3,6 +3,7 @@
 //  Airy
 //
 //  Data aggregation for Year in Review: monthly data, category breakdown, delegates insight generation to engine.
+//  Heavy compute (monthly aggregation, category aggregation) runs off main thread.
 //
 
 import SwiftUI
@@ -36,26 +37,42 @@ final class YearInReviewViewModel {
     private var allTransactions: [Transaction] = []
     private(set) var baseCurrency: String = "USD"
 
+    private var loadGeneration = 0
+    private var computeTask: Task<YRBackgroundResult?, Never>?
+
     func load() async {
         let perfStart = CFAbsoluteTimeGetCurrent()
+        loadGeneration += 1
+        let myGen = loadGeneration
+        computeTask?.cancel()
+
         isLoading = true
         baseCurrency = BaseCurrencyStore.baseCurrency
         let currentYear = Calendar.current.component(.year, from: Date())
         selectedPeriod = "\(currentYear)"
         availableYears = (2015...currentYear).reversed().map { "\($0)" }
         fetchTransactionsForPeriod()
-        recompute()
-        isLoading = false
+
+        guard myGen == loadGeneration else { return }
+        await recompute()
+
+        if myGen == loadGeneration { isLoading = false }
         let perfEnd = CFAbsoluteTimeGetCurrent()
         print("[Perf] YearInReviewVM.load() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms")
     }
 
     /// Switch period and re-fetch only the needed transactions.
-    func changePeriod(_ period: String) {
+    func changePeriod(_ period: String) async {
+        loadGeneration += 1
+        let myGen = loadGeneration
+        computeTask?.cancel()
+
         selectedPeriod = period
         selectedMonthIndex = nil
         fetchTransactionsForPeriod()
-        recompute()
+
+        guard myGen == loadGeneration else { return }
+        await recompute()
     }
 
     private func fetchTransactionsForPeriod() {
@@ -68,25 +85,82 @@ final class YearInReviewViewModel {
         }
     }
 
-    func recompute() {
+    func recompute() async {
         let perfStart = CFAbsoluteTimeGetCurrent()
-        let filtered = filterTransactionsForPeriod()
-        monthlyData = computeMonthlyData(from: filtered)
-        computeTotals()
-        computeTopCategories(from: filtered)
+        let myGen = loadGeneration
 
+        let filtered = filterTransactionsForPeriod()
+        let localeId = LanguageManager.shared.current.rawValue
+        let base = baseCurrency
+        let excludeSubs = excludeSubscriptions
+        let selectedIdx = selectedMonthIndex
+        let currentMonthlyData = monthlyData // for selectedMonthIndex filtering context
+
+        computeTask?.cancel()
+        let task = Task.detached { [filtered, localeId, base, excludeSubs, selectedIdx, currentMonthlyData] in
+            if Task.isCancelled { return nil as YRBackgroundResult? }
+
+            let monthly = Self.computeMonthlyDataPure(
+                from: filtered, localeIdentifier: localeId, baseCurrency: base
+            )
+
+            if Task.isCancelled { return nil }
+
+            // Top categories aggregation
+            var txs = filtered.filter { $0.type.lowercased() != "income" }
+            if excludeSubs { txs = txs.filter { $0.isSubscription != true } }
+
+            // Use freshly computed monthlyData for month filter (not stale currentMonthlyData)
+            if let idx = selectedIdx, idx < monthly.count {
+                let mk = monthly[idx].monthKey
+                txs = txs.filter { String($0.transactionDate.prefix(7)) == mk }
+            }
+
+            var byCat: [String: Double] = [:]
+            for (i, tx) in txs.enumerated() {
+                if i % 500 == 0, Task.isCancelled { return nil }
+                byCat[tx.category, default: 0] += Self.amountInBasePure(tx, baseCurrency: base)
+            }
+
+            let total = byCat.values.reduce(0, +)
+            let topCats = byCat.sorted { $0.value > $1.value }.prefix(4).map {
+                TopCatAggregate(categoryId: $0.key, amount: $0.value, share: total > 0 ? $0.value / total : 0)
+            }
+
+            return YRBackgroundResult(monthlyData: monthly, topCatAggregates: topCats)
+        }
+        computeTask = task
+        let result = await task.value
+
+        guard myGen == loadGeneration else { return }
+        guard let result else { return }
+
+        // Commit monthly data + totals
+        monthlyData = result.monthlyData
+        computeTotals()
+
+        // Map aggregates → YRCategorySummary (Color/icon on main)
+        topCategories = result.topCatAggregates.map { cat in
+            let name = CategoryIconHelper.displayName(categoryId: cat.categoryId)
+            let icon = CategoryIconHelper.iconName(categoryId: cat.categoryId)
+            let color = CategoryIconHelper.color(categoryId: cat.categoryId)
+            return YRCategorySummary(id: cat.categoryId, name: name, amount: cat.amount, share: cat.share, iconName: icon, color: color)
+        }
+
+        // Insight generation on main (uses L() + CategoryIconHelper)
         let previousTransactions = fetchPreviousPeriodTransactions()
         let context = YRInsightEngine.Context(
             monthlyData: monthlyData,
-            transactions: filtered,
+            transactions: filterTransactionsForPeriod(),
             selectedPeriod: selectedPeriod,
             selectedMonthIndex: selectedMonthIndex,
             baseCurrency: baseCurrency,
             previousPeriodTransactions: previousTransactions
         )
         activeSections = YRInsightEngine.generate(from: context)
+
         let perfEnd = CFAbsoluteTimeGetCurrent()
-        print("[Perf] YearInReviewVM.recompute() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms")
+        print("[Perf] YearInReviewVM.recompute() main=\(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms")
     }
 
     // MARK: - Filtering
@@ -122,14 +196,37 @@ final class YearInReviewViewModel {
 
     var displayedMonthlyData: [YRMonthData] { effectiveMonthData() }
 
-    // MARK: - Monthly aggregation
+    // MARK: - Totals
 
-    private func computeMonthlyData(from transactions: [Transaction]) -> [YRMonthData] {
+    private func computeTotals() {
+        let data = effectiveMonthData()
+        if let idx = selectedMonthIndex, idx < data.count {
+            totalIncome = data[idx].income
+            totalExpense = data[idx].expense
+        } else {
+            totalIncome = data.reduce(0) { $0 + $1.income }
+            totalExpense = data.reduce(0) { $0 + $1.expense }
+        }
+        totalNet = totalIncome - totalExpense
+    }
+
+    // MARK: - Pure statics (safe for background)
+
+    private static func amountInBasePure(_ tx: Transaction, baseCurrency: String) -> Double {
+        if tx.baseCurrency.uppercased() == baseCurrency { return abs(tx.amountBase) }
+        return CurrencyService.convert(amount: abs(tx.amountOriginal), from: tx.currencyOriginal, to: baseCurrency)
+    }
+
+    private static func computeMonthlyDataPure(
+        from transactions: [Transaction],
+        localeIdentifier: String,
+        baseCurrency: String
+    ) -> [YRMonthData] {
         var grouped: [String: (income: Double, expense: Double, subExp: Double, subInc: Double)] = [:]
 
         for tx in transactions {
             let key = String(tx.transactionDate.prefix(7))
-            let amt = Self.amountInBase(tx)
+            let amt = amountInBasePure(tx, baseCurrency: baseCurrency)
             let isIncome = tx.type.lowercased() == "income"
             let isSub = tx.isSubscription == true
 
@@ -144,7 +241,7 @@ final class YearInReviewViewModel {
             grouped[key] = entry
         }
 
-        let appLocale = Locale(identifier: LanguageManager.shared.current.rawValue)
+        let appLocale = Locale(identifier: localeIdentifier)
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM"
         let shortDf = DateFormatter()
@@ -170,47 +267,7 @@ final class YearInReviewViewModel {
         }
     }
 
-    // MARK: - Totals
-
-    private func computeTotals() {
-        let data = effectiveMonthData()
-        if let idx = selectedMonthIndex, idx < data.count {
-            totalIncome = data[idx].income
-            totalExpense = data[idx].expense
-        } else {
-            totalIncome = data.reduce(0) { $0 + $1.income }
-            totalExpense = data.reduce(0) { $0 + $1.expense }
-        }
-        totalNet = totalIncome - totalExpense
-    }
-
-    // MARK: - Top Categories
-
-    private func computeTopCategories(from transactions: [Transaction]) {
-        var txs = transactions.filter { $0.type.lowercased() != "income" }
-        if excludeSubscriptions { txs = txs.filter { $0.isSubscription != true } }
-
-        if let idx = selectedMonthIndex, idx < monthlyData.count {
-            let mk = monthlyData[idx].monthKey
-            txs = txs.filter { String($0.transactionDate.prefix(7)) == mk }
-        }
-
-        var byCat: [String: Double] = [:]
-        for tx in txs { byCat[tx.category, default: 0] += Self.amountInBase(tx) }
-
-        let total = byCat.values.reduce(0, +)
-        let sorted = byCat.sorted { $0.value > $1.value }.prefix(4)
-
-        topCategories = sorted.map { cat in
-            let name = CategoryIconHelper.displayName(categoryId: cat.key)
-            let icon = CategoryIconHelper.iconName(categoryId: cat.key)
-            let color = CategoryIconHelper.color(categoryId: cat.key)
-            let share = total > 0 ? cat.value / total : 0
-            return YRCategorySummary(id: cat.key, name: name, amount: cat.value, share: share, iconName: icon, color: color)
-        }
-    }
-
-    // MARK: - Amount helper (static for engine reuse)
+    // MARK: - Amount helper (static, @MainActor — reads UserDefaults via CurrencyService)
 
     static func amountInBase(_ tx: Transaction) -> Double {
         CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
