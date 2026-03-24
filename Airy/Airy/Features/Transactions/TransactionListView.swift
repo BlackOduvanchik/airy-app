@@ -61,15 +61,13 @@ struct TransactionListView: View {
     }
 
     private var innerContent: some View {
-        GeometryReader { rootGeo in
-            let topInset = rootGeo.safeAreaInsets.top
-            ZStack(alignment: .top) {
-                OnboardingGradientBackground()
-                    .ignoresSafeArea()
+        ZStack(alignment: .top) {
+            OnboardingGradientBackground()
+                .ignoresSafeArea()
 
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 24) {
-                        titleSection
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    titleSection
                     if !viewModel.pinnedTransactions.isEmpty {
                         pinnedSection
                             .transition(.asymmetric(
@@ -86,12 +84,9 @@ struct TransactionListView: View {
                     transactionsContent
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, topInset)
                 .padding(.bottom, 120)
             }
             .scrollIndicators(.hidden)
-            .ignoresSafeArea(.container, edges: .top)
-        }
         }
         .overlay(alignment: .bottom) {
             if showBottomBar && AppearanceStore.navigationType == .airyBar {

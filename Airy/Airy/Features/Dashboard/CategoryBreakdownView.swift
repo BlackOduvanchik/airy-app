@@ -25,50 +25,38 @@ struct CategoryBreakdownView: View {
     private static var maxYear: Int { Calendar.current.component(.year, from: Date()) + 2 }
 
     var body: some View {
-        GeometryReader { rootGeo in
-            let topInset = rootGeo.safeAreaInsets.top
-            ZStack(alignment: .top) {
-                OnboardingGradientBackground()
-                    .ignoresSafeArea()
+        ZStack(alignment: .top) {
+            OnboardingGradientBackground()
+                .ignoresSafeArea()
 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        chartSection
-                        if let idx = selectedSegmentIndex, idx < viewModel.segments.count {
-                            let seg = viewModel.segments[idx]
-                            Button {
-                                print("[Tap] CategoryBreakdown → Donut segment '\(seg.label)'")
-                                selectedCategoryDetail = CategoryDetailDestination(
-                                    categoryId: seg.categoryId,
-                                    label: seg.label,
-                                    amount: seg.amount,
-                                    colorHex: seg.colorHex,
-                                    iconName: seg.iconName,
-                                    monthKey: viewModel.monthKey,
-                                    monthLabel: viewModel.monthLabel
-                                )
-                            } label: {
-                                selectedCategoryTooltip(segment: seg)
-                            }
-                            .buttonStyle(.plain)
+            ScrollView {
+                VStack(spacing: 20) {
+                    chartSection
+                    if let idx = selectedSegmentIndex, idx < viewModel.segments.count {
+                        let seg = viewModel.segments[idx]
+                        Button {
+                            print("[Tap] CategoryBreakdown → Donut segment '\(seg.label)'")
+                            selectedCategoryDetail = CategoryDetailDestination(
+                                categoryId: seg.categoryId,
+                                label: seg.label,
+                                amount: seg.amount,
+                                colorHex: seg.colorHex,
+                                iconName: seg.iconName,
+                                monthKey: viewModel.monthKey,
+                                monthLabel: viewModel.monthLabel
+                            )
+                        } label: {
+                            selectedCategoryTooltip(segment: seg)
                         }
-                        categoryListSection
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, topInset + 24)
-                    .padding(.bottom, 120)
+                    categoryListSection
                 }
-                .scrollIndicators(.hidden)
-                .ignoresSafeArea(.container, edges: .top)
-                .onAppear {
-                    #if DEBUG
-                    let capturedInset = topInset
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        print("[SafeArea] CategoryBreakdown topInset=\(capturedInset)")
-                    }
-                    #endif
-                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                .padding(.bottom, 120)
             }
+            .scrollIndicators(.hidden)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
