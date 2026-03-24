@@ -95,6 +95,11 @@ struct SpendingSnapshot {
 
     let dayOfMonth: Int
     let daysInMonth: Int
+
+    // MARK: - Weekly cumulative spend (for trend chart)
+
+    let weeklySpendThisMonth: [Double]   // cumulative at end of week 1, 2, 3, 4(+)
+    let weeklySpendLastMonth: [Double]   // same for last month
 }
 
 struct MerchantConcentration {

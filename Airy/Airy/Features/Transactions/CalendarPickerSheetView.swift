@@ -7,20 +7,6 @@
 
 import SwiftUI
 
-// MARK: - Wheel snap behavior (reused from DatePickerPopoverView)
-
-private struct CalendarWheelSnap: ScrollTargetBehavior {
-    let rowHeight: CGFloat = 32
-    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
-        let proposed = target.rect.origin.y
-        let snapped = round(proposed / rowHeight) * rowHeight
-        target.rect.origin.y = snapped
-    }
-}
-
-private let calMonthNames = ["January", "February", "March", "April", "May", "June",
-                              "July", "August", "September", "October", "November", "December"]
-
 struct CalendarPickerSheetView: View {
     @Environment(ThemeProvider.self) private var theme
     let initialMonthKey: String
@@ -36,15 +22,11 @@ struct CalendarPickerSheetView: View {
     @State private var isLoading = false
     @State private var showMonthYearPicker = false
 
-    // Month/year wheel state
-    @State private var pickerMonthIndex: Int
-    @State private var pickerYearIndex: Int
-    @State private var pickerMonthScrollId: Int?
-    @State private var pickerYearScrollId: Int?
-    private static var yearRange: [Int] {
-        let y = Calendar.current.component(.year, from: Date())
-        return Array(2020...(y + 2))
-    }
+    // Month/year picker state
+    @State private var pickerMonth: Int
+    @State private var pickerYear: Int
+    private static let minYear = 2020
+    private static var maxYear: Int { Calendar.current.component(.year, from: Date()) + 2 }
 
     private var currentMonthKey: String {
         String(format: "%d-%02d", currentYear, currentMonth)
@@ -71,10 +53,8 @@ struct CalendarPickerSheetView: View {
         let m = parts.count >= 2 ? Int(parts[1]) ?? Calendar.current.component(.month, from: Date()) : Calendar.current.component(.month, from: Date())
         _currentYear = State(initialValue: y)
         _currentMonth = State(initialValue: m)
-        _pickerMonthIndex = State(initialValue: m - 1)
-        _pickerYearIndex = State(initialValue: Self.yearRange.firstIndex(of: y) ?? 0)
-        _pickerMonthScrollId = State(initialValue: m - 1)
-        _pickerYearScrollId = State(initialValue: Self.yearRange.firstIndex(of: y) ?? 0)
+        _pickerMonth = State(initialValue: m)
+        _pickerYear = State(initialValue: y)
     }
 
     var body: some View {
@@ -91,18 +71,6 @@ struct CalendarPickerSheetView: View {
             .padding(.top, 24)
             .padding(.bottom, 40)
 
-            // Month/Year picker overlay
-            if showMonthYearPicker {
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-                    .onTapGesture { applyMonthYearPicker() }
-
-                monthYearPickerPopup
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.9)).combined(with: .offset(y: -10)),
-                        removal: .opacity
-                    ))
-            }
         }
         .task(id: "\(currentYear)-\(currentMonth)") { await loadDaysWithTransactions() }
     }
@@ -142,13 +110,11 @@ struct CalendarPickerSheetView: View {
 
             Spacer()
 
-            // Tappable month/year label → opens wheel picker
+            // Tappable month/year label → opens wheel picker popover
             Button {
-                pickerMonthIndex = currentMonth - 1
-                pickerMonthScrollId = currentMonth - 1
-                pickerYearIndex = Self.yearRange.firstIndex(of: currentYear) ?? 0
-                pickerYearScrollId = Self.yearRange.firstIndex(of: currentYear) ?? 0
-                withAnimation(.easeOut(duration: 0.25)) { showMonthYearPicker = true }
+                pickerMonth = currentMonth
+                pickerYear = currentYear
+                showMonthYearPicker = true
             } label: {
                 HStack(spacing: 4) {
                     Text(currentMonthLabel)
@@ -160,6 +126,10 @@ struct CalendarPickerSheetView: View {
                 }
             }
             .buttonStyle(.plain)
+            .popover(isPresented: $showMonthYearPicker, arrowEdge: .top) {
+                monthYearPickerPopover
+                    .presentationCompactAdaptation(.popover)
+            }
 
             Spacer()
 
@@ -354,163 +324,43 @@ struct CalendarPickerSheetView: View {
         return "Select Date"
     }
 
-    // MARK: - Month/Year wheel picker popup
+    // MARK: - Month/Year picker popover (native wheel style)
 
-    private let wheelRowHeight: CGFloat = 32
-    private let wheelVisibleHeight: CGFloat = 120
-
-    private var monthYearPickerPopup: some View {
-        VStack(spacing: 12) {
-            ZStack(alignment: .center) {
-                // Selection highlight
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.white.opacity(theme.isDark ? 0.08 : 0.4))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(theme.isDark ? 0.10 : 0.5), lineWidth: 1)
-                    )
-                    .frame(height: 34)
-                    .allowsHitTesting(false)
-
-                HStack(spacing: 0) {
-                    // Month wheel
-                    monthWheel
-                    Rectangle()
-                        .fill(theme.isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.05))
-                        .frame(width: 1)
-                        .frame(maxHeight: .infinity)
-                    // Year wheel
-                    yearWheel
-                }
-                .frame(height: wheelVisibleHeight)
-            }
-
-            Button {
-                applyMonthYearPicker()
-            } label: {
-                Text("Done")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 36)
-                    .background(theme.isDark ? Color.white.opacity(0.15) : theme.accentGreen)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-        }
-        .frame(width: 220)
-        .padding(16)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(theme.isDark ? AnyShapeStyle(theme.glassBg) : AnyShapeStyle(.ultraThinMaterial))
-                if !theme.isDark {
-                    RoundedRectangle(cornerRadius: 24)
-                        .fill(Color.white.opacity(0.5))
+    private var monthYearPickerPopover: some View {
+        HStack(spacing: 0) {
+            Picker("", selection: $pickerMonth) {
+                ForEach(1...12, id: \.self) { m in
+                    Text(Calendar.current.monthSymbols[m - 1]).tag(m)
                 }
             }
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(theme.glassBorder, lineWidth: 1)
-        )
-        .shadow(color: Color(red: 0.118, green: 0.176, blue: 0.141).opacity(0.08), radius: 16, x: 0, y: 8)
-    }
+            .pickerStyle(.wheel)
+            .frame(width: 140)
 
-    private var monthWheel: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(spacing: 0) {
-                ForEach(0..<12, id: \.self) { i in
-                    Text(calMonthNames[i])
-                        .font(.system(size: pickerMonthIndex == i ? 18 : 16, weight: pickerMonthIndex == i ? .bold : .medium))
-                        .foregroundColor(pickerMonthIndex == i ? theme.textPrimary : theme.textTertiary)
-                        .frame(height: wheelRowHeight)
-                        .frame(maxWidth: .infinity)
-                        .id(i)
-                        .onTapGesture {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                pickerMonthScrollId = i
-                                pickerMonthIndex = i
-                            }
-                        }
+            Picker("", selection: $pickerYear) {
+                ForEach(Self.minYear...Self.maxYear, id: \.self) { y in
+                    Text(String(y)).tag(y)
                 }
             }
-            .padding(.vertical, (wheelVisibleHeight - wheelRowHeight) / 2)
-            .scrollTargetLayout()
+            .pickerStyle(.wheel)
+            .frame(width: 90)
         }
-        .scrollTargetBehavior(CalendarWheelSnap())
-        .scrollPosition(id: $pickerMonthScrollId, anchor: .center)
-        .scrollViewNoBounce()
-        .mask(
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black, location: 0.35),
-                    .init(color: .black, location: 0.65),
-                    .init(color: .clear, location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .frame(maxWidth: .infinity)
-        .onChange(of: pickerMonthScrollId) { _, id in
-            if let id { pickerMonthIndex = id }
-        }
-    }
-
-    private var yearWheel: some View {
-        let years = Self.yearRange
-        return ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(spacing: 0) {
-                ForEach(0..<years.count, id: \.self) { i in
-                    Text(String(years[i]))
-                        .font(.system(size: pickerYearIndex == i ? 18 : 16, weight: pickerYearIndex == i ? .bold : .medium))
-                        .foregroundColor(pickerYearIndex == i ? theme.textPrimary : theme.textTertiary)
-                        .frame(height: wheelRowHeight)
-                        .frame(maxWidth: .infinity)
-                        .id(i)
-                        .onTapGesture {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                pickerYearScrollId = i
-                                pickerYearIndex = i
-                            }
-                        }
-                }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .onChange(of: pickerMonth) { _, newMonth in
+            if newMonth != currentMonth || pickerYear != currentYear {
+                currentMonth = newMonth
+                currentYear = pickerYear
+                rangeStart = nil
+                rangeEnd = nil
             }
-            .padding(.vertical, (wheelVisibleHeight - wheelRowHeight) / 2)
-            .scrollTargetLayout()
         }
-        .scrollTargetBehavior(CalendarWheelSnap())
-        .scrollPosition(id: $pickerYearScrollId, anchor: .center)
-        .scrollViewNoBounce()
-        .mask(
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black, location: 0.35),
-                    .init(color: .black, location: 0.65),
-                    .init(color: .clear, location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .frame(maxWidth: .infinity)
-        .onChange(of: pickerYearScrollId) { _, id in
-            if let id { pickerYearIndex = id }
-        }
-    }
-
-    private func applyMonthYearPicker() {
-        withAnimation(.easeOut(duration: 0.25)) { showMonthYearPicker = false }
-        let newMonth = pickerMonthIndex + 1
-        let newYear = Self.yearRange[pickerYearIndex]
-        if newMonth != currentMonth || newYear != currentYear {
-            currentMonth = newMonth
-            currentYear = newYear
-            rangeStart = nil
-            rangeEnd = nil
+        .onChange(of: pickerYear) { _, newYear in
+            if pickerMonth != currentMonth || newYear != currentYear {
+                currentMonth = pickerMonth
+                currentYear = newYear
+                rangeStart = nil
+                rangeEnd = nil
+            }
         }
     }
 

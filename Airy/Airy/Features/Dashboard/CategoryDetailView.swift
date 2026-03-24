@@ -52,7 +52,10 @@ struct CategoryDetailView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
+                    Button {
+                        print("[Tap] CategoryDetail → Back")
+                        dismiss()
+                    } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 12, weight: .semibold))
                             .frame(width: 44, height: 44)
@@ -79,8 +82,9 @@ struct CategoryDetailView: View {
                         }
                     }
                 )
-                .environment(theme)
+                .themed(theme)
             }
+            .onAppear { print("[Nav] CategoryDetail '\(destination.label)' (monthKey=\(destination.monthKey))") }
             .task {
                 await viewModel.load(categoryId: destination.categoryId, monthKey: destination.monthKey)
             }
@@ -141,6 +145,7 @@ struct CategoryDetailView: View {
         VStack(spacing: 1) {
             ForEach(Array(transactions.enumerated()), id: \.element.id) { index, tx in
                 Button {
+                    print("[Tap] CategoryDetail → Transaction '\(tx.merchant ?? tx.category)'")
                     selectedTransactionForEdit = tx
                 } label: {
                     transactionItem(tx)
@@ -243,17 +248,23 @@ final class CategoryDetailViewModel {
     var isLoading = true
 
     func load(categoryId: String, monthKey: String) async {
+        let perfStart = CFAbsoluteTimeGetCurrent()
         isLoading = true
         defer { Task { @MainActor in isLoading = false } }
         await MainActor.run {
             let parts = monthKey.split(separator: "-")
-            guard parts.count >= 2,
-                  let year = Int(parts[0]),
-                  let month = Int(parts[1]) else { return }
-            let monthStr = String(format: "%02d", month)
-            let yearStr = String(year)
-
-            let all = LocalDataStore.shared.fetchTransactions(limit: 500, month: monthStr, year: yearStr)
+            let all: [Transaction]
+            if parts.count >= 2, let year = Int(parts[0]), let month = Int(parts[1]) {
+                // Month mode: "YYYY-MM"
+                let monthStr = String(format: "%02d", month)
+                let yearStr = String(year)
+                all = LocalDataStore.shared.fetchTransactions(limit: 500, month: monthStr, year: yearStr)
+            } else if let year = Int(monthKey) {
+                // Year mode: "YYYY"
+                all = LocalDataStore.shared.fetchTransactions(from: "\(year)-01-01", to: "\(year)-12-31")
+            } else {
+                return
+            }
             let filtered = all.filter { $0.type.lowercased() != "income" && $0.category == categoryId }
             let sorted = filtered.sorted { $0.transactionDate > $1.transactionDate }
 
@@ -274,6 +285,8 @@ final class CategoryDetailViewModel {
             totalAmount = groupedByDay.flatMap { $0.transactions }.reduce(0) { acc, tx in
                 acc + CurrencyService.amountInBase(amountOriginal: abs(tx.amountOriginal), currencyOriginal: tx.currencyOriginal, amountBase: tx.amountBase, baseCurrency: tx.baseCurrency)
             }
+            let perfEnd = CFAbsoluteTimeGetCurrent()
+            print("[Perf] CategoryDetailVM.load() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms")
         }
     }
 }

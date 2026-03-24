@@ -88,8 +88,6 @@
 		B0010000000000000000003D /* CalendarPickerSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000003D /* CalendarPickerSheetView.swift */; };
 		B0010000000000000000003E /* CategoryBreakdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000003E /* CategoryBreakdownView.swift */; };
 		B0010000000000000000003F /* CategoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010000000000000000003F /* CategoryDetailView.swift */; };
-		B00100000000000000000040 /* TimePickerPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000040 /* TimePickerPopoverView.swift */; };
-		B00100000000000000000041 /* DatePickerPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000041 /* DatePickerPopoverView.swift */; };
 		B00100000000000000000042 /* ScrollViewNoBounce.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000042 /* ScrollViewNoBounce.swift */; };
 		B00100000000000000000043 /* SFSymbolsCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000043 /* SFSymbolsCatalog.swift */; };
 		B00100000000000000000044 /* IconLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000044 /* IconLibraryView.swift */; };
@@ -132,6 +130,7 @@
 		B00100000000000000000303 /* DuplicateClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000303 /* DuplicateClassifier.swift */; };
 		B00100000000000000000304 /* ExtractionPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000304 /* ExtractionPipeline.swift */; };
 		B00100000000000000000305 /* OCRNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000305 /* OCRNormalizer.swift */; };
+		B00100000000000000000306 /* SheetSafeTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000306 /* SheetSafeTextField.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -242,8 +241,6 @@
 		F0010000000000000000003D /* CalendarPickerSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarPickerSheetView.swift; sourceTree = "<group>"; };
 		F0010000000000000000003E /* CategoryBreakdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryBreakdownView.swift; sourceTree = "<group>"; };
 		F0010000000000000000003F /* CategoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryDetailView.swift; sourceTree = "<group>"; };
-		F00100000000000000000040 /* TimePickerPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimePickerPopoverView.swift; sourceTree = "<group>"; };
-		F00100000000000000000041 /* DatePickerPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatePickerPopoverView.swift; sourceTree = "<group>"; };
 		F00100000000000000000042 /* ScrollViewNoBounce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollViewNoBounce.swift; sourceTree = "<group>"; };
 		F00100000000000000000043 /* SFSymbolsCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFSymbolsCatalog.swift; sourceTree = "<group>"; };
 		F00100000000000000000044 /* IconLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconLibraryView.swift; sourceTree = "<group>"; };
@@ -286,6 +283,7 @@
 		F00100000000000000000303 /* DuplicateClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateClassifier.swift; sourceTree = "<group>"; };
 		F00100000000000000000304 /* ExtractionPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionPipeline.swift; sourceTree = "<group>"; };
 		F00100000000000000000305 /* OCRNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRNormalizer.swift; sourceTree = "<group>"; };
+		F00100000000000000000306 /* SheetSafeTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetSafeTextField.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -561,8 +559,6 @@
 			children = (
 				F00100000000000000000015 /* AddTransactionView.swift */,
 				F00100000000000000000016 /* AddTransactionViewModel.swift */,
-				F00100000000000000000040 /* TimePickerPopoverView.swift */,
-				F00100000000000000000041 /* DatePickerPopoverView.swift */,
 				F00100000000000000000023 /* AmountKeyboardView.swift */,
 				F00100000000000000000017 /* TransactionDetailView.swift */,
 				F00100000000000000000018 /* TransactionListView.swift */,
@@ -587,6 +583,7 @@
 				F00100000000000000000024 /* AddActionSheetView.swift */,
 				F0010000000000000000003C /* BottomNavBarView.swift */,
 				F0010000000000000000001A /* MainTabView.swift */,
+				F00100000000000000000306 /* SheetSafeTextField.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -764,8 +761,6 @@
 				B00100000000000000000060 /* EditSubscriptionViewModel.swift in Sources */,
 				B00100000000000000000015 /* AddTransactionView.swift in Sources */,
 				B00100000000000000000016 /* AddTransactionViewModel.swift in Sources */,
-				B00100000000000000000040 /* TimePickerPopoverView.swift in Sources */,
-				B00100000000000000000041 /* DatePickerPopoverView.swift in Sources */,
 				B00100000000000000000042 /* ScrollViewNoBounce.swift in Sources */,
 				B00100000000000000000017 /* TransactionDetailView.swift in Sources */,
 				B00100000000000000000018 /* TransactionListView.swift in Sources */,
@@ -795,6 +790,7 @@
 				B0010000000000000000002F /* AnalyzingTransactionsView.swift in Sources */,
 				B0010000000000000000004D /* MerchantCategoryRuleStore.swift in Sources */,
 				B00100000000000000000305 /* OCRNormalizer.swift in Sources */,
+				B00100000000000000000306 /* SheetSafeTextField.swift in Sources */,
 				B00100000000000000000304 /* ExtractionPipeline.swift in Sources */,
 				B00100000000000000000303 /* DuplicateClassifier.swift in Sources */,
 				B00100000000000000000302 /* CanonicalTransaction.swift in Sources */,

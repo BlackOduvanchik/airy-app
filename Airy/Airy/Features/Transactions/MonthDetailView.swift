@@ -88,7 +88,7 @@ struct MonthDetailView: View {
                     },
                     onCancel: { showCalendarPicker = false }
                 )
-                .environment(theme)
+                .themed(theme)
             }
             .sheet(isPresented: $showEditSheet, onDismiss: {
                 selectedTransactionForEdit = nil
@@ -98,7 +98,7 @@ struct MonthDetailView: View {
                         showEditSheet = false
                         Task { await viewModel.load() }
                     })
-                    .environment(theme)
+                    .themed(theme)
                 }
             }
             .task { await viewModel.load() }

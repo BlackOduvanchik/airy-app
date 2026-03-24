@@ -102,13 +102,13 @@ struct ImportDataView: View {
         }
         .sheet(item: $selectedColumnItem) { item in
             ColumnMappingSheet(viewModel: viewModel, columnIndex: item.id)
-                .environment(theme)
+                .themed(theme)
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.hidden)
         }
         .sheet(item: $selectedCategory) { item in
             CategoryActionSheet(viewModel: viewModel, categoryName: item.id)
-                .environment(theme)
+                .themed(theme)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.hidden)
         }

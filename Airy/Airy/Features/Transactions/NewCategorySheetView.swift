@@ -128,13 +128,13 @@ struct NewCategorySheetView: View {
         }
         .sheet(isPresented: $showParentPicker) {
             parentPickerSheet
-                .environment(theme)
+                .themed(theme)
         }
-        .sheet(isPresented: $showIconLibrary) {
+        .fullScreenCover(isPresented: $showIconLibrary) {
             IconLibraryView(selectedIcon: $selectedIcon) {
                 showIconLibrary = false
             }
-            .environment(theme)
+            .themed(theme)
         }
         .onAppear {
             guard !didAppear else { return }

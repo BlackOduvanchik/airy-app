@@ -62,7 +62,7 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
-                .environment(theme)
+                .themed(theme)
         }
         .alert(L("settings_delete_all"), isPresented: $showDeleteConfirmation) {
             Button(L("common_delete"), role: .destructive) {
@@ -74,6 +74,7 @@ struct SettingsView: View {
             Text(L("settings_delete_confirm"))
         }
         .onAppear {
+            print("[Nav] Settings")
             baseCurrency = BaseCurrencyStore.baseCurrency
             themeName = AppearanceStore.colorTheme.displayName
         }
@@ -129,6 +130,7 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(L("settings_pro_button")) {
+                print("[Tap] Settings → Pro/Paywall")
                 showPaywall = true
             }
             .font(.system(size: 13, weight: .semibold))
@@ -178,6 +180,7 @@ struct SettingsView: View {
             settingsGroup {
                 NavigationLink {
                     CurrencyPickerView(baseCurrency: $baseCurrency)
+                        .onAppear { print("[Nav] Settings → Currency") }
                 } label: {
                     settingsRow(
                         icon: { Image(systemName: "dollarsign.circle").font(.system(size: 18)).foregroundColor(theme.textSecondary) },
@@ -189,6 +192,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 NavigationLink {
                     AppearanceView()
+                        .onAppear { print("[Nav] Settings → Appearance") }
                 } label: {
                     settingsRow(
                         icon: { themeDotsIcon },
@@ -200,6 +204,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 NavigationLink {
                     LanguagePickerView()
+                        .onAppear { print("[Nav] Settings → Language") }
                 } label: {
                     settingsRow(
                         icon: { Image(systemName: "globe").font(.system(size: 18)).foregroundColor(theme.textSecondary) },
@@ -233,6 +238,7 @@ struct SettingsView: View {
             settingsGroup {
                 NavigationLink {
                     ExportDataView()
+                        .onAppear { print("[Nav] Settings → Export") }
                 } label: {
                     settingsRow(
                         icon: { Image(systemName: "square.and.arrow.up").font(.system(size: 18)).foregroundColor(theme.textSecondary) },
@@ -244,6 +250,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 NavigationLink {
                     ImportDataView()
+                        .onAppear { print("[Nav] Settings → Import") }
                 } label: {
                     settingsRow(
                         icon: { Image(systemName: "square.and.arrow.down").font(.system(size: 18)).foregroundColor(theme.textSecondary) },
@@ -255,6 +262,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 NavigationLink {
                     ManageCategoriesView()
+                        .onAppear { print("[Nav] Settings → Manage Categories") }
                 } label: {
                     settingsRow(
                         icon: { Image(systemName: "folder.fill").font(.system(size: 18)).foregroundColor(theme.textSecondary) },
@@ -306,6 +314,7 @@ struct SettingsView: View {
             settingsGroup {
                 NavigationLink {
                     SecurityAccessView()
+                        .onAppear { print("[Nav] Settings → Security") }
                 } label: {
                     settingsRow(
                         icon: { Image(systemName: "lock.fill").font(.system(size: 18)).foregroundColor(theme.textSecondary) },
@@ -317,6 +326,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 NavigationLink {
                     PrivacyTermsView()
+                        .onAppear { print("[Nav] Settings → Privacy") }
                 } label: {
                     settingsRow(
                         icon: { Image(systemName: "shield.fill").font(.system(size: 18)).foregroundColor(theme.textSecondary) },
@@ -382,6 +392,7 @@ struct SettingsView: View {
             sectionCaption(L("settings_account"))
             settingsGroup {
                 Button {
+                    print("[Tap] Settings → Sign Out")
                     authStore.logout()
                 } label: {
                     dangerRow(icon: "rectangle.portrait.and.arrow.right", title: L("settings_signout"), showBottomBorder: true)
@@ -389,6 +400,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
 
                 Button {
+                    print("[Tap] Settings → Delete All Data")
                     showDeleteConfirmation = true
                 } label: {
                     dangerRow(icon: "trash", title: L("settings_delete_all"), showBottomBorder: false)
@@ -453,6 +465,7 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 64)
+        .contentShape(Rectangle())
         .overlay(
             Group {
                 if showBottomBorder {

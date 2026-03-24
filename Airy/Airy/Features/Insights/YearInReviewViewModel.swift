@@ -37,17 +37,39 @@ final class YearInReviewViewModel {
     private(set) var baseCurrency: String = "USD"
 
     func load() async {
+        let perfStart = CFAbsoluteTimeGetCurrent()
         isLoading = true
         baseCurrency = BaseCurrencyStore.baseCurrency
         let currentYear = Calendar.current.component(.year, from: Date())
         selectedPeriod = "\(currentYear)"
         availableYears = (2015...currentYear).reversed().map { "\($0)" }
-        allTransactions = LocalDataStore.shared.fetchTransactions(from: "2015-01-01", to: "\(currentYear)-12-31")
+        fetchTransactionsForPeriod()
         recompute()
         isLoading = false
+        let perfEnd = CFAbsoluteTimeGetCurrent()
+        print("[Perf] YearInReviewVM.load() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms")
+    }
+
+    /// Switch period and re-fetch only the needed transactions.
+    func changePeriod(_ period: String) {
+        selectedPeriod = period
+        selectedMonthIndex = nil
+        fetchTransactionsForPeriod()
+        recompute()
+    }
+
+    private func fetchTransactionsForPeriod() {
+        let currentYear = Calendar.current.component(.year, from: Date())
+        if selectedPeriod == "all" {
+            allTransactions = LocalDataStore.shared.fetchTransactions(from: "2015-01-01", to: "\(currentYear)-12-31")
+        } else if let year = Int(selectedPeriod) {
+            // Fetch selected year + previous year (needed for insights comparison)
+            allTransactions = LocalDataStore.shared.fetchTransactions(from: "\(year - 1)-01-01", to: "\(year)-12-31")
+        }
     }
 
     func recompute() {
+        let perfStart = CFAbsoluteTimeGetCurrent()
         let filtered = filterTransactionsForPeriod()
         monthlyData = computeMonthlyData(from: filtered)
         computeTotals()
@@ -63,6 +85,8 @@ final class YearInReviewViewModel {
             previousPeriodTransactions: previousTransactions
         )
         activeSections = YRInsightEngine.generate(from: context)
+        let perfEnd = CFAbsoluteTimeGetCurrent()
+        print("[Perf] YearInReviewVM.recompute() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms")
     }
 
     // MARK: - Filtering
@@ -150,8 +174,13 @@ final class YearInReviewViewModel {
 
     private func computeTotals() {
         let data = effectiveMonthData()
-        totalIncome = data.reduce(0) { $0 + $1.income }
-        totalExpense = data.reduce(0) { $0 + $1.expense }
+        if let idx = selectedMonthIndex, idx < data.count {
+            totalIncome = data[idx].income
+            totalExpense = data[idx].expense
+        } else {
+            totalIncome = data.reduce(0) { $0 + $1.income }
+            totalExpense = data.reduce(0) { $0 + $1.expense }
+        }
         totalNet = totalIncome - totalExpense
     }
 

@@ -337,13 +337,22 @@ final class ImportDataViewModel {
             }
             let baseAmount = CurrencyService.convert(amount: abs(amount), from: resolvedCurrency, to: BaseCurrencyStore.baseCurrency)
 
+            let cleanedMerchant: String? = {
+                if ImportViewModel.isHashLikeMerchant(merchant) {
+                    let name = CategoryIconHelper.displayName(categoryId: categoryId)
+                    print("[CSV Import] Hash merchant '\(merchant ?? "")' → '\(name)'")
+                    return name
+                }
+                return merchant
+            }()
+
             let body = CreateTransactionBody(
                 type: type,
                 amountOriginal: abs(amount),
                 currencyOriginal: resolvedCurrency,
                 amountBase: baseAmount,
                 baseCurrency: BaseCurrencyStore.baseCurrency,
-                merchant: merchant,
+                merchant: cleanedMerchant,
                 title: note,
                 transactionDate: dateStr,
                 transactionTime: time,

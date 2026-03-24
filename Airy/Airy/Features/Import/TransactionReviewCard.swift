@@ -168,7 +168,7 @@ struct TransactionReviewCard: View {
         .foregroundColor(theme.textSecondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.white.opacity(0.6))
+        .background(Color.white.opacity(theme.isDark ? 0.1 : 0.6))
         .overlay(
             RoundedRectangle(cornerRadius: 100)
                 .stroke(theme.glassBorder, lineWidth: 1)
@@ -206,7 +206,7 @@ struct TransactionReviewCard: View {
         .padding(.top, 12)
         .overlay(
             Rectangle()
-                .fill(Color.white.opacity(0.3))
+                .fill(Color.white.opacity(theme.isDark ? 0.1 : 0.3))
                 .frame(height: 1),
             alignment: .top
         )

@@ -20,6 +20,8 @@ struct MainTabView: View {
     @State private var dashboardRefreshId = 0
     @State private var showAllTransactions = false
     @State private var showSubscriptions = false
+    @State private var subscriptionsRequested = false
+    @State private var cloudTapRequested = false
     @State private var navType: NavigationType = AppearanceStore.navigationType
 
     @Environment(ThemeProvider.self) private var theme
@@ -45,6 +47,7 @@ struct MainTabView: View {
         .sheet(isPresented: $showAddSheet) {
             AddActionSheetView(
                 onExpense: {
+                    print("[Tap] AddSheet → Expense")
                     showAddSheet = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         addTransactionInitialType = nil
@@ -53,6 +56,7 @@ struct MainTabView: View {
                     }
                 },
                 onIncome: {
+                    print("[Tap] AddSheet → Income")
                     showAddSheet = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         addTransactionInitialType = "income"
@@ -61,6 +65,7 @@ struct MainTabView: View {
                     }
                 },
                 onPasteFromClipboard: {
+                    print("[Tap] AddSheet → Paste from Clipboard")
                     showAddSheet = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         if let image = UIPasteboard.general.image {
@@ -72,6 +77,7 @@ struct MainTabView: View {
                     }
                 },
                 onOpenGallery: {
+                    print("[Tap] AddSheet → Open Gallery")
                     showAddSheet = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         showGalleryPicker = true
@@ -83,7 +89,7 @@ struct MainTabView: View {
             )
             .presentationDetents([.height(300)])
             .presentationDragIndicator(.hidden)
-            .environment(theme)
+            .themed(theme)
         }
         .sheet(isPresented: $showAddTransaction) {
             AddTransactionView(initialType: addTransactionInitialType, initialQuickPickOrder: addSheetQuickPickOrder, onSuccess: {
@@ -91,7 +97,7 @@ struct MainTabView: View {
                 addTransactionInitialType = nil
                 dashboardRefreshId += 1
             })
-            .environment(theme)
+            .themed(theme)
         }
         .fullScreenCover(isPresented: $showGalleryPicker) {
             GalleryPickerView(
@@ -103,7 +109,7 @@ struct MainTabView: View {
                 onPickConfirmed: { showGalleryPicker = false }
             )
             .ignoresSafeArea()
-            .environment(theme)
+            .themed(theme)
         }
         .fullScreenCover(isPresented: $showLiveExtraction) {
             AnalyzingTransactionsView(
@@ -118,7 +124,7 @@ struct MainTabView: View {
                     showLiveExtraction = false
                 }
             )
-            .environment(theme)
+            .themed(theme)
         }
         .fullScreenCover(isPresented: $showPendingReview) {
             NavigationStack {
@@ -129,7 +135,7 @@ struct MainTabView: View {
                         }
                     }
             }
-            .environment(theme)
+            .themed(theme)
         }
         .onChange(of: showPendingReview) { _, showing in
             if !showing { dashboardRefreshId += 1 }
@@ -147,10 +153,29 @@ struct MainTabView: View {
         }
         .fullScreenCover(isPresented: $showSubscriptions) {
             SubscriptionsView(onDismiss: { showSubscriptions = false })
-                .environment(theme)
+                .themed(theme)
         }
         .onChange(of: showSubscriptions) { _, showing in
             if !showing { dashboardRefreshId += 1 }
+        }
+        .onChange(of: subscriptionsRequested) { _, val in
+            if val {
+                subscriptionsRequested = false
+                if navType == .standardTab {
+                    selectedTab = .bills
+                } else {
+                    showSubscriptions = true
+                }
+            }
+        }
+        .onChange(of: cloudTapRequested) { _, val in
+            if val {
+                cloudTapRequested = false
+                handleCloudTap()
+            }
+        }
+        .onChange(of: selectedTab) { _, newValue in
+            print("[Nav] Tab → \(newValue)")
         }
         .onReceive(NotificationCenter.default.publisher(for: .navigationTypeChanged)) { _ in
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -181,10 +206,9 @@ struct MainTabView: View {
                 DashboardView(
                     refreshId: dashboardRefreshId,
                     showAllTransactions: $showAllTransactions,
-                    onOpenSubscriptions: { selectedTab = .bills },
-                    onCloudTapped: handleCloudTap
+                    subscriptionsRequested: $subscriptionsRequested,
+                    cloudTapRequested: $cloudTapRequested
                 )
-                .id(dashboardRefreshId)
             }
 
             Tab(L("tab_add"), systemImage: "plus", value: AppTab.add, role: .search) {
@@ -208,10 +232,9 @@ struct MainTabView: View {
                 DashboardView(
                     refreshId: dashboardRefreshId,
                     showAllTransactions: $showAllTransactions,
-                    onOpenSubscriptions: { showSubscriptions = true },
-                    onCloudTapped: handleCloudTap
+                    subscriptionsRequested: $subscriptionsRequested,
+                    cloudTapRequested: $cloudTapRequested
                 )
-                .id(dashboardRefreshId)
             case .insights:
                 InsightsView()
             case .settings:
@@ -233,6 +256,7 @@ struct MainTabView: View {
     // MARK: - Cloud icon tap logic
 
     private func handleCloudTap() {
+        print("[Tap] Dashboard → Cloud icon")
         if importViewModel.isAnalyzing {
             showLiveExtraction = true
         } else if importViewModel.hasUnreviewedResults {
@@ -258,7 +282,10 @@ struct MainTabView: View {
                     selectedTab = .insights
                 }
             },
-            onFab: { showAddSheet = true },
+            onFab: {
+                print("[Tap] NavBar → FAB (Add)")
+                showAddSheet = true
+            },
             onSettings: {
                 if selectedTab == .settings {
                     selectedTab = .dashboard

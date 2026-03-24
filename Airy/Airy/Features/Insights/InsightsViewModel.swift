@@ -23,13 +23,19 @@ final class InsightsViewModel {
     var hasMultipleMonths: Bool { (snapshot?.lastMonthSpent ?? 0) > 0 }
     var hasIncome: Bool { (snapshot?.thisMonthIncome ?? 0) > 0 }
 
+    var summaryMentionsSubscriptions: Bool {
+        let s = summaryText.lowercased()
+        return s.contains("subscri") || s.contains("подпис") || s.contains("recurring")
+            || s.contains("регулярн") || s.contains("abonnement") || s.contains("suscripci")
+    }
+
     func load() async {
         isLoading = true
         defer { Task { @MainActor in isLoading = false } }
         await MainActor.run {
             let s = SpendingInsightsEngine.shared.compute()
             snapshot = s
-            summaryText = SpendingInsightsEngine.shared.generateSummaryText(s)
+            summaryText = SpendingInsightsEngine.shared.generateSummaryText(s, offset: 1)
         }
     }
 }

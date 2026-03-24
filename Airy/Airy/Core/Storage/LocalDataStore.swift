@@ -65,7 +65,9 @@ final class LocalDataStore {
 
     // MARK: - Transactions
 
-    func fetchTransactions(limit: Int = 50, offset: Int = 0, month: String? = nil, year: String? = nil) -> [Transaction] {
+    func fetchTransactions(limit: Int = 50, offset: Int = 0, month: String? = nil, year: String? = nil,
+                           excludeSubscriptionTemplates: Bool = true) -> [Transaction] {
+        let perfStart = CFAbsoluteTimeGetCurrent()
         guard let ctx = context else { return [] }
         var descriptor = FetchDescriptor<LocalTransaction>(
             sortBy: [
@@ -81,15 +83,31 @@ final class LocalDataStore {
                 ? (String(yy + 1), "01")
                 : (y, String(format: "%02d", mm + 1))
             let endDate = "\(endYear)-\(endMonth)-01"
+            if excludeSubscriptionTemplates {
+                let subFalse = false
+                descriptor.predicate = #Predicate<LocalTransaction> { tx in
+                    tx.transactionDate >= startDate && tx.transactionDate < endDate && (tx.isSubscription == subFalse || tx.isSubscription == nil)
+                }
+            } else {
+                descriptor.predicate = #Predicate<LocalTransaction> { tx in
+                    tx.transactionDate >= startDate && tx.transactionDate < endDate
+                }
+            }
+        } else if excludeSubscriptionTemplates {
             descriptor.predicate = #Predicate<LocalTransaction> { tx in
-                tx.transactionDate >= startDate && tx.transactionDate < endDate
+                tx.isSubscription == false || tx.isSubscription == nil
             }
         }
         guard let list = try? ctx.fetch(descriptor) else { return [] }
-        return list.map { $0.toTransaction() }
+        let result = list.map { $0.toTransaction() }
+        let perfEnd = CFAbsoluteTimeGetCurrent()
+        let ms = String(format: "%.1f", (perfEnd - perfStart) * 1000)
+        print("[Perf] fetchTransactions(month:\(month ?? "nil")/\(year ?? "nil")) → \(result.count) rows in \(ms)ms")
+        return result
     }
 
-    func fetchTransactions(from startDate: String, to endDate: String) -> [Transaction] {
+    func fetchTransactions(from startDate: String, to endDate: String, excludeSubscriptionTemplates: Bool = false) -> [Transaction] {
+        let perfStart = CFAbsoluteTimeGetCurrent()
         guard let ctx = context else { return [] }
         var descriptor = FetchDescriptor<LocalTransaction>(
             sortBy: [
@@ -97,11 +115,22 @@ final class LocalDataStore {
                 SortDescriptor(\.createdAt, order: .reverse)
             ]
         )
-        descriptor.predicate = #Predicate<LocalTransaction> { tx in
-            tx.transactionDate >= startDate && tx.transactionDate <= endDate
+        if excludeSubscriptionTemplates {
+            let subFalse = false
+            descriptor.predicate = #Predicate<LocalTransaction> { tx in
+                tx.transactionDate >= startDate && tx.transactionDate <= endDate && (tx.isSubscription == subFalse || tx.isSubscription == nil)
+            }
+        } else {
+            descriptor.predicate = #Predicate<LocalTransaction> { tx in
+                tx.transactionDate >= startDate && tx.transactionDate <= endDate
+            }
         }
         guard let list = try? ctx.fetch(descriptor) else { return [] }
-        return list.map { $0.toTransaction() }
+        let result = list.map { $0.toTransaction() }
+        let perfEnd = CFAbsoluteTimeGetCurrent()
+        let ms = String(format: "%.1f", (perfEnd - perfStart) * 1000)
+        print("[Perf] fetchTransactions(from:\(startDate) to:\(endDate)) → \(result.count) rows in \(ms)ms")
+        return result
     }
 
     func createTransaction(_ body: CreateTransactionBody) throws -> Transaction {
@@ -127,6 +156,13 @@ final class LocalDataStore {
         ctx.insert(tx)
         try ctx.save()
         return tx.toTransaction()
+    }
+
+    func fetchTransaction(id: String) -> Transaction? {
+        guard let ctx = context else { return nil }
+        var descriptor = FetchDescriptor<LocalTransaction>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try? ctx.fetch(descriptor).first?.toTransaction()
     }
 
     func updateTransaction(id: String, body: UpdateTransactionBody) throws -> Transaction {
@@ -397,6 +433,7 @@ final class LocalDataStore {
     // MARK: - Analytics (local)
 
     /// All expense LocalTransaction objects for the last `months` months. Single fetch for the insights engine.
+    /// Includes subscription templates so the engine can deduplicate them against real payments.
     func fetchAllExpenseTransactions(months: Int = 13) -> [LocalTransaction] {
         guard let ctx = context else { return [] }
         let cal = Calendar.current
@@ -440,7 +477,7 @@ final class LocalDataStore {
     }
 
     func dashboardSummary() -> (thisMonth: MonthSummary, previousMonthSpent: Double, deltaPercent: Double) {
-        let all = fetchTransactions(limit: 500)
+        let all = fetchTransactions(limit: 500, excludeSubscriptionTemplates: false)
         let cal = Calendar.current
         let now = Date()
         let thisMonthKey = monthKey(for: now)
@@ -607,6 +644,106 @@ final class LocalDataStore {
             next = d
         }
         return formatter.string(from: next)
+    }
+
+    /// One-time migration: normalizes dates and fixes nil isSubscription values.
+    func normalizeTransactionData() {
+        guard let ctx = context else { return }
+        let descriptor = FetchDescriptor<LocalTransaction>()
+        guard let all = try? ctx.fetch(descriptor) else { return }
+        var fixedDates = 0
+        var fixedSubs = 0
+        for tx in all {
+            let normalized = AppFormatters.normalizeISODate(tx.transactionDate)
+            if normalized != tx.transactionDate {
+                tx.transactionDate = normalized
+                fixedDates += 1
+            }
+            if tx.isSubscription == nil {
+                tx.isSubscription = false
+                fixedSubs += 1
+            }
+        }
+        if fixedDates + fixedSubs > 0 {
+            try? ctx.save()
+            print("[LocalDataStore] Migration: \(fixedDates) date(s), \(fixedSubs) nil isSubscription(s) fixed")
+        }
+    }
+
+    /// One-time migration: replace hash-like merchant names with category display name.
+    func migrateHashMerchants() {
+        guard let ctx = context else {
+            print("[Migration V4] ❌ No context")
+            return
+        }
+        let descriptor = FetchDescriptor<LocalTransaction>()
+        guard let all = try? ctx.fetch(descriptor) else {
+            print("[Migration V4] ❌ Failed to fetch transactions")
+            return
+        }
+        print("[Migration V4] Scanning \(all.count) transactions...")
+
+        // Build lookup: UUID category ID → known category id (by name match)
+        let knownCategories = CategoryStore.load()
+        print("[Migration V4] Known categories: \(knownCategories.map { "'\($0.id)' = \($0.name)" })")
+
+        // Map of UUID → slug id for categories whose id is a UUID but name matches a default
+        let defaultSlugs: [String: String] = [
+            "food & dining": "food", "food": "food", "dining": "food",
+            "transport": "transport", "transit": "transport",
+            "housing": "housing",
+            "health": "health",
+            "shopping": "shopping",
+            "bills": "bills",
+            "other": "other",
+        ]
+
+        // Build reverse lookup: UUID category id → slug
+        var uuidToSlug: [String: String] = [:]
+        for cat in knownCategories {
+            // If the cat.id is already a slug, skip
+            if defaultSlugs.values.contains(cat.id) { continue }
+            // If cat.name matches a default slug key, map it
+            if let slug = defaultSlugs[cat.name.lowercased()] {
+                uuidToSlug[cat.id] = slug
+                print("[Migration V4] Mapped UUID category '\(cat.id)' (\(cat.name)) → '\(slug)'")
+            }
+        }
+
+        var fixedMerchants = 0
+        var fixedCategories = 0
+        // Collect unique unknown category IDs for logging
+        var unknownCategoryIds: Set<String> = []
+
+        for tx in all {
+            // Fix hash-like merchants
+            if ImportViewModel.isHashLikeMerchant(tx.merchant) {
+                let displayName = CategoryIconHelper.displayName(categoryId: tx.category)
+                tx.merchant = displayName
+                fixedMerchants += 1
+            }
+
+            // Fix UUID category IDs → slug IDs
+            if let slug = uuidToSlug[tx.category] {
+                tx.category = slug
+                fixedCategories += 1
+            } else if ImportViewModel.isHashLikeMerchant(tx.category) {
+                // Category is UUID but not in our known list
+                unknownCategoryIds.insert(tx.category)
+            }
+        }
+
+        for uid in unknownCategoryIds {
+            print("[Migration V4] ⚠️ Unknown UUID category: '\(uid)' (no name match found)")
+        }
+
+        let totalFixed = fixedMerchants + fixedCategories
+        if totalFixed > 0 {
+            try? ctx.save()
+            print("[Migration V4] ✅ Fixed \(fixedMerchants) hash merchants, \(fixedCategories) UUID categories")
+        } else {
+            print("[Migration V4] No fixes needed in \(all.count) transactions")
+        }
     }
 
     func monthlySummary(month: String?) -> (summary: String, deltaPercent: Double) {

@@ -24,8 +24,8 @@ final class DashboardViewModel {
     private init() {}
 
     func load() async {
+        let perfStart = CFAbsoluteTimeGetCurrent()
         if thisMonth == nil { isLoading = true }
-        defer { Task { @MainActor in isLoading = false } }
         await MainActor.run {
             LocalDataStore.shared.processDueSubscriptions()
             let (this, prev, delta) = LocalDataStore.shared.dashboardSummary()
@@ -44,6 +44,9 @@ final class DashboardViewModel {
                 .map { $0 }
             let snapshot = SpendingInsightsEngine.shared.compute()
             aiSummaryLine = SpendingInsightsEngine.shared.generateSummaryText(snapshot)
+            isLoading = false
+            let perfEnd = CFAbsoluteTimeGetCurrent()
+            print("[Perf] DashboardVM.load() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms")
         }
     }
 }

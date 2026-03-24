@@ -112,6 +112,33 @@ final class ImportViewModel {
         }
     }
 
+    // MARK: - Hash merchant detection & replacement
+
+    /// UUID: 8-4-4-4-12 hex digits with dashes
+    private static let uuidRegex = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/
+    /// Pure hex hash: 8+ hex chars, no spaces
+    private static let hexHashRegex = /^[0-9A-Fa-f]{8,}$/
+
+    /// Returns true if the string looks like a UUID or hex hash (not a human-readable merchant name).
+    static func isHashLikeMerchant(_ merchant: String?) -> Bool {
+        guard let m = merchant?.trimmingCharacters(in: .whitespaces), !m.isEmpty else { return false }
+        return m.wholeMatch(of: uuidRegex) != nil || m.wholeMatch(of: hexHashRegex) != nil
+    }
+
+    /// Replace hash-like merchants with the category display name.
+    static func replaceHashMerchants(in items: [ParsedTransactionItem]) -> [ParsedTransactionItem] {
+        items.map { item in
+            var copy = item
+            if isHashLikeMerchant(item.merchant) {
+                let catId = item.categoryId ?? "other"
+                let displayName = CategoryIconHelper.displayName(categoryId: catId)
+                print("[Import] Hash merchant '\(item.merchant ?? "")' → '\(displayName)' (cat: \(catId))")
+                copy.merchant = displayName
+            }
+            return copy
+        }
+    }
+
     /// Apply saved category rule for this merchant (from "Remember rule" in Review); otherwise use item's category.
     private static func effectiveCategory(for item: ParsedTransactionItem) -> (category: String, subcategory: String?) {
         let rawCat = MerchantCategoryRuleStore.shared.categoryId(for: item.merchant) ?? item.categoryId ?? "other"

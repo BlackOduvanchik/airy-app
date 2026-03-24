@@ -10,19 +10,21 @@ import SwiftUI
 struct AppearanceView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ThemeProvider.self) private var theme
-    @State private var selectedTheme: ColorTheme = AppearanceStore.colorTheme
+    @State private var selectedMode: AppearanceMode = AppearanceStore.appearanceMode
+    @State private var selectedLightTheme: ColorTheme = AppearanceStore.lightTheme
+    @State private var selectedDarkTheme: ColorTheme = AppearanceStore.darkTheme
     @State private var selectedNavType: NavigationType = AppearanceStore.navigationType
-    @State private var showThemeSheet = false
+    @State private var showLightThemeSheet = false
+    @State private var showDarkThemeSheet = false
     @State private var showIncomeColorSheet = false
     @State private var showExpenseColorSheet = false
     @State private var colorVersion = 0
     @State private var selectedIncomeFormat: AmountDisplayFormat = AppearanceStore.incomeFormat
     @State private var selectedExpenseFormat: AmountDisplayFormat = AppearanceStore.expenseFormat
 
-    private var displayedThemes: [ColorTheme] {
-        let base = ColorTheme.featured
-        if base.contains(selectedTheme) { return base }
-        return Array(base.prefix(2)) + [selectedTheme]
+    private func displayedThemes(featured: [ColorTheme], selected: ColorTheme) -> [ColorTheme] {
+        if featured.contains(selected) { return featured }
+        return Array(featured.prefix(2)) + [selected]
     }
 
     var body: some View {
@@ -32,7 +34,8 @@ struct AppearanceView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    themeSection
+                    modeSection
+                    themeSections
                     navigationSection
                     incomeSection
                     expenseSection
@@ -62,56 +65,136 @@ struct AppearanceView: View {
             }
         }
         .onChange(of: selectedNavType) { _, v in AppearanceStore.navigationType = v }
-        .onChange(of: selectedTheme) { _, newTheme in
+        .onChange(of: selectedMode) { _, newMode in
             withAnimation(.easeInOut(duration: 0.4)) {
-                theme.apply(newTheme)
+                theme.setMode(newMode)
             }
         }
-        .sheet(isPresented: $showThemeSheet) {
-            ThemePickerSheetView(selectedTheme: $selectedTheme)
-                .environment(theme)
+        .onChange(of: selectedLightTheme) { _, newTheme in
+            withAnimation(.easeInOut(duration: 0.4)) {
+                theme.setLightTheme(newTheme)
+            }
+        }
+        .onChange(of: selectedDarkTheme) { _, newTheme in
+            withAnimation(.easeInOut(duration: 0.4)) {
+                theme.setDarkTheme(newTheme)
+            }
+        }
+        .sheet(isPresented: $showLightThemeSheet) {
+            ThemePickerSheetView(selectedTheme: $selectedLightTheme, filter: .light)
+                .themed(theme)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+        }
+        .sheet(isPresented: $showDarkThemeSheet) {
+            ThemePickerSheetView(selectedTheme: $selectedDarkTheme, filter: .dark)
+                .themed(theme)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showIncomeColorSheet, onDismiss: { colorVersion += 1 }) {
             IncomeExpenseColorPickerSheet(mode: .income)
-                .environment(theme)
+                .themed(theme)
                 .presentationDetents([.height(450)])
         }
         .sheet(isPresented: $showExpenseColorSheet, onDismiss: { colorVersion += 1 }) {
             IncomeExpenseColorPickerSheet(mode: .expense)
-                .environment(theme)
+                .themed(theme)
                 .presentationDetents([.height(450)])
         }
         .onChange(of: selectedIncomeFormat) { _, v in AppearanceStore.incomeFormat = v }
         .onChange(of: selectedExpenseFormat) { _, v in AppearanceStore.expenseFormat = v }
     }
 
-    // MARK: - Color Theme
+    // MARK: - Appearance Mode
 
-    private var themeSection: some View {
+    private var modeSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionCaption(L("appearance_color_theme"))
+            sectionCaption(L("appearance_mode"))
+            glassPanel {
+                HStack(spacing: 0) {
+                    ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                        Button {
+                            selectedMode = mode
+                        } label: {
+                            Text(mode.displayName)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(selectedMode == mode ? theme.textPrimary : theme.textTertiary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(
+                                    selectedMode == mode
+                                        ? Color.white.opacity(theme.isDark ? 0.12 : 0.6)
+                                        : Color.clear
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(6)
+            }
+        }
+    }
+
+    // MARK: - Color Themes
+
+    @ViewBuilder
+    private var themeSections: some View {
+        switch selectedMode {
+        case .light:
+            themeGrid(
+                caption: L("appearance_color_theme"),
+                featured: ColorTheme.featuredLight,
+                selected: $selectedLightTheme,
+                showSheet: $showLightThemeSheet
+            )
+        case .dark:
+            themeGrid(
+                caption: L("appearance_color_theme"),
+                featured: ColorTheme.featuredDark,
+                selected: $selectedDarkTheme,
+                showSheet: $showDarkThemeSheet
+            )
+        case .auto:
+            themeGrid(
+                caption: L("appearance_light_theme"),
+                featured: ColorTheme.featuredLight,
+                selected: $selectedLightTheme,
+                showSheet: $showLightThemeSheet
+            )
+            themeGrid(
+                caption: L("appearance_dark_theme"),
+                featured: ColorTheme.featuredDark,
+                selected: $selectedDarkTheme,
+                showSheet: $showDarkThemeSheet
+            )
+        }
+    }
+
+    private func themeGrid(caption: String, featured: [ColorTheme], selected: Binding<ColorTheme>, showSheet: Binding<Bool>) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionCaption(caption)
             glassPanel {
                 let columns = [
                     GridItem(.flexible(), spacing: 12),
                     GridItem(.flexible(), spacing: 12)
                 ]
                 LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(displayedThemes, id: \.self) { t in
-                        themeCard(t)
+                    ForEach(displayedThemes(featured: featured, selected: selected.wrappedValue), id: \.self) { t in
+                        themeCard(t, selected: selected)
                     }
-                    moreThemesCard
+                    moreThemesCard(showSheet: showSheet, isDarkSlot: featured.first?.isDark ?? false)
                 }
                 .padding(16)
             }
         }
     }
 
-    private func themeCard(_ t: ColorTheme) -> some View {
-        let isSelected = selectedTheme == t
+    private func themeCard(_ t: ColorTheme, selected: Binding<ColorTheme>) -> some View {
+        let isSelected = selected.wrappedValue == t
         return Button {
-            selectedTheme = t
+            selected.wrappedValue = t
         } label: {
             VStack(spacing: 10) {
                 HStack(spacing: 0) {
@@ -139,10 +222,12 @@ struct AppearanceView: View {
         .buttonStyle(.plain)
     }
 
-    private var moreThemesCard: some View {
-        let previewThemes: [ColorTheme] = [.midnightDark, .electricViolet, .coralReef, .lavenderHaze]
+    private func moreThemesCard(showSheet: Binding<Bool>, isDarkSlot: Bool) -> some View {
+        let previewThemes: [ColorTheme] = isDarkSlot
+            ? [.midnightDark, .electricViolet, .berryBlast, .forestNight]
+            : [.roseQuartz, .lavenderHaze, .coralReef, .tropicalTeal]
         return Button {
-            showThemeSheet = true
+            showSheet.wrappedValue = true
         } label: {
             VStack(spacing: 10) {
                 let cols = [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)]

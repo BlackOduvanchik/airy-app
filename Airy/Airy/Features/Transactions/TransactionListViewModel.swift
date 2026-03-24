@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 /// Dynamic category filter item for the transaction list.
 struct CategoryFilterItem: Identifiable, Equatable {
@@ -24,10 +25,13 @@ struct TransactionMonthGroup: Identifiable {
 @MainActor
 @Observable
 final class TransactionListViewModel {
+    static let shared = TransactionListViewModel()
+
     var transactions: [Transaction] = []
     var nextCursor: String?
     var hasMore = false
     var isLoading = false
+    private(set) var isLoadingMore = false
     var errorMessage: String?
 
     var searchText = "" { didSet { rebuildDerivedData() } }
@@ -36,6 +40,7 @@ final class TransactionListViewModel {
     var refreshTrigger = 0
     var pinnedIds: Set<String> = [] { didSet { rebuildDerivedData() } }
     private let pageSize = 50
+    private var isPreloaded = false
 
     // Cached derived data — rebuilt only when inputs change
     private(set) var filteredTransactions: [Transaction] = []
@@ -121,6 +126,15 @@ final class TransactionListViewModel {
         rebuildDerivedData()
     }
 
+    /// Update an edited transaction in-place without resetting pagination.
+    func updateLocally(id: String) {
+        guard let updated = LocalDataStore.shared.fetchTransaction(id: id) else { return }
+        if let idx = transactions.firstIndex(where: { $0.id == id }) {
+            transactions[idx] = updated
+            rebuildDerivedData()
+        }
+    }
+
     // MARK: - Queries
 
     func isPinned(_ tx: Transaction) -> Bool {
@@ -134,37 +148,81 @@ final class TransactionListViewModel {
         return !sameMerchant.isEmpty
     }
 
+    /// Preload the first page in the background so data is ready when the user navigates here.
+    func preload() async {
+        guard !isPreloaded else { return }
+        isPreloaded = true
+        pinnedIds = LocalDataStore.shared.pinnedTransactionIds()
+        let page = await fetchPage(limit: pageSize, offset: 0)
+        transactions = page
+        hasMore = page.count == pageSize
+        buildCategoryFilters()
+        rebuildDerivedData()
+    }
+
     /// Incrementally load remaining pages (used when a filter is active to avoid spinner stuck).
     func loadRemaining() async {
         while hasMore {
-            await MainActor.run {
-                let offset = transactions.count
-                let page = LocalDataStore.shared.fetchTransactions(limit: pageSize, offset: offset)
-                transactions.append(contentsOf: page)
-                hasMore = page.count == pageSize
-            }
+            let offset = transactions.count
+            let page = await fetchPage(limit: pageSize, offset: offset)
+            transactions.append(contentsOf: page)
+            hasMore = page.count == pageSize
         }
         rebuildDerivedData()
     }
 
     func load(append: Bool = false) async {
-        if !append { isLoading = true }
-        defer { if !append { Task { @MainActor in isLoading = false } } }
-        await MainActor.run {
-            pinnedIds = LocalDataStore.shared.pinnedTransactionIds()
-            if append {
-                let offset = transactions.count
-                let page = LocalDataStore.shared.fetchTransactions(limit: pageSize, offset: offset)
-                transactions.append(contentsOf: page)
-                hasMore = page.count == pageSize
-            } else {
-                let page = LocalDataStore.shared.fetchTransactions(limit: pageSize)
-                transactions = page
-                hasMore = page.count == pageSize
-                buildCategoryFilters()
+        let loadStart = CFAbsoluteTimeGetCurrent()
+        if append { guard !isLoadingMore else { return }; isLoadingMore = true }
+        if !append {
+            // If preloaded data exists, use it directly — no fetch needed.
+            if isPreloaded && !transactions.isEmpty {
+                isLoading = false
+                let ms = (CFAbsoluteTimeGetCurrent() - loadStart) * 1000
+                print("[Perf] TransactionListVM.load() took \(String(format: "%.1f", ms))ms (preloaded, skipped)")
+                return
             }
-            rebuildDerivedData()
+            isLoading = true
         }
+
+        pinnedIds = LocalDataStore.shared.pinnedTransactionIds()
+
+        let offset = append ? transactions.count : 0
+        let page = await fetchPage(limit: pageSize, offset: offset)
+
+        if append {
+            transactions.append(contentsOf: page)
+            hasMore = page.count == pageSize
+        } else {
+            transactions = page
+            hasMore = page.count == pageSize
+            buildCategoryFilters()
+        }
+        rebuildDerivedData()
+        if append { isLoadingMore = false }
+        if !append { isLoading = false }
+        let ms = (CFAbsoluteTimeGetCurrent() - loadStart) * 1000
+        print("[Perf] TransactionListVM.load(append: \(append)) took \(String(format: "%.1f", ms))ms (\(page.count) rows)")
+    }
+
+    /// Fetch a page of transactions on a background thread to keep the UI responsive.
+    private func fetchPage(limit: Int, offset: Int) async -> [Transaction] {
+        guard let container = LocalDataStore.shared.modelContainer else { return [] }
+        return await Task.detached {
+            let ctx = ModelContext(container)
+            var descriptor = FetchDescriptor<LocalTransaction>(
+                sortBy: [
+                    SortDescriptor(\.transactionDate, order: .reverse),
+                    SortDescriptor(\.createdAt, order: .reverse)
+                ]
+            )
+            descriptor.fetchLimit = limit
+            descriptor.fetchOffset = offset
+            descriptor.predicate = #Predicate<LocalTransaction> { tx in
+                tx.isSubscription != true
+            }
+            return (try? ctx.fetch(descriptor))?.map { $0.toTransaction() } ?? []
+        }.value
     }
 
     private func buildCategoryFilters() {

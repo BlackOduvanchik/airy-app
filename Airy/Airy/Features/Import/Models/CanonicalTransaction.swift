@@ -45,7 +45,7 @@ struct CanonicalTransaction: Equatable {
         let normalized = aliasStore.normalizeForPipeline(raw: item.merchant)
         let status: TransactionStatus = .success
         let type: TransactionType = item.isCredit ? .income : .expense
-        let isoDate = String(item.date.prefix(10))
+        let isoDate = AppFormatters.normalizeISODate(String(item.date.prefix(10)))
         return CanonicalTransaction(
             normalizedMerchant: normalized,
             amountDecimal: Decimal(item.amount),

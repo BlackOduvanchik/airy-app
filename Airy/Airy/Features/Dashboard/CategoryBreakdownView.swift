@@ -10,50 +10,65 @@ import SwiftUI
 struct CategoryBreakdownView: View {
     @Environment(ThemeProvider.self) private var theme
     var refreshId: Int = 0
+    var onBack: (() -> Void)? = nil
+    var initialMonth: Int? = nil
+    var initialYear: Int? = nil
+    var showAllYear: Bool = false
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel = CategoryBreakdownViewModel()
     @State private var selectedSegmentIndex: Int? = nil
     @State private var selectedCategoryDetail: CategoryDetailDestination? = nil
+    @State private var showPeriodPicker = false
+    @State private var pickerMonth: Int = Calendar.current.component(.month, from: Date())
+    @State private var pickerYear: Int = Calendar.current.component(.year, from: Date())
+    private static let minYear = 2020
+    private static var maxYear: Int { Calendar.current.component(.year, from: Date()) + 2 }
 
     var body: some View {
-        ZStack {
-            OnboardingGradientBackground()
-                .ignoresSafeArea()
+        GeometryReader { rootGeo in
+            let topInset = rootGeo.safeAreaInsets.top
+            ZStack(alignment: .top) {
+                OnboardingGradientBackground()
+                    .ignoresSafeArea(.container)
 
-            ScrollView {
-                VStack(spacing: 20) {
-                    chartSection
-                    if let idx = selectedSegmentIndex, idx < viewModel.segments.count {
-                        let seg = viewModel.segments[idx]
-                        Button {
-                            selectedCategoryDetail = CategoryDetailDestination(
-                                categoryId: seg.categoryId,
-                                label: seg.label,
-                                amount: seg.amount,
-                                colorHex: seg.colorHex,
-                                iconName: seg.iconName,
-                                monthKey: viewModel.monthKey,
-                                monthLabel: viewModel.monthLabel
-                            )
-                        } label: {
-                            selectedCategoryTooltip(segment: seg)
+                ScrollView {
+                    VStack(spacing: 20) {
+                        chartSection
+                        if let idx = selectedSegmentIndex, idx < viewModel.segments.count {
+                            let seg = viewModel.segments[idx]
+                            Button {
+                                print("[Tap] CategoryBreakdown → Donut segment '\(seg.label)'")
+                                selectedCategoryDetail = CategoryDetailDestination(
+                                    categoryId: seg.categoryId,
+                                    label: seg.label,
+                                    amount: seg.amount,
+                                    colorHex: seg.colorHex,
+                                    iconName: seg.iconName,
+                                    monthKey: viewModel.monthKey,
+                                    monthLabel: viewModel.monthLabel
+                                )
+                            } label: {
+                                selectedCategoryTooltip(segment: seg)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        categoryListSection
                     }
-                    categoryListSection
+                    .padding(.horizontal, 20)
+                    .padding(.top, topInset + 24)
+                    .padding(.bottom, 120)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-                .padding(.bottom, 120)
+                .scrollIndicators(.hidden)
+                .ignoresSafeArea(.container, edges: .top)
             }
-            .scrollIndicators(.hidden)
+            .ignoresSafeArea(.container, edges: .top)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button { dismiss() } label: {
+                Button { print("[Tap] CategoryBreakdown → Back"); (onBack ?? { dismiss() })() } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
                         .frame(width: 44, height: 44)
@@ -61,19 +76,49 @@ struct CategoryBreakdownView: View {
                 }
             }
             ToolbarItem(placement: .principal) {
-                Text(viewModel.monthLabel)
-                    .font(.system(size: 12, weight: .semibold))
-                    .tracking(0.5)
+                Button {
+                    pickerMonth = viewModel.currentMonth
+                    pickerYear = viewModel.currentYear
+                    showPeriodPicker = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(viewModel.monthLabel)
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(0.5)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
                     .foregroundColor(theme.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showPeriodPicker, arrowEdge: .top) {
+                    periodPickerContent
+                }
             }
         }
         .fullScreenCover(item: $selectedCategoryDetail, onDismiss: {
             Task { await viewModel.load() }
         }) { dest in
             CategoryDetailView(destination: dest)
-                .environment(theme)
+                .themed(theme)
         }
-        .task(id: refreshId) { await viewModel.load() }
+        .task {
+            print("[Nav] CategoryBreakdown (month=\(initialMonth.map(String.init) ?? "nil") year=\(initialYear.map(String.init) ?? "nil") allYear=\(showAllYear))")
+            viewModel.configure(month: initialMonth, year: initialYear, allYear: showAllYear)
+            await viewModel.load()
+        }
+        .onChange(of: showPeriodPicker) { _, isShowing in
+            if !isShowing {
+                let changed = pickerMonth != viewModel.currentMonth || pickerYear != viewModel.currentYear
+                print("[Tap] CategoryBreakdown → Period picker closed (changed=\(changed))")
+                if changed {
+                    viewModel.currentMonth = pickerMonth
+                    viewModel.currentYear = pickerYear
+                    viewModel.refreshMonthKey()
+                    Task { await viewModel.load() }
+                }
+            }
+        }
     }
 
     // MARK: - Donut Chart
@@ -223,6 +268,7 @@ struct CategoryBreakdownView: View {
             monthLabel: viewModel.monthLabel
         )
         return Button {
+            print("[Tap] CategoryBreakdown → Category '\(segment.label)'")
             selectedCategoryDetail = dest
         } label: {
             HStack(alignment: .center, spacing: 16) {
@@ -275,6 +321,44 @@ struct CategoryBreakdownView: View {
             }
         }
         .frame(height: 6)
+    }
+
+    // MARK: - Period Picker (wheel pickers, no .presentationCompactAdaptation → sheet on iPhone)
+
+    private var periodPickerContent: some View {
+        Group {
+            if showAllYear {
+                Picker("", selection: $pickerYear) {
+                    ForEach(Self.minYear...Self.maxYear, id: \.self) { y in
+                        Text(String(y)).tag(y)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(width: 120, height: 180)
+            } else {
+                HStack(spacing: 0) {
+                    Picker("", selection: $pickerMonth) {
+                        ForEach(1...12, id: \.self) { m in
+                            Text(Calendar.current.monthSymbols[m - 1]).tag(m)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(width: 140, height: 180)
+
+                    Picker("", selection: $pickerYear) {
+                        ForEach(Self.minYear...Self.maxYear, id: \.self) { y in
+                            Text(String(y)).tag(y)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(width: 90, height: 180)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .presentationDetents([.height(220)])
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Helpers
@@ -340,6 +424,51 @@ final class CategoryBreakdownViewModel {
     var transactionsByCategory: [String: [Transaction]] = [:]
     var isLoading = true
 
+    // Parameterized period support
+    var currentMonth: Int = Calendar.current.component(.month, from: Date())
+    var currentYear: Int = Calendar.current.component(.year, from: Date())
+    var showAllYear: Bool = false
+
+    func configure(month: Int?, year: Int?, allYear: Bool) {
+        print("[CategoryBreakdownVM] configure: month=\(String(describing: month)) year=\(String(describing: year)) allYear=\(allYear)")
+        currentMonth = month ?? Calendar.current.component(.month, from: Date())
+        currentYear = year ?? Calendar.current.component(.year, from: Date())
+        showAllYear = allYear
+        refreshMonthKey()
+    }
+
+    func prevMonth() {
+        if showAllYear {
+            currentYear -= 1
+        } else if currentMonth == 1 {
+            currentYear -= 1; currentMonth = 12
+        } else {
+            currentMonth -= 1
+        }
+        refreshMonthKey()
+    }
+
+    func nextMonth() {
+        if showAllYear {
+            currentYear += 1
+        } else if currentMonth == 12 {
+            currentYear += 1; currentMonth = 1
+        } else {
+            currentMonth += 1
+        }
+        refreshMonthKey()
+    }
+
+    func refreshMonthKey() {
+        let oldKey = monthKey
+        if showAllYear {
+            monthKey = "\(currentYear)"
+        } else {
+            monthKey = String(format: "%d-%02d", currentYear, currentMonth)
+        }
+        print("[CategoryBreakdownVM] refreshMonthKey: \(oldKey) → \(monthKey)")
+    }
+
     private let fallbackColors: [Color] = [
         OnboardingDesign.accentGreen,
         OnboardingDesign.accentBlue,
@@ -348,24 +477,30 @@ final class CategoryBreakdownViewModel {
     ]
 
     func load() async {
+        let perfStart = CFAbsoluteTimeGetCurrent()
         isLoading = true
-        defer { Task { @MainActor in isLoading = false } }
+        print("[CategoryBreakdownVM] load() start: showAllYear=\(showAllYear) month=\(currentMonth) year=\(currentYear)")
         await MainActor.run {
-            let cal = Calendar.current
-            let now = Date()
-            let year = cal.component(.year, from: now)
-            let month = cal.component(.month, from: now)
-            let monthStr = String(format: "%02d", month)
-            let yearStr = String(year)
-
-            var comp = DateComponents()
-            comp.year = year
-            comp.month = month
-            comp.day = 1
-            monthKey = String(format: "%d-%02d", year, month)
-            monthLabel = (Calendar.current.date(from: comp).map { AppFormatters.monthYear.string(from: $0) }) ?? "\(month)/\(year)"
-
-            let transactions = LocalDataStore.shared.fetchTransactions(limit: 500, month: monthStr, year: yearStr)
+            let transactions: [Transaction]
+            if showAllYear {
+                print("[CategoryBreakdownVM] Fetching all-year: \(currentYear)-01-01 to \(currentYear)-12-31")
+                transactions = LocalDataStore.shared.fetchTransactions(
+                    from: "\(currentYear)-01-01", to: "\(currentYear)-12-31"
+                )
+                monthKey = "\(currentYear)"
+                monthLabel = "\(currentYear)"
+            } else {
+                let monthStr = String(format: "%02d", currentMonth)
+                let yearStr = String(currentYear)
+                transactions = LocalDataStore.shared.fetchTransactions(limit: 500, month: monthStr, year: yearStr)
+                monthKey = String(format: "%d-%02d", currentYear, currentMonth)
+                var comp = DateComponents()
+                comp.year = currentYear
+                comp.month = currentMonth
+                comp.day = 1
+                monthLabel = (Calendar.current.date(from: comp).map { AppFormatters.monthYear.string(from: $0) }) ?? "\(currentMonth)/\(currentYear)"
+            }
+            print("[CategoryBreakdownVM] Fetched \(transactions.count) transactions for monthKey=\(monthKey)")
             let nonSubExpenseMerchants = Set(transactions.filter { $0.type.lowercased() != "income" && $0.isSubscription != true }.map { $0.merchant ?? "" })
             let expenseOnly = transactions.filter { tx in
                 guard tx.type.lowercased() != "income" else { return false }
@@ -391,6 +526,8 @@ final class CategoryBreakdownViewModel {
             guard totalSpent > 0 else {
                 segments = []
                 transactionsByCategory = [:]
+                let perfEnd = CFAbsoluteTimeGetCurrent()
+                print("[Perf] CategoryBreakdownVM.load() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms (\(expenseOnly.count) transactions, 0 segments)")
                 return
             }
 
@@ -434,10 +571,14 @@ final class CategoryBreakdownViewModel {
                     endAngle: .degrees(end)
                 )
             })
+            print("[CategoryBreakdownVM] Built \(newSegments.count) segments, total=\(totalSpent)")
             withAnimation(.easeInOut(duration: 0.35)) {
                 segments = newSegments
                 transactionsByCategory = byCatTx
             }
+            isLoading = false
+            let perfEnd = CFAbsoluteTimeGetCurrent()
+            print("[Perf] CategoryBreakdownVM.load() took \(String(format: "%.1f", (perfEnd - perfStart) * 1000))ms (\(expenseOnly.count) transactions, \(newSegments.count) segments)")
         }
     }
 

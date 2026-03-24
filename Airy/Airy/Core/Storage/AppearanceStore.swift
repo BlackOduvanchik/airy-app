@@ -7,6 +7,20 @@
 
 import SwiftUI
 
+// MARK: - Appearance Mode
+
+enum AppearanceMode: String, CaseIterable {
+    case light, dark, auto
+
+    @MainActor var displayName: String {
+        switch self {
+        case .light: L("appearance_mode_light")
+        case .dark: L("appearance_mode_dark")
+        case .auto: L("appearance_mode_auto")
+        }
+    }
+}
+
 // MARK: - Color Theme
 
 enum ColorTheme: String, CaseIterable {
@@ -14,6 +28,18 @@ enum ColorTheme: String, CaseIterable {
     case roseQuartz, lavenderHaze, mintFresh, peachCream
     case electricViolet, berryBlast, coralReef, tropicalTeal
     case snowWhite, warmSand, charcoal, forestNight
+
+    var isDark: Bool {
+        switch self {
+        case .midnightDark, .electricViolet, .berryBlast, .charcoal, .forestNight: true
+        default: false
+        }
+    }
+
+    static var lightThemes: [ColorTheme] { allCases.filter { !$0.isDark } }
+    static var darkThemes: [ColorTheme] { allCases.filter { $0.isDark } }
+    static var featuredLight: [ColorTheme] { [.sageMist, .oceanBlue, .sunsetGlow] }
+    static var featuredDark: [ColorTheme] { [.midnightDark, .electricViolet, .charcoal] }
 
     static var featured: [ColorTheme] { [.sageMist, .oceanBlue, .sunsetGlow] }
 
@@ -424,10 +450,49 @@ enum AppearanceStore {
     private static let expenseKey = "airy_expenseColorHex"
     private static let incomeFormatKey = "airy_incomeFormat"
     private static let expenseFormatKey = "airy_expenseFormat"
+    private static let modeKey = "airy_appearanceMode"
+    private static let lightThemeKey = "airy_lightTheme"
+    private static let darkThemeKey = "airy_darkTheme"
 
     static var colorTheme: ColorTheme {
         get { ColorTheme(rawValue: UserDefaults.standard.string(forKey: themeKey) ?? "") ?? .sageMist }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: themeKey) }
+    }
+
+    static var appearanceMode: AppearanceMode {
+        get {
+            if let raw = UserDefaults.standard.string(forKey: modeKey),
+               let mode = AppearanceMode(rawValue: raw) {
+                return mode
+            }
+            // Migration: derive from current theme
+            return colorTheme.isDark ? .dark : .light
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: modeKey) }
+    }
+
+    static var lightTheme: ColorTheme {
+        get {
+            if let raw = UserDefaults.standard.string(forKey: lightThemeKey),
+               let theme = ColorTheme(rawValue: raw) {
+                return theme
+            }
+            let current = colorTheme
+            return current.isDark ? .sageMist : current
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: lightThemeKey) }
+    }
+
+    static var darkTheme: ColorTheme {
+        get {
+            if let raw = UserDefaults.standard.string(forKey: darkThemeKey),
+               let theme = ColorTheme(rawValue: raw) {
+                return theme
+            }
+            let current = colorTheme
+            return current.isDark ? current : .midnightDark
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: darkThemeKey) }
     }
 
     static var navigationType: NavigationType {

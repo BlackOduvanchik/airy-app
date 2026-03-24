@@ -63,18 +63,18 @@ struct ManageCategoriesView: View {
         .onAppear { categories = CategoryStore.load() }
         .sheet(isPresented: $showFromPicker) {
             categoryPickerSheet(selected: $fromCategoryId, excluding: toCategoryId)
-                .environment(theme)
+                .themed(theme)
         }
         .sheet(isPresented: $showToPicker) {
             categoryPickerSheet(selected: $toCategoryId, excluding: fromCategoryId)
-                .environment(theme)
+                .themed(theme)
         }
         .sheet(isPresented: $showNewCategory) {
             NewCategorySheetView(onCreate: { cat in
                 CategoryStore.add(cat)
                 categories = CategoryStore.load()
             })
-            .environment(theme)
+            .themed(theme)
         }
         .sheet(isPresented: $showNewSubcategory) {
             NewSubcategorySheetView(
@@ -84,7 +84,7 @@ struct ManageCategoriesView: View {
                     SubcategoryStore.add(sub)
                 }
             )
-            .environment(theme)
+            .themed(theme)
         }
         .sensoryFeedback(.success, trigger: showMoveSuccess)
     }

@@ -60,6 +60,7 @@ struct AnalyzingTransactionsView: View {
             .padding(.bottom, 40)
         }
         .onAppear {
+            print("[Nav] AnalyzingTransactions")
             extractedItems = importViewModel.liveExtractedItems
             visibleItemCount = extractedItems.count
             startStatusPhraseCycling()

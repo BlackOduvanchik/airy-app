@@ -7,6 +7,107 @@
 
 import SwiftUI
 
+// MARK: - Equatable grid wrapper — lets SwiftUI skip the entire 360-card tree in one == check
+
+private struct IconGrid: View, Equatable {
+    let sectionNames: [String]
+    let sectionSymbols: [[String]]
+    let selectedIcon: String
+    let isDark: Bool
+    let accentGreen: Color
+    let textPrimary: Color
+    let textTertiary: Color
+    let columns: [GridItem]
+    let onSelect: (String) -> Void
+
+    static func == (lhs: IconGrid, rhs: IconGrid) -> Bool {
+        lhs.sectionNames == rhs.sectionNames &&
+        lhs.sectionSymbols == rhs.sectionSymbols &&
+        lhs.selectedIcon == rhs.selectedIcon &&
+        lhs.isDark == rhs.isDark &&
+        lhs.accentGreen == rhs.accentGreen &&
+        lhs.textPrimary == rhs.textPrimary &&
+        lhs.textTertiary == rhs.textTertiary
+    }
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 12) {
+            ForEach(Array(sectionNames.enumerated()), id: \.element) { idx, name in
+                Section {
+                    ForEach(sectionSymbols[idx], id: \.self) { symbol in
+                        IconCard(
+                            symbol: symbol,
+                            isSelected: selectedIcon == symbol,
+                            isDark: isDark,
+                            accentGreen: accentGreen,
+                            textPrimary: textPrimary,
+                            onSelect: onSelect
+                        )
+                    }
+                } header: {
+                    Text(name.uppercased())
+                        .font(.system(size: 12, weight: .heavy))
+                        .tracking(0.1)
+                        .foregroundColor(textTertiary)
+                        .padding(.leading, 4)
+                        .padding(.top, 20)
+                        .padding(.bottom, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Single icon card — Equatable so body is skipped when nothing changed
+
+private struct IconCard: View, Equatable {
+    let symbol: String
+    let isSelected: Bool
+    let isDark: Bool
+    let accentGreen: Color
+    let textPrimary: Color
+    let onSelect: (String) -> Void
+
+    static func == (lhs: IconCard, rhs: IconCard) -> Bool {
+        lhs.symbol == rhs.symbol &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.isDark == rhs.isDark &&
+        lhs.accentGreen == rhs.accentGreen &&
+        lhs.textPrimary == rhs.textPrimary
+    }
+
+    var body: some View {
+        Button { onSelect(symbol) } label: {
+            Group {
+                if SFSymbolsCatalog.isLetter(symbol) {
+                    Text(SFSymbolsCatalog.letterValue(symbol))
+                        .font(.system(size: 22, weight: .bold))
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 24, weight: .medium))
+                }
+            }
+            .foregroundColor(isSelected ? accentGreen : textPrimary)
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1, contentMode: .fit)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(isSelected
+                          ? Color.white.opacity(isDark ? 0.15 : 1)
+                          : Color.white.opacity(isDark ? 0.06 : 0.5))
+                    .stroke(isSelected
+                            ? accentGreen
+                            : Color.white.opacity(isDark ? 0.10 : 0.8),
+                            lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Main view
+
 struct IconLibraryView: View {
     @Environment(ThemeProvider.self) private var theme
     @Binding var selectedIcon: String
@@ -16,36 +117,45 @@ struct IconLibraryView: View {
     @State private var searchText = ""
     @State private var debouncedSearch = ""
     @State private var selectedTab = "All"
+    @State private var sectionNames: [String] = []
+    @State private var sectionSymbols: [[String]] = []
 
     private let tabIds = ["All"] + SFSymbolsCatalog.categoryOrder
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
 
-    private var filteredBySearch: [String: [String]] {
+    private func refilter() {
         let q = debouncedSearch.trimmingCharacters(in: .whitespaces).lowercased()
+        let data: [String: [String]]
         if q.isEmpty {
-            return SFSymbolsCatalog.byCategory
-        }
-        var result: [String: [String]] = [:]
-        for (cat, symbols) in SFSymbolsCatalog.byCategory {
-            let filtered = symbols.filter { $0.lowercased().contains(q) }
-            if !filtered.isEmpty {
-                result[cat] = filtered
+            data = SFSymbolsCatalog.byCategory
+        } else {
+            var result: [String: [String]] = [:]
+            for (cat, symbols) in SFSymbolsCatalog.byCategory {
+                let filtered = symbols.filter {
+                    $0.lowercased().contains(q) ||
+                    (SFSymbolsCatalog.searchKeywordsLowercased[$0]?.contains(q) == true)
+                }
+                if !filtered.isEmpty {
+                    result[cat] = filtered
+                }
             }
+            data = result
         }
-        return result
-    }
-
-    private var sectionsToShow: [(name: String, symbols: [String])] {
-        let data = filteredBySearch
+        var names: [String] = []
+        var symbols: [[String]] = []
         if selectedTab == "All" {
-            return SFSymbolsCatalog.categoryOrder.compactMap { cat in
-                guard let symbols = data[cat], !symbols.isEmpty else { return nil }
-                return (cat, symbols)
+            for cat in SFSymbolsCatalog.categoryOrder {
+                if let s = data[cat], !s.isEmpty {
+                    names.append(cat)
+                    symbols.append(s)
+                }
             }
+        } else if let s = data[selectedTab], !s.isEmpty {
+            names = [selectedTab]
+            symbols = [s]
         }
-        guard let symbols = data[selectedTab], !symbols.isEmpty else {
-            return []
-        }
-        return [(selectedTab, symbols)]
+        sectionNames = names
+        sectionSymbols = symbols
     }
 
     var body: some View {
@@ -54,14 +164,21 @@ struct IconLibraryView: View {
                 searchSection
                 tabsSection
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 32) {
-                        ForEach(sectionsToShow, id: \.name) { section in
-                            sectionView(title: section.name, symbols: section.symbols)
-                        }
-                    }
+                    IconGrid(
+                        sectionNames: sectionNames,
+                        sectionSymbols: sectionSymbols,
+                        selectedIcon: selectedIcon,
+                        isDark: theme.isDark,
+                        accentGreen: theme.accentGreen,
+                        textPrimary: theme.textPrimary,
+                        textTertiary: theme.textTertiary,
+                        columns: columns,
+                        onSelect: { selectedIcon = $0 }
+                    )
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                 }
+                .scrollDismissesKeyboard(.interactively)
 
                 Button {
                     onDismiss()
@@ -105,7 +222,9 @@ struct IconLibraryView: View {
                 }
             }
         }
-        .presentationDragIndicator(.visible)
+        .onAppear { refilter() }
+        .onChange(of: debouncedSearch) { refilter() }
+        .onChange(of: selectedTab) { refilter() }
         .task(id: searchText) {
             try? await Task.sleep(for: .milliseconds(300))
             debouncedSearch = searchText
@@ -157,53 +276,6 @@ struct IconLibraryView: View {
             .padding(.horizontal, 20)
         }
         .padding(.bottom, 16)
-    }
-
-    private func sectionView(title: String, symbols: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(title.uppercased())
-                .font(.system(size: 12, weight: .heavy))
-                .tracking(0.1)
-                .foregroundColor(theme.textTertiary)
-                .padding(.leading, 4)
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5), spacing: 12) {
-                ForEach(symbols, id: \.self) { symbol in
-                    iconCard(symbol: symbol)
-                }
-            }
-        }
-    }
-
-    private func iconCard(symbol: String) -> some View {
-        let isSelected = selectedIcon == symbol
-        return Button {
-            selectedIcon = symbol
-        } label: {
-            Group {
-                if SFSymbolsCatalog.isLetter(symbol) {
-                    Text(SFSymbolsCatalog.letterValue(symbol))
-                        .font(.system(size: 22, weight: .bold))
-                } else {
-                    Image(systemName: symbol)
-                        .font(.system(size: 24, weight: .medium))
-                }
-            }
-            .foregroundColor(isSelected ? theme.accentGreen : theme.textPrimary)
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(isSelected ? Color.white.opacity(theme.isDark ? 0.15 : 1) : Color.white.opacity(theme.isDark ? 0.06 : 0.5))
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? theme.accentGreen : Color.white.opacity(theme.isDark ? 0.10 : 0.8), lineWidth: 1)
-            )
-            .shadow(color: isSelected ? theme.accentGreen.opacity(0.1) : .clear, radius: 16, x: 0, y: 4)
-        }
-        .buttonStyle(.plain)
     }
 }
 

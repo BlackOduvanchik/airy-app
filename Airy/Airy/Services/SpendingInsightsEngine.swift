@@ -410,6 +410,28 @@ final class SpendingInsightsEngine {
 
         let totalTxCount = thisMonthTxs.count + (byMonth[lastMonthKey] ?? []).count
 
+        // MARK: Weekly cumulative spend (for trend chart)
+
+        let weekBounds = [7, 14, 21, daysInMonth]
+
+        func weeklyCumulative(txs: [LocalTransaction]) -> [Double] {
+            var cumulative = 0.0
+            var result: [Double] = []
+            var txIdx = 0
+            let sorted = txs.sorted { ($0.transactionDate) < ($1.transactionDate) }
+            for bound in weekBounds {
+                while txIdx < sorted.count, let day = dayComponent(from: sorted[txIdx].transactionDate), day <= bound {
+                    cumulative += amountInBase(sorted[txIdx])
+                    txIdx += 1
+                }
+                result.append(cumulative)
+            }
+            return result
+        }
+
+        let weeklySpendThisMonth = weeklyCumulative(txs: thisMonthTxs)
+        let weeklySpendLastMonth = weeklyCumulative(txs: byMonth[lastMonthKey] ?? [])
+
         // MARK: - Build Snapshot
 
         return SpendingSnapshot(
@@ -477,13 +499,19 @@ final class SpendingInsightsEngine {
             lastMonthSavings: lastMonthSavings,
             // Calendar
             dayOfMonth: dayOfMonth,
-            daysInMonth: daysInMonth
+            daysInMonth: daysInMonth,
+            // Weekly cumulative
+            weeklySpendThisMonth: weeklySpendThisMonth,
+            weeklySpendLastMonth: weeklySpendLastMonth
         )
     }
 
     // MARK: - Text Generation
 
-    func generateSummaryText(_ s: SpendingSnapshot) -> String {
+    /// Wraps a value in markdown bold markers for rendering in Text(.init(...))
+    private func B(_ s: String) -> String { "**\(s)**" }
+
+    func generateSummaryText(_ s: SpendingSnapshot, offset: Int = 0) -> String {
         // Graduated fallbacks
         if s.txCountThisMonth == 0 && s.totalTransactionCount == 0 {
             return L("insight_no_spending")
@@ -530,9 +558,9 @@ final class SpendingInsightsEngine {
         if s.lastWeekSpent > 0 {
             let pct = Int(abs(s.weekDeltaPercent).rounded())
             if s.weekDeltaPercent < -5 {
-                candidates.append(InsightCandidate(priority: abs(s.weekDeltaPercent), text: L("insight_week_down", "\(pct)"), tag: "pace"))
+                candidates.append(InsightCandidate(priority: abs(s.weekDeltaPercent), text: L("insight_week_down", B("\(pct)")), tag: "pace"))
             } else if s.weekDeltaPercent > 10 {
-                candidates.append(InsightCandidate(priority: s.weekDeltaPercent, text: L("insight_week_up", "\(pct)"), tag: "pace"))
+                candidates.append(InsightCandidate(priority: s.weekDeltaPercent, text: L("insight_week_up", B("\(pct)")), tag: "pace"))
             }
         }
 
@@ -540,9 +568,9 @@ final class SpendingInsightsEngine {
         if s.lastMonthSpent > 0 {
             let pct = Int(abs(s.monthDeltaPercent).rounded())
             if s.monthDeltaPercent < -5 {
-                candidates.append(InsightCandidate(priority: abs(s.monthDeltaPercent) * 0.8, text: L("insight_month_down", "\(pct)"), tag: "pace"))
+                candidates.append(InsightCandidate(priority: abs(s.monthDeltaPercent) * 0.8, text: L("insight_month_down", B("\(pct)")), tag: "pace"))
             } else if s.monthDeltaPercent > 10 {
-                candidates.append(InsightCandidate(priority: s.monthDeltaPercent * 0.8, text: L("insight_month_up", "\(pct)"), tag: "pace"))
+                candidates.append(InsightCandidate(priority: s.monthDeltaPercent * 0.8, text: L("insight_month_up", B("\(pct)")), tag: "pace"))
             }
         }
 
@@ -551,7 +579,7 @@ final class SpendingInsightsEngine {
         // ──────────────────────────────────────
 
         if s.topCategoryShare > 0.45, let name = s.topCategoryName {
-            candidates.append(InsightCandidate(priority: 28, text: L("insight_concentration_cat", name), tag: "concentration"))
+            candidates.append(InsightCandidate(priority: 28, text: L("insight_concentration_cat", B(name)), tag: "concentration"))
         }
 
         if s.top2CategoriesShare > 0.7 && s.topCategoryShare <= 0.45 {
@@ -561,13 +589,14 @@ final class SpendingInsightsEngine {
         for (catId, conc) in s.topMerchantShareInCategory {
             if conc.share > 0.6 && conc.merchant != "Unknown" {
                 let catName = CategoryIconHelper.displayName(categoryId: catId)
-                candidates.append(InsightCandidate(priority: 20, text: L("insight_cat_merchant", catName, conc.merchant), tag: "concentration"))
+                candidates.append(InsightCandidate(priority: 20, text: L("insight_cat_merchant", B(catName), B(conc.merchant)), tag: "concentration"))
                 break
             }
         }
 
         if s.topMerchantShareTotal > 0.25, let name = s.topMerchantNameTotal, name != "Unknown" {
-            candidates.append(InsightCandidate(priority: 18, text: L("insight_one_merchant"), tag: "concentration"))
+            let pct = Int((s.topMerchantShareTotal * 100).rounded())
+            candidates.append(InsightCandidate(priority: 18, text: L("insight_one_merchant", B(name), B("\(pct)")), tag: "concentration"))
         }
 
         // ──────────────────────────────────────
@@ -576,15 +605,16 @@ final class SpendingInsightsEngine {
 
         if s.txCountLast3MonthAvg > 0 {
             let ratio = Double(s.txCountThisMonth) / s.txCountLast3MonthAvg
+            let avg3 = Int(s.txCountLast3MonthAvg.rounded())
             if ratio > 1.25 {
-                candidates.append(InsightCandidate(priority: 22, text: L("insight_more_frequent"), tag: "habit"))
+                candidates.append(InsightCandidate(priority: 22, text: L("insight_more_frequent", B("\(s.txCountThisMonth)"), B("\(avg3)")), tag: "habit"))
             } else if ratio < 0.8 {
-                candidates.append(InsightCandidate(priority: 18, text: L("insight_less_frequent"), tag: "habit"))
+                candidates.append(InsightCandidate(priority: 18, text: L("insight_less_frequent", B("\(s.txCountThisMonth)"), B("\(avg3)")), tag: "habit"))
             }
         }
 
         if s.topFrequentMerchantCount >= 5, let merchant = s.topFrequentMerchant, merchant != "Unknown" {
-            candidates.append(InsightCandidate(priority: 20, text: L("insight_returning", merchant), tag: "habit"))
+            candidates.append(InsightCandidate(priority: 20, text: L("insight_returning", B(merchant)), tag: "habit"))
         }
 
         // Category frequency spike with small amounts
@@ -593,7 +623,7 @@ final class SpendingInsightsEngine {
                 if let conc = s.topMerchantShareInCategory[catId] {
                     let catName = CategoryIconHelper.displayName(categoryId: catId)
                     if conc.share < 0.8 {
-                        candidates.append(InsightCandidate(priority: 24, text: L("insight_small_adding", catName), tag: "habit"))
+                        candidates.append(InsightCandidate(priority: 24, text: L("insight_small_adding", B(catName)), tag: "habit"))
                         break
                     }
                 }
@@ -605,22 +635,35 @@ final class SpendingInsightsEngine {
         // ──────────────────────────────────────
 
         if s.smallTxShare > 0.35 && s.smallTxCount >= 5 {
-            candidates.append(InsightCandidate(priority: 26, text: L("insight_small_share"), tag: "habit"))
+            let pct = Int((s.smallTxShare * 100).rounded())
+            let avgSmall = fmt.string(from: NSNumber(value: s.avgTicketThisMonth)) ?? "$0"
+            let topSmallMerchant = s.topFrequentMerchant ?? ""
+            if !topSmallMerchant.isEmpty && topSmallMerchant != "Unknown" {
+                candidates.append(InsightCandidate(priority: 26, text: L("insight_small_share", B("\(pct)"), B(topSmallMerchant), B(avgSmall)), tag: "habit"))
+            } else {
+                candidates.append(InsightCandidate(priority: 26, text: L("insight_small_share_no_merchant", B("\(pct)"), B(avgSmall)), tag: "habit"))
+            }
         }
 
         if s.avgTicketLast3Month > 0 && s.avgTicketThisMonth < s.avgTicketLast3Month * 0.85 && s.thisMonthSpent > s.last3MonthAvgSpend {
-            candidates.append(InsightCandidate(priority: 28, text: L("insight_small_more"), tag: "habit"))
+            let avgNow = fmt.string(from: NSNumber(value: s.avgTicketThisMonth)) ?? "$0"
+            let avgBefore = fmt.string(from: NSNumber(value: s.avgTicketLast3Month)) ?? "$0"
+            candidates.append(InsightCandidate(priority: 28, text: L("insight_small_more", B(avgNow), B(avgBefore)), tag: "habit"))
         }
 
         if s.avgTicketLast3Month > 0 && s.avgTicketThisMonth > s.avgTicketLast3Month * 1.15 && s.txCountLast3MonthAvg > 0 {
             let countRatio = Double(s.txCountThisMonth) / s.txCountLast3MonthAvg
             if countRatio > 0.85 && countRatio < 1.15 {
-                candidates.append(InsightCandidate(priority: 21, text: L("insight_avg_higher"), tag: "habit"))
+                let avgNow = fmt.string(from: NSNumber(value: s.avgTicketThisMonth)) ?? "$0"
+                let avgBefore = fmt.string(from: NSNumber(value: s.avgTicketLast3Month)) ?? "$0"
+                candidates.append(InsightCandidate(priority: 21, text: L("insight_avg_higher", B(avgNow), B(avgBefore)), tag: "habit"))
             }
         }
 
         if s.medianTicketLast3Month > 0 && s.medianTicketThisMonth > s.medianTicketLast3Month * 1.2 {
-            candidates.append(InsightCandidate(priority: 20, text: L("insight_avg_increased"), tag: "habit"))
+            let medNow = fmt.string(from: NSNumber(value: s.medianTicketThisMonth)) ?? "$0"
+            let medBefore = fmt.string(from: NSNumber(value: s.medianTicketLast3Month)) ?? "$0"
+            candidates.append(InsightCandidate(priority: 20, text: L("insight_avg_increased", B(medNow), B(medBefore)), tag: "habit"))
         }
 
         // ──────────────────────────────────────
@@ -633,7 +676,7 @@ final class SpendingInsightsEngine {
 
         if s.subscriptionTrend.newSubsCount > 0 {
             let n = s.subscriptionTrend.newSubsCount
-            candidates.append(InsightCandidate(priority: 29, text: L("insight_new_subs", "\(n)", n == 1 ? "" : "s"), tag: "subscriptions"))
+            candidates.append(InsightCandidate(priority: 29, text: L("insight_new_subs", B("\(n)"), n == 1 ? "" : "s"), tag: "subscriptions"))
         }
 
         if s.upcomingBillsNext7Days > 0 && s.safeToSpend > 0 && s.upcomingBillsNext7Days > s.safeToSpend {
@@ -657,13 +700,16 @@ final class SpendingInsightsEngine {
         }
 
         if s.anomalyCount >= 2 {
-            candidates.append(InsightCandidate(priority: 26, text: L("insight_outliers"), tag: "risk"))
+            let topAnomalies = s.merchantAnomalies.prefix(2).map { B($0.merchant) }
+            let names = topAnomalies.joined(separator: ", ")
+            let topAmount = fmt.string(from: NSNumber(value: s.merchantAnomalies.first?.currentSpent ?? 0)) ?? "$0"
+            candidates.append(InsightCandidate(priority: 26, text: L("insight_outliers", names, B(topAmount)), tag: "risk"))
         }
 
         // Category up > 25% with merchant anomaly
         if let topUp = significantDeltas.first(where: { $0.deltaPercent > 25 }),
            let anomaly = s.merchantAnomalies.first(where: { $0.category == topUp.id }) {
-            candidates.append(InsightCandidate(priority: 34, text: L("insight_spike", topUp.name, anomaly.merchant), tag: "risk"))
+            candidates.append(InsightCandidate(priority: 34, text: L("insight_spike", B(topUp.name), B(anomaly.merchant)), tag: "risk"))
         }
 
         if s.avgWeeklySpend8Weeks > 0 && s.thisWeekSpent > s.avgWeeklySpend8Weeks * 1.4 {
@@ -679,7 +725,7 @@ final class SpendingInsightsEngine {
         }
 
         if let topDown = s.categoryDeltas.first(where: { $0.deltaPercent < -15 && $0.lastMonth > 0 }) {
-            candidates.append(InsightCandidate(priority: 25, text: L("insight_cooled_off", topDown.name), tag: "stability"))
+            candidates.append(InsightCandidate(priority: 25, text: L("insight_cooled_off", B(topDown.name)), tag: "stability"))
         }
 
         if s.anomalyCount == 0 && s.lastMonthSpent > 0 && abs(s.monthDeltaPercent) < 5 {
@@ -696,7 +742,7 @@ final class SpendingInsightsEngine {
 
         // Projected savings
         if s.projectedMonthlySavings > 50 && s.thisMonthIncome > 0 {
-            candidates.append(InsightCandidate(priority: 40, text: L("insight_on_track", fmt.string(from: NSNumber(value: s.projectedMonthlySavings)) ?? "$0"), tag: "stability"))
+            candidates.append(InsightCandidate(priority: 40, text: L("insight_on_track", B(fmt.string(from: NSNumber(value: s.projectedMonthlySavings)) ?? "$0")), tag: "stability"))
         }
 
         // Stable spending (low priority fallback)
@@ -722,12 +768,12 @@ final class SpendingInsightsEngine {
 
         // Safe to spend (weekends)
         if (weekday >= 6 || weekday == 1) && s.safeToSpend > 0 {
-            candidates.append(InsightCandidate(priority: 35, text: L("insight_safe_weekend", fmt.string(from: NSNumber(value: s.safeToSpend)) ?? "$0"), tag: "calendar"))
+            candidates.append(InsightCandidate(priority: 35, text: L("insight_safe_weekend", B(fmt.string(from: NSNumber(value: s.safeToSpend)) ?? "$0")), tag: "calendar"))
         }
 
         // Weekend vs weekday pattern (non-calendar-specific)
         if s.weekendAvgSpend > 0 && s.weekdayAvgSpend > 0 && s.weekendAvgSpend > s.weekdayAvgSpend * 1.5 {
-            candidates.append(InsightCandidate(priority: 25, text: L("insight_weekend_vs_weekday", fmt.string(from: NSNumber(value: s.weekendAvgSpend)) ?? "$0", fmt.string(from: NSNumber(value: s.weekdayAvgSpend)) ?? "$0"), tag: "habit"))
+            candidates.append(InsightCandidate(priority: 25, text: L("insight_weekend_vs_weekday", B(fmt.string(from: NSNumber(value: s.weekendAvgSpend)) ?? "$0"), B(fmt.string(from: NSNumber(value: s.weekdayAvgSpend)) ?? "$0")), tag: "habit"))
         }
 
         // ──────────────────────────────────────
@@ -738,14 +784,14 @@ final class SpendingInsightsEngine {
         let catsUp = s.categoryDeltas.filter { $0.deltaPercent > 15 && $0.lastMonth > 0 }
 
         if let down = catsDown.first, let up = catsUp.first {
-            candidates.append(InsightCandidate(priority: 24, text: L("insight_less_more", down.name, up.name), tag: "category"))
+            candidates.append(InsightCandidate(priority: 24, text: L("insight_less_more", B(down.name), B(up.name)), tag: "category"))
         }
 
         if significantDeltas.count >= 2 {
             let growing = significantDeltas.filter { $0.deltaPercent > 0 }.first
             let shrinking = significantDeltas.filter { $0.deltaPercent < 0 }.first
             if let g = growing, let sh = shrinking {
-                candidates.append(InsightCandidate(priority: 23, text: L("insight_rose_cooled", g.name, sh.name), tag: "category"))
+                candidates.append(InsightCandidate(priority: 23, text: L("insight_rose_cooled", B(g.name), B(sh.name)), tag: "category"))
             }
         }
 
@@ -753,17 +799,19 @@ final class SpendingInsightsEngine {
         if let top = significantDeltas.first {
             let dir = top.deltaPercent < 0 ? L("direction_down") : L("direction_up")
             let pct = Int(abs(top.deltaPercent).rounded())
-            candidates.append(InsightCandidate(priority: abs(top.deltaPercent) * 0.7, text: L("insight_cat_direction", top.name, dir, "\(pct)"), tag: "category"))
+            candidates.append(InsightCandidate(priority: abs(top.deltaPercent) * 0.7, text: L("insight_cat_direction", B(top.name), dir, B("\(pct)")), tag: "category"))
         }
 
-        // Two category shifts combined
+        // Two category shifts combined (only when they move in opposite directions)
         if significantDeltas.count >= 2 {
             let a = significantDeltas[0]
             let b = significantDeltas[1]
-            let aDir = a.deltaPercent < 0 ? L("direction_down") : L("direction_up")
-            let bDir = b.deltaPercent < 0 ? L("direction_down") : L("direction_slightly_higher")
-            candidates.append(InsightCandidate(priority: abs(a.deltaPercent) * 0.6,
-                text: L("insight_cat_direction_but", a.name, aDir, "\(Int(abs(a.deltaPercent)))", b.name.lowercased(), bDir), tag: "category"))
+            if (a.deltaPercent > 0) != (b.deltaPercent > 0) {
+                let aDir = a.deltaPercent < 0 ? L("direction_down") : L("direction_up")
+                let bDir = b.deltaPercent < 0 ? L("direction_slightly_lower") : L("direction_slightly_higher")
+                candidates.append(InsightCandidate(priority: abs(a.deltaPercent) * 0.6,
+                    text: L("insight_cat_direction_but", B(a.name), aDir, B("\(Int(abs(a.deltaPercent)))"), B(b.name.lowercased()), bDir), tag: "category"))
+            }
         }
 
         if s.categoryDeltas.count >= 3 {
@@ -778,13 +826,13 @@ final class SpendingInsightsEngine {
         // ──────────────────────────────────────
 
         if let streak = s.repeatedMerchantStreak, streak.days >= 3 {
-            candidates.append(InsightCandidate(priority: 18, text: L("insight_merchant_often", streak.merchant), tag: "merchant"))
+            candidates.append(InsightCandidate(priority: 18, text: L("insight_merchant_often", B(streak.merchant)), tag: "merchant"))
         }
 
         // Top merchant in shifted category
         if let topCatDelta = significantDeltas.first(where: { abs($0.deltaPercent) > 15 }),
            let topMerch = s.topMerchantByCategory[topCatDelta.id] {
-            candidates.append(InsightCandidate(priority: 20, text: L("insight_cat_higher_merchant", topCatDelta.name, topMerch.merchant), tag: "merchant"))
+            candidates.append(InsightCandidate(priority: 20, text: L("insight_cat_higher_merchant", B(topCatDelta.name), B(topMerch.merchant)), tag: "merchant"))
         }
 
         if s.newMerchantCount > 0 {
@@ -807,7 +855,7 @@ final class SpendingInsightsEngine {
         // Combined with day-of-month so each slot+day is unique
         let hour = cal.component(.hour, from: Date())
         let slot = hour / 8                         // 0, 1, or 2
-        let rotationSeed = s.dayOfMonth * 3 + slot  // unique per slot per day
+        let rotationSeed = s.dayOfMonth * 3 + slot + offset  // unique per slot per day per caller
 
         // Build valid (primary, secondary) pairs from top candidates
         // then pick pair based on rotationSeed
@@ -870,8 +918,9 @@ final class SpendingInsightsEngine {
     }
 
     private func textOverlaps(_ a: String, _ b: String) -> Bool {
-        let aWords = Set(a.lowercased().split(separator: " ").map(String.init))
-        let bWords = Set(b.lowercased().split(separator: " ").map(String.init))
+        let strip = { (s: String) in s.replacingOccurrences(of: "**", with: "") }
+        let aWords = Set(strip(a).lowercased().split(separator: " ").map(String.init))
+        let bWords = Set(strip(b).lowercased().split(separator: " ").map(String.init))
         let shared = aWords.intersection(bWords).subtracting(["is", "a", "the", "your", "you", "this", "than", "of", "to", "in", "more"])
         return shared.count > 3
     }

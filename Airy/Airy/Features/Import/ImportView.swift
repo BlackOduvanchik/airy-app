@@ -79,7 +79,7 @@ struct ImportView: View {
             .navigationTitle("Import")
             .sheet(isPresented: $viewModel.showPaywall) {
                 PaywallView()
-                    .environment(theme)
+                    .themed(theme)
             }
             .onChange(of: selectedItems) { _, new in
                 guard !new.isEmpty else { return }

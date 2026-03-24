@@ -43,13 +43,43 @@ final class ThemeProvider {
     // MARK: - Dark mode flag
     var isDark: Bool
 
-    // MARK: - Current theme
+    // MARK: - Current theme & mode
     private(set) var currentTheme: ColorTheme
+    var appearanceMode: AppearanceMode
+
+    /// Mode-aware color scheme for `.preferredColorScheme()`.
+    /// Returns `nil` in auto mode so `@Environment(\.colorScheme)` reflects
+    /// real system changes (sunrise/sunset). Sheets must apply explicit
+    /// `.preferredColorScheme(theme.isDark ? .dark : .light)` themselves.
+    var preferredScheme: ColorScheme? {
+        switch appearanceMode {
+        case .light: return .light
+        case .dark: return .dark
+        case .auto: return nil
+        }
+    }
+
+    /// Explicit scheme for sheet/fullScreenCover content — always returns
+    /// a concrete value so presentations get the correct dark/light styling.
+    var presentationScheme: ColorScheme {
+        isDark ? .dark : .light
+    }
 
     // MARK: - Init
 
     init() {
-        let theme = AppearanceStore.colorTheme
+        let mode = AppearanceStore.appearanceMode
+        appearanceMode = mode
+        let theme: ColorTheme
+        switch mode {
+        case .light:
+            theme = AppearanceStore.lightTheme
+        case .dark:
+            theme = AppearanceStore.darkTheme
+        case .auto:
+            let systemIsDark = UITraitCollection.current.userInterfaceStyle == .dark
+            theme = systemIsDark ? AppearanceStore.darkTheme : AppearanceStore.lightTheme
+        }
         let c = theme.themeColors
         currentTheme = theme
         bgTop = c.bgTop
@@ -90,10 +120,70 @@ final class ThemeProvider {
         isDark = c.isDark
     }
 
+    // MARK: - Mode
+
+    func setMode(_ mode: AppearanceMode) {
+        appearanceMode = mode
+        AppearanceStore.appearanceMode = mode
+        switch mode {
+        case .light:
+            apply(AppearanceStore.lightTheme)
+        case .dark:
+            apply(AppearanceStore.darkTheme)
+        case .auto:
+            checkSystemAppearance()
+        }
+    }
+
+    func setLightTheme(_ theme: ColorTheme) {
+        AppearanceStore.lightTheme = theme
+        if appearanceMode == .light || (appearanceMode == .auto && !isDark) {
+            apply(theme)
+        }
+    }
+
+    func setDarkTheme(_ theme: ColorTheme) {
+        AppearanceStore.darkTheme = theme
+        if appearanceMode == .dark || (appearanceMode == .auto && isDark) {
+            apply(theme)
+        }
+    }
+
+    func updateForSystemColorScheme(_ colorScheme: ColorScheme) {
+        guard appearanceMode == .auto else { return }
+        let theme = colorScheme == .dark ? AppearanceStore.darkTheme : AppearanceStore.lightTheme
+        guard theme != currentTheme else { return }
+        apply(theme)
+    }
+
+    /// Re-read the real system appearance from the window scene (not affected
+    /// by our `.preferredColorScheme()` override) and apply if changed.
+    func checkSystemAppearance() {
+        guard appearanceMode == .auto else { return }
+        let style = UITraitCollection.current.userInterfaceStyle
+        let systemIsDark = style == .dark
+        let theme = systemIsDark ? AppearanceStore.darkTheme : AppearanceStore.lightTheme
+        guard theme != currentTheme else { return }
+        apply(theme)
+    }
+
     // MARK: - Income / Expense refresh
 
     func refreshIncomeExpenseColors() {
         incomeColor = Color(hex: AppearanceStore.incomeColorHex) ?? Color(red: 0.404, green: 0.627, blue: 0.510)
         expenseColor = Color(hex: AppearanceStore.expenseColorHex) ?? Color(red: 0.839, green: 0.431, blue: 0.431)
+    }
+}
+
+// MARK: - Presentation helper
+
+extension View {
+    /// Apply theme environment + explicit color scheme + tint to sheet/fullScreenCover content.
+    /// Use instead of `.environment(theme)` on presentation content.
+    func themed(_ theme: ThemeProvider) -> some View {
+        self
+            .environment(theme)
+            .preferredColorScheme(theme.presentationScheme)
+            .tint(theme.textPrimary)
     }
 }

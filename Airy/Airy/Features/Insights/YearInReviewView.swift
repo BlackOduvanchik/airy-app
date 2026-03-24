@@ -12,6 +12,8 @@ struct YearInReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel = YearInReviewViewModel()
     @State private var dragIndex: Int? = nil
+    @State private var showCategoryBreakdown = false
+    @State private var selectedCategoryDetail: CategoryDetailDestination? = nil
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -37,7 +39,10 @@ struct YearInReviewView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button { dismiss() } label: {
+                Button {
+                    print("[Tap] YearInReview → Back")
+                    dismiss()
+                } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
                         .frame(width: 44, height: 44)
@@ -51,7 +56,23 @@ struct YearInReviewView: View {
                     .foregroundColor(theme.textTertiary)
             }
         }
+        .onAppear { print("[Nav] Year in Review") }
         .task { await viewModel.load() }
+        .fullScreenCover(isPresented: $showCategoryBreakdown) {
+            NavigationStack {
+                CategoryBreakdownView(
+                    onBack: { showCategoryBreakdown = false },
+                    initialMonth: breakdownMonth,
+                    initialYear: breakdownYear,
+                    showAllYear: breakdownAllYear
+                )
+            }
+            .themed(theme)
+        }
+        .fullScreenCover(item: $selectedCategoryDetail) { dest in
+            CategoryDetailView(destination: dest)
+                .themed(theme)
+        }
     }
 
     // MARK: - Header
@@ -83,11 +104,10 @@ struct YearInReviewView: View {
     private func periodPill(id: String, label: String) -> some View {
         let isSelected = viewModel.selectedPeriod == id
         return Button {
+            print("[Tap] YearInReview → Period '\(id)'")
             withAnimation(.easeInOut(duration: 0.2)) {
-                viewModel.selectedPeriod = id
-                viewModel.selectedMonthIndex = nil
                 dragIndex = nil
-                viewModel.recompute()
+                viewModel.changePeriod(id)
             }
         } label: {
             Text(label)
@@ -150,6 +170,7 @@ struct YearInReviewView: View {
             ForEach(YRChartMode.allCases, id: \.rawValue) { mode in
                 let isActive = viewModel.chartMode == mode
                 Button {
+                    print("[Tap] YearInReview → Chart mode '\(mode)'")
                     withAnimation(.easeInOut(duration: 0.2)) {
                         viewModel.chartMode = mode
                         if mode == .all { viewModel.selectedMonthIndex = nil }
@@ -364,12 +385,15 @@ struct YearInReviewView: View {
     private var filterToggles: some View {
         HStack(spacing: 10) {
             filterChip(label: L("yr_income"), color: theme.incomeColor, isOn: viewModel.showIncome) {
+                print("[Tap] YearInReview → Toggle Income")
                 viewModel.showIncome.toggle(); viewModel.recompute()
             }
             filterChip(label: L("yr_expense"), color: theme.expenseColor, isOn: viewModel.showExpense) {
+                print("[Tap] YearInReview → Toggle Expense")
                 viewModel.showExpense.toggle(); viewModel.recompute()
             }
             filterChip(label: L("yr_sub"), color: theme.accentAmber, isOn: !viewModel.excludeSubscriptions) {
+                print("[Tap] YearInReview → Toggle Subscriptions")
                 viewModel.excludeSubscriptions.toggle(); viewModel.recompute()
             }
             Spacer()
@@ -423,12 +447,63 @@ struct YearInReviewView: View {
 
     // MARK: - Top Categories
 
+    // MARK: - Effective period helpers
+
+    private var effectiveMonthKey: String {
+        if let idx = viewModel.selectedMonthIndex, idx < viewModel.monthlyData.count {
+            return viewModel.monthlyData[idx].monthKey
+        }
+        return viewModel.selectedPeriod // year string or "all"
+    }
+
+    private var effectiveMonthLabel: String {
+        if let idx = viewModel.selectedMonthIndex, idx < viewModel.monthlyData.count {
+            return viewModel.monthlyData[idx].fullLabel
+        }
+        return viewModel.selectedPeriod == "all" ? L("yr_all_time") : viewModel.selectedPeriod
+    }
+
+    private var breakdownMonth: Int? {
+        if let idx = viewModel.selectedMonthIndex, idx < viewModel.monthlyData.count {
+            let mk = viewModel.monthlyData[idx].monthKey // "YYYY-MM"
+            let parts = mk.split(separator: "-")
+            if parts.count >= 2 { return Int(parts[1]) }
+        }
+        return nil
+    }
+
+    private var breakdownYear: Int? {
+        if let idx = viewModel.selectedMonthIndex, idx < viewModel.monthlyData.count {
+            let mk = viewModel.monthlyData[idx].monthKey
+            let parts = mk.split(separator: "-")
+            if parts.count >= 1 { return Int(parts[0]) }
+        }
+        if viewModel.selectedPeriod != "all" { return Int(viewModel.selectedPeriod) }
+        return nil
+    }
+
+    private var breakdownAllYear: Bool {
+        viewModel.selectedMonthIndex == nil
+    }
+
+    // MARK: - Top Categories
+
     private var topCategoriesSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L("yr_top_categories"))
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(0.8)
-                .foregroundColor(theme.textTertiary)
+            Button {
+                print("[Tap] YearInReview → Top Categories header")
+                showCategoryBreakdown = true
+            } label: {
+                HStack {
+                    Text(L("yr_top_categories"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(0.8)
+                        .foregroundColor(theme.textTertiary)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
             if viewModel.topCategories.isEmpty {
                 Text(L("yr_no_data"))
@@ -438,7 +513,21 @@ struct YearInReviewView: View {
             } else {
                 let topAmount = viewModel.topCategories.first?.amount ?? 1
                 ForEach(viewModel.topCategories) { cat in
-                    categoryRow(cat: cat, topAmount: topAmount)
+                    Button {
+                        print("[Tap] YearInReview → Category '\(cat.name)'")
+                        selectedCategoryDetail = CategoryDetailDestination(
+                            categoryId: cat.id,
+                            label: cat.name,
+                            amount: cat.amount,
+                            colorHex: cat.color.toHex(),
+                            iconName: cat.iconName,
+                            monthKey: effectiveMonthKey,
+                            monthLabel: effectiveMonthLabel
+                        )
+                    } label: {
+                        categoryRow(cat: cat, topAmount: topAmount)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -470,6 +559,10 @@ struct YearInReviewView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(theme.textTertiary)
                     .frame(width: 36, alignment: .trailing)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(theme.textTertiary)
             }
 
             // Progress bar

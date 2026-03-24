@@ -69,6 +69,7 @@ struct PendingReviewView: View {
         .navigationTitle(L("pending_title"))
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.success, trigger: isSaving) { _, new in new }
+        .onAppear { print("[Nav] PendingReview") }
         .task { await viewModel.load() }
         .sheet(item: $editPending) { pending in
             let matchedInterval = viewModel.cardDataList.first { $0.id == pending.id }?.matchedSubscriptionInterval
@@ -85,7 +86,7 @@ struct PendingReviewView: View {
                 },
                 onCancel: { editPending = nil }
             )
-            .environment(theme)
+            .themed(theme)
         }
     }
 
@@ -147,6 +148,7 @@ struct PendingReviewView: View {
             matchedSubscriptionInterval: card.matchedSubscriptionInterval,
             rememberRule: binding,
             onTap: {
+                print("[Tap] PendingReview → Edit card '\(card.merchant)'")
                 editPending = viewModel.pending.first { $0.id == card.id }
             }
         )
@@ -155,11 +157,12 @@ struct PendingReviewView: View {
     private var stickyBottom: some View {
         VStack(spacing: 16) {
             Button {
+                print("[Tap] PendingReview → Save All (\(viewModel.pending.count) items)")
                 Task { await saveAll() }
             } label: {
                 Text(L("pending_save_all"))
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(theme.isDark ? .black : .white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 58)
             }

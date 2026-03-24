@@ -113,7 +113,7 @@ struct CategoriesSheetView: View {
                     deleteCategory(deleted)
                 }
             )
-            .environment(theme)
+            .themed(theme)
         }
         .sheet(isPresented: $showNewCategory) {
             NewCategorySheetView(
@@ -129,7 +129,7 @@ struct CategoriesSheetView: View {
                     categories = CategoryStore.load()
                 }
             )
-            .environment(theme)
+            .themed(theme)
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
         }
@@ -145,7 +145,7 @@ struct CategoriesSheetView: View {
                         categories = CategoryStore.load()
                     }
                 )
-                .environment(theme)
+                .themed(theme)
             }
         }
         .sheet(item: $subcategoryToEdit) { sub in
@@ -166,7 +166,7 @@ struct CategoriesSheetView: View {
                     categories = CategoryStore.load()
                 }
             )
-            .environment(theme)
+            .themed(theme)
         }
         .confirmationDialog(
             L("categories_delete_sub"),

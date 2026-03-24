@@ -56,7 +56,7 @@ struct AmountKeyboardView: View {
                 HStack(spacing: 3) {
                     ForEach(["expense", "income"], id: \.self) { type in
                         Button { transactionType = type } label: {
-                            Text(type == "expense" ? "Expense" : "Income")
+                            Text(type == "expense" ? L("common_expense") : L("common_income"))
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(transactionType == type ? theme.textPrimary : theme.textSecondary)
                                 .frame(maxWidth: .infinity)
@@ -153,7 +153,7 @@ struct AmountKeyboardView: View {
         )
         .sheet(isPresented: $showCurrencyPicker) {
             TransactionCurrencyPickerSheet(selectedCurrency: $selectedCurrency)
-                .environment(theme)
+                .themed(theme)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bgTop)

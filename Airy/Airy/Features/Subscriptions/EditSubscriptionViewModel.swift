@@ -55,7 +55,18 @@ final class EditSubscriptionViewModel {
         guard let d = f.date(from: String(dateStr.prefix(10))) else { return "" }
         let cal = Calendar.current
         let day = cal.component(.day, from: d)
-        return "Bill date \(day)\(daySuffix(day))"
+        let monthFmt = DateFormatter()
+        monthFmt.locale = Locale.current
+        monthFmt.dateFormat = "MMMM"
+        let monthName = monthFmt.string(from: d).lowercased()
+        return L("editsub_bill_date", "\(day)", monthName)
+    }
+
+    var localizedInterval: String {
+        let i = subscription.interval.lowercased()
+        if i.hasPrefix("year") || i.hasPrefix("annual") { return L("editsub_interval_yearly") }
+        if i.hasPrefix("week") { return L("editsub_interval_weekly") }
+        return L("editsub_interval_monthly")
     }
 
     var isMonthly: Bool {
@@ -231,8 +242,7 @@ final class EditSubscriptionViewModel {
     /// Fetches the template LocalTransaction and converts to Transaction for edit sheet.
     func templateTransaction() -> Transaction? {
         guard let templateId = subscription.templateTransactionId else { return nil }
-        let all = LocalDataStore.shared.fetchTransactions(limit: 500)
-        return all.first { $0.id == templateId }
+        return LocalDataStore.shared.fetchTransaction(id: templateId)
     }
 
     func save() {

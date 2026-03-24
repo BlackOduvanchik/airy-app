@@ -84,14 +84,14 @@ struct ExportDataView: View {
                 startDate: $viewModel.customStartDate,
                 endDate: $viewModel.customEndDate
             )
-            .environment(theme)
+            .themed(theme)
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showShareSheet, onDismiss: { shareURL = nil }) {
             if let url = shareURL {
                 ExportShareSheet(url: url)
-                    .environment(theme)
+                    .themed(theme)
             }
         }
         .onAppear { viewModel.loadTransactions() }

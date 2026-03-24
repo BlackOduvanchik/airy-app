@@ -81,7 +81,7 @@ struct EditSubscriptionView: View {
                     vm.iconLetter = selectedIconFromLibrary
                 }
             })
-            .environment(theme)
+            .themed(theme)
         }
         .alert(L("editsub_delete_confirm"), isPresented: $showCancelConfirm) {
             Button(L("editsub_delete"), role: .destructive) {
@@ -123,7 +123,7 @@ struct EditSubscriptionView: View {
                     .foregroundColor(theme.textPrimary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(vm.formattedMonthlyAmount)/mo \u{00B7} \(vm.billDayString)")
+                Text("\(vm.formattedMonthlyAmount)\(L("subs_per_month")) \u{00B7} \(vm.billDayString)")
                     .font(.system(size: 14))
                     .foregroundColor(theme.textSecondary)
             }
@@ -344,7 +344,7 @@ struct EditSubscriptionView: View {
                             Text(CategoryStore.byId(subscription.categoryId ?? "")?.name ?? subscription.categoryId?.capitalized ?? L("editsub_uncategorized"))
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(theme.textPrimary)
-                            Text("\(subscription.interval.capitalized) \u{00B7} \(vm.billDayString)")
+                            Text("\(vm.localizedInterval) \u{00B7} \(vm.billDayString)")
                                 .font(.system(size: 13))
                                 .foregroundColor(theme.textTertiary)
                         }
@@ -355,6 +355,7 @@ struct EditSubscriptionView: View {
                     }
                     .padding(16)
                     .padding(.horizontal, 4)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -364,7 +365,7 @@ struct EditSubscriptionView: View {
                 AddTransactionView(transaction: tx, onSuccess: {
                     onSave?()
                 })
-                .environment(theme)
+                .themed(theme)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
             }

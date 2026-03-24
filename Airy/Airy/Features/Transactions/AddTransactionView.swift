@@ -7,20 +7,6 @@
 
 import SwiftUI
 
-private struct TimeButtonAnchorKey: PreferenceKey {
-    static var defaultValue: Anchor<CGRect>? = nil
-    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
-        value = nextValue() ?? value
-    }
-}
-
-private struct DateButtonAnchorKey: PreferenceKey {
-    static var defaultValue: Anchor<CGRect>? = nil
-    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
-        value = nextValue() ?? value
-    }
-}
-
 struct AddTransactionView: View {
     var transaction: Transaction?
     /// Initial transaction type when creating new (e.g. "income" for Add Income flow).
@@ -38,8 +24,6 @@ struct AddTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: AddTransactionViewModel
-    @State private var showDatePicker = false
-    @State private var showTimePicker = false
     @State private var showCustomKeyboard = false
     @State private var calculatorExpression = ""
     @State private var showCategoriesSheet = false
@@ -48,6 +32,7 @@ struct AddTransactionView: View {
     @State private var isDeleting = false
     @State private var frozenQuickPickOrder: [String] = []
     @State private var pickedFromOthersThisSession: String? = nil
+    @State private var didAppear = false
     @FocusState private var isNoteFocused: Bool
 
     init(transaction: Transaction? = nil, initialType: String? = nil, initialQuickPickOrder: [String]? = nil, onSuccess: (() -> Void)? = nil) {
@@ -88,166 +73,129 @@ struct AddTransactionView: View {
                 OnboardingGradientBackground()
                     .ignoresSafeArea()
 
-                sheetContent
+                ZStack(alignment: .top) {
+                    sheetContent
 
-                VStack {
-                    Spacer()
-                    AmountKeyboardView(
-                        expression: $calculatorExpression,
-                        amountText: $viewModel.amountText,
-                        transactionType: $viewModel.transactionType,
-                        selectedCurrency: $viewModel.selectedCurrency,
-                        onDismiss: {
-                            if !calculatorExpression.isEmpty {
-                                viewModel.amountText = displayAmountResult
-                                calculatorExpression = ""
-                            }
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
-                                showCustomKeyboard = false
-                            }
+                    if showCustomKeyboard {
+                        VStack {
+                            Spacer()
+                            AmountKeyboardView(
+                                expression: $calculatorExpression,
+                                amountText: $viewModel.amountText,
+                                transactionType: $viewModel.transactionType,
+                                selectedCurrency: $viewModel.selectedCurrency,
+                                onDismiss: {
+                                    print("[Tap] AddTransaction → Keyboard dismiss")
+                                    if !calculatorExpression.isEmpty {
+                                        viewModel.amountText = displayAmountResult
+                                        calculatorExpression = ""
+                                    }
+                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+                                        showCustomKeyboard = false
+                                    }
+                                }
+                            )
                         }
-                    )
+                        .ignoresSafeArea(edges: .bottom)
+                        .transition(
+                            .opacity.combined(with: .scale(scale: 0.94, anchor: .bottom))
+                        )
+                    }
                 }
-                .ignoresSafeArea(edges: .bottom)
-                .opacity(showCustomKeyboard ? 1 : 0)
-                .scaleEffect(showCustomKeyboard ? 1 : 0.94, anchor: .bottom)
-                .allowsHitTesting(showCustomKeyboard)
-                .animation(.spring(response: 0.5, dampingFraction: 0.82), value: showCustomKeyboard)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    if viewModel.sheetTitle != L("addtx_new_entry") {
-                        Text(viewModel.sheetTitle)
-                            .font(.system(size: 12, weight: .semibold))
-                            .tracking(0.5)
-                            .foregroundColor(theme.textTertiary)
-                    } else {
+                ToolbarItem(placement: .topBarLeading) {
+                    if !viewModel.isEditMode {
                         Button {
                             showCurrencySheet = true
                         } label: {
                             HStack(spacing: 4) {
-                                Text("\(viewModel.selectedCurrency) (\(AddTransactionViewModel.currencySymbol(for: viewModel.selectedCurrency)))")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(theme.textSecondary)
+                                Text(viewModel.selectedCurrency)
+                                    .font(.system(size: 14, weight: .semibold))
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundColor(theme.textTertiary)
+                                    .font(.system(size: 10, weight: .semibold))
                             }
+                            .foregroundColor(theme.textSecondary)
                         }
-                        .disabled(viewModel.isEditMode)
                     }
+                }
+                ToolbarItem(placement: .principal) {
+                    Text(viewModel.sheetTitle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundColor(theme.textTertiary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        if pendingTransaction != nil {
+                        if viewModel.isPendingEditMode {
                             onCancelPending?()
-                            dismiss()
                         } else {
                             dismiss()
                         }
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(theme.textSecondary)
                     }
                 }
             }
         }
         .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationContentInteraction(.scrolls)
-        .interactiveDismissDisabled(showTimePicker || showDatePicker)
-        .sensoryFeedback(.success, trigger: viewModel.didSucceed) { _, new in new }
+        .presentationDragIndicator(.hidden)
         .onChange(of: viewModel.didSucceed) { _, ok in
             if ok {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
                 dismiss()
                 onSuccess?()
             }
         }
         .onAppear {
+            guard !didAppear else { return }
+            didAppear = true
+            print("[Nav] AddTransaction (edit=\(viewModel.isEditMode) pending=\(viewModel.isPendingEditMode))")
             guard !viewModel.isEditMode, !viewModel.isPendingEditMode else { return }
-            showCustomKeyboard = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+                    showCustomKeyboard = true
+                }
+            }
         }
     }
 
     private var sheetContent: some View {
         VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
+            ScrollView {
+                VStack(spacing: 0) {
                     VStack(spacing: 0) {
-                        VStack(spacing: 0) {
-                            amountSection
-                            typeToggle
-                        }
-                        subscriptionSection
-                        categorySection
-                        formFields
-                        if pendingTransaction != nil {
-                            rememberRuleRow
-                        }
-                        Spacer(minLength: 24)
+                        amountSection
+                        typeToggle
                     }
-                }
-                .scrollIndicators(.hidden)
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: isNoteFocused) { _, focused in
-                    if focused {
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            proxy.scrollTo("noteInput", anchor: .bottom)
-                        }
+                    subscriptionSection
+                    categorySection
+                    formFields
+                    if pendingTransaction != nil {
+                        rememberRuleRow
                     }
+                    Spacer(minLength: 24)
                 }
             }
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.never)
             actionBar
         }
         .padding(.horizontal, 20)
         .padding(.top, 4)
         .padding(.bottom, 40)
         .ignoresSafeArea(edges: .bottom)
-        .overlay {
-            if showTimePicker || showDatePicker {
-                Color.black.opacity(0.001)
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showTimePicker = false
-                            showDatePicker = false
-                        }
-                    }
-            }
-        }
-        .overlayPreferenceValue(TimeButtonAnchorKey.self) { anchor in
-            if showTimePicker, let anchor {
-                GeometryReader { geo in
-                    let rect = geo[anchor]
-                    TimePickerPopoverView(dateTime: $viewModel.dateTime) {
-                        withAnimation(.easeOut(duration: 0.2)) { showTimePicker = false }
-                    }
-                    .position(x: rect.minX + 70, y: rect.minY - 90)
-                }
-                .allowsHitTesting(true)
-            }
-        }
-        .overlayPreferenceValue(DateButtonAnchorKey.self) { anchor in
-            if showDatePicker, let anchor {
-                GeometryReader { geo in
-                    let rect = geo[anchor]
-                    DatePickerPopoverView(dateTime: $viewModel.dateTime) {
-                        withAnimation(.easeOut(duration: 0.2)) { showDatePicker = false }
-                    }
-                    .position(x: rect.midX, y: rect.minY - 90)
-                }
-                .allowsHitTesting(true)
-            }
-        }
     }
 
 
     private var amountSection: some View {
         VStack(spacing: 4) {
             Button {
+                print("[Tap] AddTransaction → Amount input (open keyboard)")
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { showCustomKeyboard = true }
             } label: {
                 VStack(spacing: 4) {
@@ -276,6 +224,7 @@ struct AddTransactionView: View {
         HStack(spacing: 0) {
             ForEach(["expense", "income"], id: \.self) { type in
                 Button {
+                    print("[Tap] AddTransaction → Type '\(type)'")
                     viewModel.transactionType = type
                 } label: {
                     Text(type == "expense" ? L("common_expense") : L("common_income"))
@@ -422,7 +371,7 @@ struct AddTransactionView: View {
                 initialSubcategoryId: viewModel.selectedSubcategoryId,
                 showHandle: false
             )
-            .environment(theme)
+            .themed(theme)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationBackground(theme.bgTop)
@@ -431,7 +380,7 @@ struct AddTransactionView: View {
             TransactionCurrencyPickerSheet(
                 selectedCurrency: $viewModel.selectedCurrency
             )
-            .environment(theme)
+            .themed(theme)
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationBackground(theme.bgTop)
@@ -449,6 +398,8 @@ struct AddTransactionView: View {
         }()
 
         return Button {
+            let label = CategoryIconHelper.displayName(categoryId: categoryId)
+            print("[Tap] AddTransaction → Category '\(label)'")
             if isOther {
                 showCategoriesSheet = true
             } else if isSelected {
@@ -505,31 +456,9 @@ struct AddTransactionView: View {
                 ))
             }
             HStack(spacing: 12) {
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) { showDatePicker = true }
-                } label: {
-                    inputRowDisplay(icon: "calendar", text: dateFormatted)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(showDatePicker ? theme.accentGreen : Color.clear, lineWidth: 1)
-                )
-                .anchorPreference(key: DateButtonAnchorKey.self, value: .bounds) { $0 }
+                IsolatedDatePicker(dateTime: $viewModel.dateTime, accentColor: theme.accentGreen, isDark: theme.isDark)
 
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) { showTimePicker = true }
-                } label: {
-                    inputRowDisplay(icon: "clock", text: timeFormatted)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(showTimePicker ? theme.accentGreen : Color.clear, lineWidth: 1)
-                )
-                .anchorPreference(key: TimeButtonAnchorKey.self, value: .bounds) { $0 }
+                IsolatedTimePicker(dateTime: $viewModel.dateTime, accentColor: theme.accentGreen, isDark: theme.isDark)
             }
 
             noteInputRow
@@ -555,16 +484,6 @@ struct AddTransactionView: View {
         .id("noteInput")
     }
 
-    private var dateFormatted: String {
-        AppFormatters.monthDayYear.string(from: viewModel.dateTime)
-    }
-
-    private var timeFormatted: String {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f.string(from: viewModel.dateTime)
-    }
-
     private func inputRow(icon: String, placeholder: String = "", text: Binding<String>, action: @escaping () -> Void = {}) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
@@ -573,22 +492,6 @@ struct AddTransactionView: View {
             TextField("", text: text, prompt: Text(placeholder).foregroundStyle(theme.textTertiary))
                 .font(.system(size: 15))
                 .foregroundColor(theme.textPrimary)
-        }
-        .padding(16)
-        .background(Color.white.opacity(theme.isDark ? 0.06 : 0.3))
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(theme.isDark ? 0.08 : 0.4), lineWidth: 1))
-    }
-
-    private func inputRowDisplay(icon: String, text: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 18))
-                .foregroundColor(theme.textTertiary)
-            Text(text)
-                .font(.system(size: 15))
-                .foregroundColor(theme.textPrimary)
-            Spacer()
         }
         .padding(16)
         .background(Color.white.opacity(theme.isDark ? 0.06 : 0.3))
@@ -625,6 +528,7 @@ struct AddTransactionView: View {
                 deleteButton(transactionId: tx.id)
             }
             Button {
+                print("[Tap] AddTransaction → Save")
                 if viewModel.isPendingEditMode, let onConfirm = onConfirmPending {
                     guard let amt = viewModel.amount, amt > 0 else {
                         viewModel.errorMessage = L("addtx_invalid_amount")
@@ -810,6 +714,70 @@ private struct DateTimePickerSheetView: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button(L("common_done")) { dismiss() }
             }
+        }
+    }
+}
+
+// MARK: - Isolated pickers (prevents @Observable re-renders from flooding haptic rate-limit)
+
+private struct IsolatedTimePicker: View {
+    @Binding var dateTime: Date
+    let accentColor: Color
+    let isDark: Bool
+
+    @State private var local: Date = .now
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "clock")
+                .font(.system(size: 18))
+                .foregroundColor(.secondary)
+            DatePicker("", selection: $local, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .tint(accentColor)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(isDark ? 0.06 : 0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(isDark ? 0.08 : 0.4), lineWidth: 1))
+        .onAppear { local = dateTime }
+        .task(id: local) {
+            try? await Task.sleep(for: .milliseconds(400))
+            dateTime = local
+        }
+    }
+}
+
+private struct IsolatedDatePicker: View {
+    @Binding var dateTime: Date
+    let accentColor: Color
+    let isDark: Bool
+
+    @State private var local: Date = .now
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "calendar")
+                .font(.system(size: 18))
+                .foregroundColor(.secondary)
+            DatePicker("", selection: $local, displayedComponents: .date)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .tint(accentColor)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(isDark ? 0.06 : 0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(isDark ? 0.08 : 0.4), lineWidth: 1))
+        .onAppear { local = dateTime }
+        .task(id: local) {
+            try? await Task.sleep(for: .milliseconds(400))
+            dateTime = local
         }
     }
 }

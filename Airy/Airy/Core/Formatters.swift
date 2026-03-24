@@ -47,6 +47,20 @@ enum AppFormatters {
         return f
     }()
 
+    // MARK: - Date Normalization
+
+    /// Normalizes a possibly non-zero-padded date string to "yyyy-MM-dd" format.
+    /// E.g. "2025-4-15" → "2025-04-15". Returns the original string if parsing fails.
+    static func normalizeISODate(_ raw: String) -> String {
+        let trimmed = String(raw.prefix(10))
+        if trimmed.count == 10, inputDate.date(from: trimmed) != nil { return trimmed }
+        let parts = trimmed.split(separator: "-")
+        guard parts.count == 3,
+              let y = Int(parts[0]), let m = Int(parts[1]), let d = Int(parts[2]),
+              (1...12).contains(m), (1...31).contains(d) else { return trimmed }
+        return String(format: "%04d-%02d-%02d", y, m, d)
+    }
+
     // MARK: - Currency Formatters (cached by code + fractionDigits)
 
     private static let currencyCache = NSCache<NSString, NumberFormatter>()

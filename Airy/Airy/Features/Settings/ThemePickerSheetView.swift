@@ -7,16 +7,29 @@
 
 import SwiftUI
 
+enum ThemeFilter {
+    case light, dark
+}
+
 struct ThemePickerSheetView: View {
     @Environment(ThemeProvider.self) private var theme
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedTheme: ColorTheme
+    var filter: ThemeFilter? = nil
     @State private var searchText = ""
+
+    private var baseThemes: [ColorTheme] {
+        switch filter {
+        case .light: ColorTheme.lightThemes
+        case .dark: ColorTheme.darkThemes
+        case nil: ColorTheme.allCases
+        }
+    }
 
     private var filteredThemes: [ColorTheme] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return ColorTheme.allCases }
-        return ColorTheme.allCases.filter { $0.displayName.lowercased().contains(q) }
+        guard !q.isEmpty else { return baseThemes }
+        return baseThemes.filter { $0.displayName.lowercased().contains(q) }
     }
 
     var body: some View {

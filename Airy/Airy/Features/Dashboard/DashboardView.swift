@@ -7,45 +7,34 @@
 
 import SwiftUI
 
-private enum AnalyticsRoute: Hashable {
+private enum AnalyticsRoute: Hashable, Identifiable {
     case categoryBreakdown
     case allTransactions
+    var id: Self { self }
 }
+
+// MARK: - DashboardView (NavigationStack path-based push navigation)
 
 struct DashboardView: View {
     @Environment(ThemeProvider.self) private var theme
     var refreshId: Int = 0
     @Binding var showAllTransactions: Bool
-    var onOpenSubscriptions: (() -> Void)? = nil
-    var onCloudTapped: (() -> Void)? = nil
-    @State private var viewModel = DashboardViewModel.shared
-    @State private var analyticsPath = NavigationPath()
-    @State private var pendingTransactionCount = 0
+    @Binding var subscriptionsRequested: Bool
+    @Binding var cloudTapRequested: Bool
+    @State private var path = NavigationPath()
     @State private var editingTransaction: Transaction?
     @State private var editingSubscription: Subscription?
-    @State private var colorVersion = 0
 
     var body: some View {
-        NavigationStack(path: $analyticsPath) {
-            ZStack(alignment: .top) {
-                OnboardingGradientBackground()
-
-                ScrollView {
-                    VStack(spacing: 20) {
-                        headerSection
-                        aiSummarySection
-                        vizSection
-                        listSection
-                        subsSection
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 120)
-                }
-                .scrollIndicators(.hidden)
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationBarBackButtonHidden(true)
+        NavigationStack(path: $path) {
+            DashboardScrollContent(
+                refreshId: refreshId,
+                path: $path,
+                subscriptionsRequested: $subscriptionsRequested,
+                cloudTapRequested: $cloudTapRequested,
+                editingTransaction: $editingTransaction,
+                editingSubscription: $editingSubscription
+            )
             .navigationDestination(for: AnalyticsRoute.self) { route in
                 switch route {
                 case .categoryBreakdown:
@@ -56,39 +45,90 @@ struct DashboardView: View {
                         .environment(theme)
                 }
             }
-            .task(id: refreshId) { await viewModel.load() }
-            .onChange(of: showAllTransactions) { _, show in
-                if show {
-                    analyticsPath.append(AnalyticsRoute.allTransactions)
-                    showAllTransactions = false
-                }
-            }
-            .onChange(of: analyticsPath) { _, path in
-                if path.isEmpty {
-                    colorVersion += 1
-                }
-            }
-            .sheet(item: $editingTransaction) { tx in
-                AddTransactionView(transaction: tx, onSuccess: {
-                    colorVersion += 1
-                    Task { await viewModel.load() }
-                })
-                .presentationDetents([.large])
-                .presentationDragIndicator(.hidden)
-                .environment(theme)
-            }
-            .sheet(item: $editingSubscription) { sub in
-                EditSubscriptionView(
-                    subscription: sub,
-                    onSave: { colorVersion += 1; Task { await viewModel.load() } },
-                    onCancel: { colorVersion += 1; Task { await viewModel.load() } }
-                )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.hidden)
-                .environment(theme)
+        }
+        .onChange(of: showAllTransactions) { _, show in
+            if show {
+                showAllTransactions = false
+                path.append(AnalyticsRoute.allTransactions)
             }
         }
+        .sheet(item: $editingTransaction) { tx in
+            AddTransactionView(transaction: tx, onSuccess: {
+                Task { await DashboardViewModel.shared.load() }
+            })
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+            .themed(theme)
+        }
+        .sheet(item: $editingSubscription) { sub in
+            EditSubscriptionView(
+                subscription: sub,
+                onSave: { Task { await DashboardViewModel.shared.load() } },
+                onCancel: { Task { await DashboardViewModel.shared.load() } }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+            .themed(theme)
+        }
         .environment(theme)
+    }
+}
+
+// MARK: - DashboardScrollContent (isolates @Observable reads)
+
+private struct DashboardScrollContent: View {
+    @Environment(ThemeProvider.self) private var theme
+    @State private var viewModel = DashboardViewModel.shared
+    var refreshId: Int
+    @Binding var path: NavigationPath
+    @Binding var subscriptionsRequested: Bool
+    @Binding var cloudTapRequested: Bool
+    @Binding var editingTransaction: Transaction?
+    @Binding var editingSubscription: Subscription?
+    @State private var pendingTransactionCount = 0
+    @State private var colorVersion = 0
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            OnboardingGradientBackground()
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    let frame = geo.frame(in: .global)
+                                    let safe = geo.safeAreaInsets
+                                    print("[Layout] Dashboard SETTLED: frame.y=\(frame.origin.y) safeArea.top=\(safe.top) frame.size=\(frame.size)")
+                                }
+                            }
+                    }
+                    .frame(height: 0)
+                    headerSection
+                    aiSummarySection
+                    vizSection
+                    listSection
+                    subsSection
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 120)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .onAppear { print("[Nav] Dashboard") }
+        .task(id: refreshId) {
+            await viewModel.load()
+            await TransactionListViewModel.shared.preload()
+        }
+        .onChange(of: path.count) { _, newCount in
+            if newCount == 0 {
+                colorVersion += 1
+            }
+        }
     }
 
     // MARK: - Header (mascot, total spent, badge)
@@ -120,7 +160,7 @@ struct DashboardView: View {
         ImportStatusBadge(
             pendingCount: pendingTransactionCount,
             refreshId: refreshId,
-            onTap: { onCloudTapped?() },
+            onTap: { cloudTapRequested = true },
             onPendingCountLoaded: { pendingTransactionCount = $0 }
         )
         .frame(height: 56)
@@ -190,7 +230,7 @@ struct DashboardView: View {
                     Image(systemName: "sparkles")
                         .font(.system(size: 20))
                         .foregroundColor(theme.accentBlue)
-                    Text(line)
+                    markdownText(line)
                         .font(.system(size: 14))
                         .lineSpacing(4)
                         .foregroundColor(theme.textPrimary)
@@ -209,7 +249,8 @@ struct DashboardView: View {
     private var vizSection: some View {
         let segments = categorySegments
         return Button {
-            analyticsPath.append(AnalyticsRoute.categoryBreakdown)
+            print("[Tap] Dashboard → Category Breakdown")
+            path.append(AnalyticsRoute.categoryBreakdown)
         } label: {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
@@ -326,7 +367,8 @@ struct DashboardView: View {
             .contentShape(Rectangle())
             .accessibilityLabel(L("dashboard_recent_activity_hint"))
             .onTapGesture {
-                showAllTransactions = true
+                print("[Tap] Dashboard → All Transactions")
+                path.append(AnalyticsRoute.allTransactions)
             }
 
             if viewModel.recentTransactions.isEmpty {
@@ -340,7 +382,10 @@ struct DashboardView: View {
                     VStack(spacing: 0) {
                         recentItem(transaction: tx)
                             .contentShape(Rectangle())
-                            .onTapGesture { editingTransaction = tx }
+                            .onTapGesture {
+                                print("[Tap] Dashboard → Edit Transaction '\(tx.merchant ?? tx.category)'")
+                                editingTransaction = tx
+                            }
                         if index < viewModel.recentTransactions.count - 1 {
                             Divider()
                                 .background(Color.white.opacity(theme.isDark ? 0.06 : 0.3))
@@ -420,18 +465,16 @@ struct DashboardView: View {
                     .foregroundColor(theme.textTertiary)
                     .lineLimit(1)
                 Spacer()
-                if onOpenSubscriptions != nil {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 16))
-                        .foregroundColor(theme.textTertiary)
-                        .accessibilityLabel(L("dashboard_view_all_subscriptions"))
-                }
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 16))
+                    .foregroundColor(theme.textTertiary)
+                    .accessibilityLabel(L("dashboard_view_all_subscriptions"))
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
             .contentShape(Rectangle())
             .onTapGesture {
-                onOpenSubscriptions?()
+                subscriptionsRequested = true
             }
 
             if viewModel.upcomingSubscriptions.isEmpty {
@@ -445,7 +488,10 @@ struct DashboardView: View {
                     HStack(spacing: 12) {
                         ForEach(viewModel.upcomingSubscriptions) { sub in
                             subCard(subscription: sub)
-                                .onTapGesture { editingSubscription = sub }
+                                .onTapGesture {
+                                    print("[Tap] Dashboard → Edit Subscription '\(sub.merchant)'")
+                                    editingSubscription = sub
+                                }
                         }
                     }
                     .padding(.horizontal, 20)
@@ -453,8 +499,7 @@ struct DashboardView: View {
                 }
             }
         }
-        .padding(.top, 20)
-        .padding(.bottom, 20)
+        .padding(.vertical, 8)
         .dashboardGlassStyle()
     }
 
@@ -508,9 +553,16 @@ struct DashboardView: View {
             }
         }
         .padding(16)
-        .frame(width: 110)
+        .frame(width: 110, height: 160)
         .background(Color.white.opacity(theme.isDark ? 0.05 : 0.35))
         .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func markdownText(_ string: String) -> Text {
+        if let attributed = try? AttributedString(markdown: string) {
+            return Text(attributed)
+        }
+        return Text(string)
     }
 
     /// Formats nextBillingDate as month and day only (e.g. "Mar 13").
@@ -744,7 +796,5 @@ private struct ImportStatusBadge: View {
 }
 
 #Preview {
-    NavigationStack {
-        DashboardView(showAllTransactions: .constant(false))
-    }
+    DashboardView(showAllTransactions: .constant(false), subscriptionsRequested: .constant(false), cloudTapRequested: .constant(false))
 }

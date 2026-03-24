@@ -42,7 +42,7 @@ struct TransactionDetailView: View {
         }
         .sheet(isPresented: $showEditSheet) {
             AddTransactionView(transaction: transaction, onSuccess: { dismiss() })
-                .environment(theme)
+                .themed(theme)
         }
     }
 

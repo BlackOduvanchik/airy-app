@@ -9,73 +9,83 @@ import SwiftUI
 
 struct SubscriptionsView: View {
     var onDismiss: (() -> Void)? = nil
+    var embedded: Bool = false
     @Environment(ThemeProvider.self) private var theme
     @State private var viewModel = SubscriptionsViewModel()
     @State private var selectedSubscription: Subscription?
     @State private var showSubscriptionLab = false
 
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .top) {
-                OnboardingGradientBackground()
-
-                ScrollView {
-                    VStack(spacing: 20) {
-                        headerSection
-                        summaryCardSection
-                        recurringInsightsSection
-                        activeSubscriptionsSection
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 120)
-                }
-                .scrollIndicators(.hidden)
+        if embedded {
+            innerContent
+        } else {
+            NavigationStack {
+                innerContent
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                if onDismiss != nil {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { onDismiss?() } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 12, weight: .semibold))
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                    }
-                }
-                ToolbarItem(placement: .principal) {
-                    Text(L("subs_title"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .tracking(0.5)
-                        .foregroundColor(theme.textTertiary)
-                }
-            }
-            .sheet(isPresented: $viewModel.showPaywall) {
-                PaywallView()
-                    .environment(theme)
-            }
-            .sheet(item: $selectedSubscription) { sub in
-                EditSubscriptionView(
-                    subscription: sub,
-                    onSave: { Task { await viewModel.load() } },
-                    onCancel: { Task { await viewModel.load() } }
-                )
-                .environment(theme)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.hidden)
-            }
-            .navigationDestination(isPresented: $showSubscriptionLab) {
-                SubscriptionLabView(
-                    subscriptions: viewModel.subscriptions,
-                    insights: SubscriptionInsightStore.shared.loadAll()
-                )
-                .environment(theme)
-            }
-            .task { await viewModel.load() }
         }
+    }
+
+    private var innerContent: some View {
+        ZStack(alignment: .top) {
+            OnboardingGradientBackground()
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    headerSection
+                    summaryCardSection
+                    recurringInsightsSection
+                    activeSubscriptionsSection
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 120)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(onDismiss != nil && !embedded)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            if onDismiss != nil && !embedded {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { onDismiss?() } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                }
+            }
+            ToolbarItem(placement: .principal) {
+                Text(L("subs_title"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(theme.textTertiary)
+            }
+        }
+        .sheet(isPresented: $viewModel.showPaywall) {
+            PaywallView()
+                .themed(theme)
+        }
+        .sheet(item: $selectedSubscription) { sub in
+            EditSubscriptionView(
+                subscription: sub,
+                onSave: { Task { await viewModel.load() } },
+                onCancel: { Task { await viewModel.load() } }
+            )
+            .themed(theme)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+        }
+        .navigationDestination(isPresented: $showSubscriptionLab) {
+            SubscriptionLabView(
+                subscriptions: viewModel.subscriptions,
+                insights: SubscriptionInsightStore.shared.loadAll()
+            )
+            .environment(theme)
+        }
+        .onAppear { print("[Nav] Subscriptions") }
+        .task { await viewModel.load() }
     }
 
     // MARK: - Header
@@ -184,7 +194,10 @@ struct SubscriptionsView: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(viewModel.nextUpSubscriptions) { sub in
-                        Button { selectedSubscription = sub } label: {
+                        Button {
+                            print("[Tap] Subscriptions → '\(sub.merchant)'")
+                            selectedSubscription = sub
+                        } label: {
                             subRow(subscription: sub)
                         }
                         .buttonStyle(.plain)

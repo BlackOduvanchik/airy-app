@@ -53,7 +53,8 @@ struct GPTExtractionTransaction: Codable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let today = ISO8601DateFormatter().string(from: Date()).prefix(10)
-        date = (try? c.decode(String.self, forKey: .date)).flatMap { $0.isEmpty ? nil : $0 } ?? String(today)
+        let rawDate = (try? c.decode(String.self, forKey: .date)).flatMap { $0.isEmpty ? nil : $0 } ?? String(today)
+        date = AppFormatters.normalizeISODate(rawDate)
         merchant = try c.decodeIfPresent(String.self, forKey: .merchant)
         if let d = try? c.decode(Double.self, forKey: .amount) {
             amount = d

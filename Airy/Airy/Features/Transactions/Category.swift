@@ -225,7 +225,8 @@ enum CategoryIconHelper {
         if let s = subcategory?.trimmingCharacters(in: .whitespaces), !s.isEmpty {
             // Resolve UUID to display name if needed
             if let sub = SubcategoryStore.load().first(where: { $0.id == s }) { return sub.name }
-            return s
+            // Skip unknown UUID/hash subcategories — fall through to category name
+            if !ImportViewModel.isHashLikeMerchant(s) { return s }
         }
         let cat = displayName(categoryId: categoryId)
         if !cat.isEmpty { return cat }

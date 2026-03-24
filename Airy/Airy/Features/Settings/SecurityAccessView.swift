@@ -60,11 +60,11 @@ struct SecurityAccessView: View {
         }
         .sheet(isPresented: $showPasscodeSetup) {
             passcodeSetupSheet
-                .environment(theme)
+                .themed(theme)
         }
         .sheet(isPresented: $showPasscodeVerify) {
             passcodeVerifySheet
-                .environment(theme)
+                .themed(theme)
         }
     }
 

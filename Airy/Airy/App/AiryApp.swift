@@ -34,6 +34,16 @@ struct AiryApp: App {
 
     init() {
         LocalDataStore.shared.configure(container: modelContainer)
+        // One-time migration: normalize dates + fix nil isSubscription values.
+        if !UserDefaults.standard.bool(forKey: "AiryDataMigrationV2Done") {
+            LocalDataStore.shared.normalizeTransactionData()
+            UserDefaults.standard.set(true, forKey: "AiryDataMigrationV2Done")
+        }
+        // One-time migration: replace hash-like merchant names with category display name.
+        if !UserDefaults.standard.bool(forKey: "AiryDataMigrationV5HashAndUUIDCategories") {
+            LocalDataStore.shared.migrateHashMerchants()
+            UserDefaults.standard.set(true, forKey: "AiryDataMigrationV5HashAndUUIDCategories")
+        }
         // Reconnect background URLSession — delivers any tasks that completed while app was suspended.
         GPTBackgroundSession.shared.reconnect()
         BGTaskScheduler.shared.register(
@@ -54,6 +64,8 @@ struct AiryApp: App {
                 .environment(authStore)
                 .environment(themeProvider)
                 .environment(appLockManager)
+                .preferredColorScheme(themeProvider.preferredScheme)
+                .tint(themeProvider.textPrimary)
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                     Task { @MainActor in
                         ImportViewModel.shared.resumeIfNeeded()
@@ -61,6 +73,9 @@ struct AiryApp: App {
                         if appLockManager.isLocked {
                             appLockManager.authenticate()
                         }
+                        // Theme is handled by ContentView's onChange(of: systemColorScheme).
+                        // UIKit trait collections are polluted by .preferredColorScheme() so
+                        // checkSystemAppearance() cannot reliably detect the real system theme.
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in

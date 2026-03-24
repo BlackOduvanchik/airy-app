@@ -74,7 +74,7 @@ struct NewSubcategorySheetView: View {
                 get: { selectedParentId },
                 set: { selectedParentId = $0 }
             ))
-            .environment(theme)
+            .themed(theme)
         }
         .onAppear {
             selectedParentId = existing?.parentCategoryId ?? initialParentCategoryId

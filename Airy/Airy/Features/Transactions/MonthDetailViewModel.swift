@@ -55,7 +55,7 @@ final class MonthDetailViewModel {
         await MainActor.run {
             let monthStr = String(format: "%02d", ym.month)
             let yearStr = String(ym.year)
-            transactions = LocalDataStore.shared.fetchTransactions(limit: 200, month: monthStr, year: yearStr)
+            transactions = LocalDataStore.shared.fetchTransactions(limit: 1000, month: monthStr, year: yearStr)
                 .sorted { a, b in
                     (a.transactionDate, a.transactionTime ?? "") < (b.transactionDate, b.transactionTime ?? "")
                 }

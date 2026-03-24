@@ -86,7 +86,7 @@ final class ExtractionPipeline {
                 amount: tx.amount,
                 isCredit: tx.isCredit ?? false,
                 currency: tx.currency ?? baseCurrency,
-                date: tx.date,
+                date: AppFormatters.normalizeISODate(tx.date),
                 time: tx.time,
                 merchant: ImportViewModel.normalizeMerchant(tx.merchant),
                 categoryId: tx.categoryId,
@@ -96,6 +96,7 @@ final class ExtractionPipeline {
             )
         }
         items = ImportViewModel.normalizeMerchantsInItems(items)
+        items = ImportViewModel.replaceHashMerchants(in: items)
         for i in items.indices {
             if let corrected = aliasStore.resolveToNormalizedMerchant(raw: items[i].merchant) {
                 items[i].merchant = corrected

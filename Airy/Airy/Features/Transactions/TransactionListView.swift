@@ -15,13 +15,18 @@ struct MonthDetailDestination: Hashable {
 
 struct TransactionListView: View {
     @Environment(ThemeProvider.self) private var theme
+    @Environment(\.dismiss) private var dismiss
     var showBottomBar: Bool = false
+    var initialSearchText: String? = nil
+    var initialCategoryFilter: String? = nil
+    var onBack: (() -> Void)? = nil
     var onDismiss: (() -> Void)? = nil
     var onInsights: (() -> Void)? = nil
     var onSettings: (() -> Void)? = nil
-    @State private var viewModel = TransactionListViewModel()
+    @State private var viewModel = TransactionListViewModel.shared
     @State private var showAddTransaction = false
     @State private var addSheetQuickPickOrder: [String] = []
+    @State private var addSheetDidSave = false
     @State private var selectedTransactionForEdit: Transaction? = nil
     @State private var monthPath: [MonthDetailDestination] = []
     @State private var selectedMonth: MonthDetailDestination?
@@ -56,12 +61,14 @@ struct TransactionListView: View {
     }
 
     private var innerContent: some View {
-        ZStack(alignment: .top) {
-            OnboardingGradientBackground()
+        GeometryReader { rootGeo in
+            let topInset = rootGeo.safeAreaInsets.top
+            ZStack(alignment: .top) {
+                OnboardingGradientBackground()
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 24) {
-                    titleSection
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 24) {
+                        titleSection
                     if !viewModel.pinnedTransactions.isEmpty {
                         pinnedSection
                             .transition(.asymmetric(
@@ -78,9 +85,13 @@ struct TransactionListView: View {
                     transactionsContent
                 }
                 .padding(.horizontal, 20)
+                .padding(.top, topInset)
                 .padding(.bottom, 120)
             }
             .scrollIndicators(.hidden)
+            .ignoresSafeArea(.container, edges: .top)
+        }
+        .ignoresSafeArea(.container, edges: .top)
         }
         .overlay(alignment: .bottom) {
             if showBottomBar && AppearanceStore.navigationType == .airyBar {
@@ -88,18 +99,22 @@ struct TransactionListView: View {
                     .frame(maxWidth: .infinity)
             }
         }
-        .ignoresSafeArea(edges: showBottomBar ? .bottom : [])
+        .ignoresSafeArea(.container, edges: showBottomBar ? .bottom : [])
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(showBottomBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
-            if showBottomBar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { onDismiss?() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    print("[Tap] TransactionList → Back")
+                    if let back = onBack { back() }
+                    else if let d = onDismiss { d() }
+                    else { dismiss() }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
             }
             ToolbarItem(placement: .principal) {
@@ -110,6 +125,7 @@ struct TransactionListView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    print("[Tap] TransactionList → Calendar")
                     let now = Date()
                     let cal = Calendar.current
                     let y = cal.component(.year, from: now)
@@ -130,28 +146,43 @@ struct TransactionListView: View {
                 }
             }
         }
-        .navigationDestination(for: MonthDetailDestination.self) { dest in
-            MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel, monthPath: $monthPath)
-                .environment(theme)
-        }
-        .navigationDestination(item: $selectedMonth) { dest in
-            MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel)
-                .environment(theme)
-        }
+        .modifier(MonthDetailDestinationModifier(
+            showBottomBar: showBottomBar,
+            monthPath: $monthPath,
+            selectedMonth: $selectedMonth,
+            theme: theme
+        ))
         .sheet(isPresented: $showAddTransaction, onDismiss: {
-            Task { await viewModel.load() }
+            if addSheetDidSave {
+                Task { await viewModel.load() }
+                addSheetDidSave = false
+            }
         }) {
-            AddTransactionView(initialQuickPickOrder: addSheetQuickPickOrder)
-                .environment(theme)
+            AddTransactionView(initialQuickPickOrder: addSheetQuickPickOrder, onSuccess: {
+                addSheetDidSave = true
+            })
+            .themed(theme)
         }
         .sheet(item: $selectedTransactionForEdit) { tx in
             AddTransactionView(transaction: tx, onSuccess: {
+                let editedId = tx.id
                 selectedTransactionForEdit = nil
-                Task { await viewModel.load() }
+                viewModel.updateLocally(id: editedId)
             })
-            .environment(theme)
+            .themed(theme)
         }
-        .task { await viewModel.load() }
+        .onAppear { print("[Nav] TransactionList (showBottomBar=\(showBottomBar))") }
+        .task {
+            await viewModel.load()
+            if let text = initialSearchText {
+                localSearchText = text
+                viewModel.searchText = text
+                if viewModel.hasMore { await viewModel.loadRemaining() }
+            }
+            if let catId = initialCategoryFilter {
+                viewModel.selectedFilterId = catId
+            }
+        }
         .task(id: localSearchText) {
             try? await Task.sleep(for: .milliseconds(300))
             viewModel.searchText = localSearchText
@@ -159,7 +190,11 @@ struct TransactionListView: View {
                 await viewModel.loadRemaining()
             }
         }
+        .onChange(of: isSearchFocused) { _, focused in
+            if focused { print("[Input] TransactionList → Search focused") }
+        }
         .onChange(of: viewModel.selectedFilterId) { _, newValue in
+            if let id = newValue { print("[Tap] TransactionList → Filter '\(id)'") }
             if newValue != nil && viewModel.hasMore {
                 Task { await viewModel.loadRemaining() }
             }
@@ -273,6 +308,7 @@ struct TransactionListView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 20)
                         .onAppear {
+                            guard !viewModel.isLoadingMore else { return }
                             Task { await viewModel.load(append: true) }
                         }
                 }
@@ -297,6 +333,7 @@ struct TransactionListView: View {
                         removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .center))
                     ))
                     .onTapGesture {
+                        print("[Tap] TransactionList → Transaction '\(tx.merchant ?? tx.category)'")
                         selectedTransactionForEdit = tx
                     }
                     .contextMenu {
@@ -356,6 +393,7 @@ struct TransactionListView: View {
     private func monthSection(group: TransactionMonthGroup) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Button {
+                print("[Tap] TransactionList → Month '\(group.monthLabel)'")
                 let dest = MonthDetailDestination(monthKey: group.id, monthLabel: group.monthLabel)
                 if showBottomBar {
                     monthPath = [dest]
@@ -397,6 +435,7 @@ struct TransactionListView: View {
                 .foregroundColor(theme.textSecondary)
         }
         .padding(.horizontal, 4)
+        .contentShape(Rectangle())
     }
 
     private func transactionCard(tx: Transaction, monthTransactions: [Transaction]) -> some View {
@@ -476,15 +515,9 @@ struct TransactionListView: View {
         }
         Button(role: .destructive) {
             let id = tx.id
-            _ = withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-                deletingTransactionIds.insert(id)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
-                try? LocalDataStore.shared.deleteTransaction(id: id)
-                deletingTransactionIds.remove(id)
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-                    viewModel.removeLocally(id: id)
-                }
+            try? LocalDataStore.shared.deleteTransaction(id: id)
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                viewModel.removeLocally(id: id)
             }
         } label: {
             Label(L("common_delete"), systemImage: "trash")
@@ -571,6 +604,32 @@ private struct TransactionsGlassModifier: ViewModifier {
                     .offset(y: 1)
                     .allowsHitTesting(false)
             )
+    }
+}
+
+/// Registers the right navigationDestination variant to avoid duplicate registration warnings.
+/// - showBottomBar == true  → path-based (for: MonthDetailDestination) using monthPath
+/// - showBottomBar == false → item-based ($selectedMonth binding) for push from parent stack
+private struct MonthDetailDestinationModifier: ViewModifier {
+    let showBottomBar: Bool
+    @Binding var monthPath: [MonthDetailDestination]
+    @Binding var selectedMonth: MonthDetailDestination?
+    let theme: ThemeProvider
+
+    func body(content: Content) -> some View {
+        if showBottomBar {
+            content
+                .navigationDestination(for: MonthDetailDestination.self) { dest in
+                    MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel, monthPath: $monthPath)
+                        .environment(theme)
+                }
+        } else {
+            content
+                .navigationDestination(item: $selectedMonth) { dest in
+                    MonthDetailView(monthKey: dest.monthKey, monthLabel: dest.monthLabel)
+                        .environment(theme)
+                }
+        }
     }
 }
 
