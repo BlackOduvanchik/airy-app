@@ -271,71 +271,72 @@ struct InsightsView: View {
         }
     }
 
-    // MARK: Weekly trend chart (smooth Catmull-Rom)
+    // MARK: Daily cumulative trend chart (two lines: this month vs last month)
+
+    private func trendPoints(data: [Double], maxDays: Int, maxVal: Double, w: CGFloat, h: CGFloat) -> [CGPoint] {
+        data.enumerated().map { i, val in
+            let x = data.count > 1 ? CGFloat(i) / CGFloat(maxDays - 1) * w : w / 2
+            let y = h - CGFloat(val / maxVal) * h * 0.9 - h * 0.05
+            return CGPoint(x: x, y: y)
+        }
+    }
 
     private var weeklyTrendChart: some View {
-        let thisWeeks = viewModel.snapshot?.weeklySpendThisMonth ?? []
-        let lastWeeks = viewModel.snapshot?.weeklySpendLastMonth ?? []
-        let count = min(thisWeeks.count, lastWeeks.count)
-
-        // Delta at each week point: positive = overspending, negative = saving
-        let deltas: [Double] = {
-            guard count > 0 else { return [0, 0] }
-            return (0..<count).map { thisWeeks[$0] - lastWeeks[$0] }
-        }()
+        let thisDaily = viewModel.snapshot?.dailyCumulativeThisMonth ?? []
+        let lastDaily = viewModel.snapshot?.dailyCumulativeLastMonth ?? []
 
         return GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
-            let midY = h / 2
 
-            let maxAbs = max(deltas.map { abs($0) }.max() ?? 1, 1)
+            let maxDays = max(thisDaily.count, lastDaily.count, 1)
+            let maxVal = max((thisDaily + lastDaily).max() ?? 1, 1)
 
-            // Convert deltas to points: x evenly spaced, y normalized around center
-            let points: [CGPoint] = deltas.enumerated().map { i, val in
-                let x = deltas.count > 1 ? CGFloat(i) / CGFloat(deltas.count - 1) * w : w / 2
-                let y = midY - CGFloat(val / maxAbs) * (h * 0.4) // up = overspend, down = saving
-                return CGPoint(x: x, y: y)
-            }
+            let thisPoints = trendPoints(data: thisDaily, maxDays: maxDays, maxVal: maxVal, w: w, h: h)
+            let lastPoints = trendPoints(data: lastDaily, maxDays: maxDays, maxVal: maxVal, w: w, h: h)
 
-            if points.count >= 2 {
-                let curvePath = catmullRomPath(points: points)
-                let fillPath: Path = {
-                    var p = curvePath
-                    p.addLine(to: CGPoint(x: points.last!.x, y: midY))
-                    p.addLine(to: CGPoint(x: points.first!.x, y: midY))
-                    p.closeSubpath()
-                    return p
-                }()
-
-                ZStack {
-                    // Zero line
-                    Path { p in
-                        p.move(to: CGPoint(x: 0, y: midY))
-                        p.addLine(to: CGPoint(x: w, y: midY))
-                    }
-                    .stroke(Color.white.opacity(theme.isDark ? 0.08 : 0.2), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-
-                    // Gradient fill under curve
-                    fillPath
-                        .fill(
-                            LinearGradient(
-                                colors: [pacingColor.opacity(0.25), pacingColor.opacity(0.05)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+            ZStack {
+                // Last month line (dashed, subtle)
+                if lastPoints.count >= 2 {
+                    catmullRomPath(points: lastPoints)
+                        .stroke(
+                            Color.white.opacity(theme.isDark ? 0.2 : 0.35),
+                            style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [5, 4])
                         )
+                }
 
-                    // Smooth line
+                // This month line (solid, colored)
+                if thisPoints.count >= 2 {
+                    let curvePath = catmullRomPath(points: thisPoints)
+
+                    // Gradient fill
+                    Path { p in
+                        p.addPath(curvePath)
+                        if let last = thisPoints.last, let first = thisPoints.first {
+                            p.addLine(to: CGPoint(x: last.x, y: h))
+                            p.addLine(to: CGPoint(x: first.x, y: h))
+                            p.closeSubpath()
+                        }
+                    }
+                    .fill(
+                        LinearGradient(
+                            colors: [pacingColor.opacity(0.2), pacingColor.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
                     curvePath
                         .stroke(pacingColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
 
-                    // End dot
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 6, height: 6)
-                        .overlay(Circle().stroke(pacingColor, lineWidth: 2))
-                        .position(points.last!)
+                    // End dot on this month line
+                    if let last = thisPoints.last {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 6, height: 6)
+                            .overlay(Circle().stroke(pacingColor, lineWidth: 2))
+                            .position(last)
+                    }
                 }
             }
         }

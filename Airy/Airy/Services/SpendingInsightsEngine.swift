@@ -432,17 +432,15 @@ enum SpendingInsightsEngine {
 
         let totalTxCount = thisMonthTxs.count + (byMonth[lastMonthKey] ?? []).count
 
-        // MARK: Weekly cumulative spend (for trend chart)
+        // MARK: Daily cumulative spend (for trend chart)
 
-        let weekBounds = [7, 14, 21, daysInMonth]
-
-        func weeklyCumulative(txs: [Transaction]) -> [Double] {
+        func dailyCumulative(txs: [Transaction], days: Int) -> [Double] {
             var cumulative = 0.0
             var result: [Double] = []
             var txIdx = 0
-            let sorted = txs.sorted { ($0.transactionDate) < ($1.transactionDate) }
-            for bound in weekBounds {
-                while txIdx < sorted.count, let day = dayComponent(from: sorted[txIdx].transactionDate), day <= bound {
+            let sorted = txs.sorted { $0.transactionDate < $1.transactionDate }
+            for day in 1...days {
+                while txIdx < sorted.count, let d = dayComponent(from: sorted[txIdx].transactionDate), d <= day {
                     cumulative += amountInBase(sorted[txIdx])
                     txIdx += 1
                 }
@@ -451,8 +449,11 @@ enum SpendingInsightsEngine {
             return result
         }
 
-        let weeklySpendThisMonth = weeklyCumulative(txs: thisMonthTxs)
-        let weeklySpendLastMonth = weeklyCumulative(txs: byMonth[lastMonthKey] ?? [])
+        let dailyCumulativeThisMonth = dailyCumulative(txs: thisMonthTxs, days: dayOfMonth)
+        let lastMonthTxs = byMonth[lastMonthKey] ?? []
+        let daysInLastMonth = cal.range(of: .day, in: .month,
+            for: cal.date(byAdding: .month, value: -1, to: now) ?? now)?.count ?? 30
+        let dailyCumulativeLastMonth = dailyCumulative(txs: lastMonthTxs, days: daysInLastMonth)
 
         // MARK: - Build Snapshot
 
@@ -523,8 +524,8 @@ enum SpendingInsightsEngine {
             dayOfMonth: dayOfMonth,
             daysInMonth: daysInMonth,
             // Weekly cumulative
-            weeklySpendThisMonth: weeklySpendThisMonth,
-            weeklySpendLastMonth: weeklySpendLastMonth
+            dailyCumulativeThisMonth: dailyCumulativeThisMonth,
+            dailyCumulativeLastMonth: dailyCumulativeLastMonth
         )
     }
 
