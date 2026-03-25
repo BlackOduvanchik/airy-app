@@ -2,9 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>AIRY_API_BASE_URL</key>
-	<string>$(AIRY_API_BASE_URL)</string>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
+<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>ai.airy.imageProcessing</string>
 	</array>
