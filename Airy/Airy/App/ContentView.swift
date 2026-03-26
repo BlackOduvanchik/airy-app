@@ -49,10 +49,8 @@ struct ContentView: View {
         }
         .task(id: authStore.userId) {
             guard authStore.isLoggedIn else { return }
-            if #available(iOS 15.0, *) {
-                Task.detached(priority: .background) {
-                    await StoreKitService.shared.startTransactionUpdatesListener()
-                }
+            Task.detached(priority: .background) {
+                await StoreKitService.shared.startTransactionUpdatesListener()
             }
         }
         .onChange(of: systemColorScheme) { _, newScheme in

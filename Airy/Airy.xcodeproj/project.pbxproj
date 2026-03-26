@@ -172,6 +172,7 @@
 		F0010000000000000000000F /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
 		F00100000000000000000010 /* PaywallViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallViewModel.swift; sourceTree = "<group>"; };
 		F00100000000000000000011 /* StoreKitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitService.swift; sourceTree = "<group>"; };
+		F001000000000000000000SK /* Airy.storekit */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Airy.storekit; sourceTree = "<group>"; };
 		F00100000000000000000012 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000013 /* SubscriptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000014 /* SubscriptionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsViewModel.swift; sourceTree = "<group>"; };
@@ -329,6 +330,7 @@
 				GRP00000000000000000008 /* Shared */,
 				GRP00000000000000000009 /* Services */,
 				F0010000000000000000001E /* Airy.entitlements */,
+				F001000000000000000000SK /* Airy.storekit */,
 			);
 			path = Airy;
 			sourceTree = "<group>";

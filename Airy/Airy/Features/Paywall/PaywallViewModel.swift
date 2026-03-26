@@ -14,13 +14,13 @@ struct ProductDisplay: Identifiable {
 }
 
 @Observable
-@available(iOS 15.0, *)
 final class PaywallViewModel {
     var products: [ProductDisplay] = []
     var isPurchasing = false
     var isRestoring = false
     var errorMessage: String?
     var didSucceed = false
+    var isTrialEligible = false
     private let storeKit = StoreKitService.shared
 
     /// Check StoreKit entitlements; if already Pro, skip. Otherwise load products.
@@ -32,8 +32,10 @@ final class PaywallViewModel {
                 await MainActor.run { didSucceed = true }
                 return
             }
-            let list = try await storeKit.loadProducts()
+            let list = try await storeKit.loadAllProProducts()
+            let trialEligible = await storeKit.isEligibleForIntroOffer(for: StoreKitService.productId)
             await MainActor.run {
+                isTrialEligible = trialEligible
                 products = list.map {
                     ProductDisplay(
                         id: $0.id,

@@ -2,7 +2,7 @@
 //  StoreKitService.swift
 //  Airy
 //
-//  StoreKit 2: products, purchase, restore, sync to backend.
+//  StoreKit 2: products, purchase, restore. Local-only.
 //
 
 import Foundation
@@ -26,7 +26,6 @@ extension Notification.Name {
     static let airyEntitlementsDidChange = Notification.Name("AiryEntitlementsDidChange")
 }
 
-@available(iOS 15.0, *)
 actor StoreKitService {
     static let shared = StoreKitService()
     static let productId = "airy_pro_monthly"
@@ -59,15 +58,12 @@ actor StoreKitService {
     func currentEntitlements() async -> [StoreKit.Transaction] {
         var txs: [StoreKit.Transaction] = []
         for await result in StoreKit.Transaction.currentEntitlements {
-            if case .verified(let tx) = result {
+            if case .verified(let tx) = result, tx.revocationDate == nil {
                 txs.append(tx)
             }
         }
         return txs
     }
-
-    /// No-op: local-only, no backend sync.
-    func syncToBackend(productId: String?, transactionId: String?, expiresAt: Date?) async throws {}
 
     /// Restores purchases. Returns transaction ID for local session. Throws if no Pro entitlement.
     func restore() async throws -> String? {
@@ -90,7 +86,15 @@ actor StoreKitService {
         }
     }
 
-    /// Listens to Transaction.updates, finishes transactions, posts AiryEntitlementsDidChange. No backend.
+    /// Checks if the user is eligible for the introductory (free trial) offer on a given product.
+    func isEligibleForIntroOffer(for productId: String) async -> Bool {
+        let products = try? await Product.products(for: [productId])
+        guard let product = products?.first,
+              let subscription = product.subscription else { return false }
+        return await subscription.isEligibleForIntroOffer
+    }
+
+    /// Listens to Transaction.updates, finishes transactions, posts AiryEntitlementsDidChange.
     func startTransactionUpdatesListener() async {
         for await result in StoreKit.Transaction.updates {
             guard case .verified(let transaction) = result else { continue }

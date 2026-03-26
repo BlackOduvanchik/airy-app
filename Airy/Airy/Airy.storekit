@@ -1,0 +1,142 @@
+{
+  "identifier" : "D4F8A2B1-3C7E-4A9D-B5E6-1F0D2C8A4B6E",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "0",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_lastSelectedSimulatorDeviceName" : "iPhone 16 Pro",
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ],
+    "_timeRate" : 6
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "A1B2C3D4-5E6F-7A8B-9C0D-E1F2A3B4C5D6",
+      "localizations" : [
+
+      ],
+      "name" : "Airy Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "PRO_MONTHLY_001",
+          "introductoryOffer" : {
+            "displayPrice" : "0",
+            "internalID" : "TRIAL_MONTHLY_001",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Unlock all Airy Pro features with a monthly subscription.",
+              "displayName" : "Airy Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "airy_pro_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Airy Pro Monthly",
+          "subscriptionGroupID" : "A1B2C3D4-5E6F-7A8B-9C0D-E1F2A3B4C5D6",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "49.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "PRO_YEARLY_001",
+          "introductoryOffer" : {
+            "displayPrice" : "0",
+            "internalID" : "TRIAL_YEARLY_001",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Unlock all Airy Pro features with a yearly subscription. Save 40%.",
+              "displayName" : "Airy Pro Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "airy_pro_yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Airy Pro Yearly",
+          "subscriptionGroupID" : "A1B2C3D4-5E6F-7A8B-9C0D-E1F2A3B4C5D6",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

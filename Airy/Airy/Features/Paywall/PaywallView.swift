@@ -8,7 +8,6 @@
 import SwiftUI
 import StoreKit
 
-@available(iOS 15.0, *)
 struct PaywallView: View {
     @Environment(ThemeProvider.self) private var theme
     @Environment(\.dismiss) private var dismiss
@@ -34,7 +33,7 @@ struct PaywallView: View {
                         pricingToggle
                             .padding(.bottom, 12)
 
-                        Text("No charge today · Cancel anytime")
+                        Text(viewModel.isTrialEligible ? "No charge today · Cancel anytime" : "Cancel anytime")
                             .font(.system(size: 13))
                             .foregroundColor(theme.textTertiary)
                             .padding(.bottom, 4)
@@ -73,7 +72,7 @@ struct PaywallView: View {
                                 : StoreKitService.productId
                             Task { await viewModel.purchaseById(productId) }
                         } label: {
-                            Text("Start Free 7-Day Trial")
+                            Text(viewModel.isTrialEligible ? "Start Free 7-Day Trial" : "Subscribe Now")
                                 .font(.system(size: 17, weight: .semibold))
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)

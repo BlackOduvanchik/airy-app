@@ -1412,7 +1412,6 @@ struct OnboardingProOfferPage: View {
     }
 
     private func loadProducts() async {
-        guard #available(iOS 15.0, *) else { return }
         do {
             let list = try await StoreKitService.shared.loadAllProProducts()
             await MainActor.run {
@@ -1431,7 +1430,6 @@ struct OnboardingProOfferPage: View {
     }
 
     private func purchase(productId: String) async {
-        guard #available(iOS 15.0, *) else { onFinish(); return }
         isPurchasing = true
         errorMessage = nil
         defer { Task { @MainActor in isPurchasing = false } }
@@ -1452,7 +1450,6 @@ struct OnboardingProOfferPage: View {
     }
 
     private func restore() async {
-        guard #available(iOS 15.0, *) else { return }
         isRestoring = true
         errorMessage = nil
         defer { Task { @MainActor in isRestoring = false } }
