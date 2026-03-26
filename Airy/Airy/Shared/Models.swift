@@ -281,6 +281,24 @@ struct CreateTransactionBody: Encodable {
     let sourceType: String?
 }
 
+// MARK: - MonthSummary
+
+struct MonthSummary: Codable {
+    let totalSpent: Double
+    let totalIncome: Double
+    let byCategory: [String: Double]?
+    let transactionCount: Int?
+}
+
+// MARK: - InsightItem
+
+struct InsightItem: Codable {
+    let type: String?
+    let title: String
+    let body: String
+    let metricRef: String?
+}
+
 // MARK: - AnyCodable
 
 struct AnyCodable: Codable {
