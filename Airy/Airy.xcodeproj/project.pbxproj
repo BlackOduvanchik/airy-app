@@ -10,6 +10,7 @@
 		B00100000000000000000001 /* AiryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000001 /* AiryApp.swift */; };
 		B00100000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000002 /* ContentView.swift */; };
 		B00100000000000000000074 /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000074 /* SplashView.swift */; };
+		B001000000000000000000MD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000000000000000000MD /* Models.swift */; };
 		B00100000000000000000005 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000005 /* AuthStore.swift */; };
 		B00100000000000000000006 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000006 /* DashboardView.swift */; };
 		B00100000000000000000007 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100000000000000000007 /* DashboardViewModel.swift */; };
@@ -173,6 +174,7 @@
 		F00100000000000000000010 /* PaywallViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallViewModel.swift; sourceTree = "<group>"; };
 		F00100000000000000000011 /* StoreKitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitService.swift; sourceTree = "<group>"; };
 		F001000000000000000000SK /* Airy.storekit */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Airy.storekit; sourceTree = "<group>"; };
+		F001000000000000000000MD /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		F00100000000000000000012 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000013 /* SubscriptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsView.swift; sourceTree = "<group>"; };
 		F00100000000000000000014 /* SubscriptionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsViewModel.swift; sourceTree = "<group>"; };
@@ -405,6 +407,7 @@
 			isa = PBXGroup;
 			children = (
 				F00100000000000000000058 /* AiryActivityAttributes.swift */,
+				F001000000000000000000MD /* Models.swift */,
 				GRP00000000000000000014 /* Components */,
 				GRP00000000000000000017 /* Utilities */,
 			);
@@ -740,6 +743,7 @@
 				B0010000000000000000000F /* PaywallView.swift in Sources */,
 				B00100000000000000000010 /* PaywallViewModel.swift in Sources */,
 				B00100000000000000000011 /* StoreKitService.swift in Sources */,
+				B001000000000000000000MD /* Models.swift in Sources */,
 				B00100000000000000000012 /* SettingsView.swift in Sources */,
 				B00100000000000000000013 /* SubscriptionsView.swift in Sources */,
 				B00100000000000000000014 /* SubscriptionsViewModel.swift in Sources */,
